@@ -1,0 +1,56 @@
+fun concat(a, b, c) {
+    let result = [];
+
+    for (let i = 0; i < len(a); i = i + 1) {
+        append(result, a[i]);
+    }
+
+    for (let i = 0; i < len(b); i = i + 1) {
+        append(result, b[i]);
+    }
+
+    for (let i = 0; i < len(c); i = i + 1) {
+        append(result, c[i]);
+    }
+
+    return result;
+}
+
+fun quicksort(arr) {
+    // Base case: already sorted
+    if (len(arr) <= 1) {
+        return arr;
+    }
+
+    let pivot = arr[0];
+
+    let less = [];
+    let equal = [];
+    let greater = [];
+
+    // Partition
+    for (let i = 0; i < len(arr); i = i + 1) {
+        if (arr[i] < pivot) {
+            append(less, arr[i]);
+        } else if (arr[i] > pivot) {
+            append(greater, arr[i]);
+        } else {
+            append(equal, arr[i]);
+        }
+    }
+
+    // Recursively sort subarrays
+    let sortedLess = quicksort(less);
+    let sortedGreater = quicksort(greater);
+
+    // Return a NEW sorted array
+    return concat(sortedLess, equal, sortedGreater);
+}
+
+// --- test ---
+let input = [5, 3, 8, 1, 2, 7, 4, 6];
+
+let output = quicksort(input);
+
+print(output);   // [1,2,3,4,5,6,7,8]
+print(input);    // original unchanged (important!)

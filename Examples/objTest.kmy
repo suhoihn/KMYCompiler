@@ -1,0 +1,104 @@
+// ===== BASIC OBJECT + METHOD =====
+let obj = {
+    x: 10,
+    getX: fun() {
+        return this.x;
+    }
+};
+
+print(obj.getX());   // expect: 10
+
+
+// ===== MUTATING WITH THIS =====
+obj.setX = fun(v) {
+    this.x = v;
+};
+
+obj.setX(42);
+print(obj.getX());   // expect: 42
+
+
+// ===== DETACHED METHOD (BOUND FUNCTION TEST) =====
+let f = obj.getX;
+print(f());          // expect: 42 (only works if bound function is correct)
+
+
+// ===== NESTED OBJECT =====
+let outer = {
+    inner: {
+        val: 99,
+        getVal: fun() {
+            return this.val;
+        }
+    }
+};
+
+print(outer.inner.getVal());   // expect: 99
+
+
+// ===== ARRAY + OBJECT =====
+let arr = [
+    {v: 1},
+    {v: 2},
+    {v: 3}
+];
+
+print(arr[1].v);   // expect: 2
+
+arr[1].v = 200;
+print(arr[1].v);   // expect: 200
+
+
+// ===== METHOD INSIDE ARRAY =====
+arr[0].inc = fun() {
+    this.v = this.v + 1;
+};
+
+arr[0].inc();
+print(arr[0].v);   // expect: 2
+
+
+// ===== CHAINED ACCESS =====
+let deep = {
+    a: {
+        b: {
+            c: 7,
+            get: fun() {
+                return this.c;
+            }
+        }
+    }
+};
+
+print(deep.a.b.get());   // expect: 7
+
+
+// ===== FUNCTION RETURNING OBJECT =====
+fun makeCounter(start) {
+    return {
+        count: start,
+        inc: fun() {
+            this.count = this.count + 1;
+            return this.count;
+        }
+    };
+}
+
+let counter = makeCounter(5);
+print(counter.inc());   // expect: 6
+print(counter.inc());   // expect: 7
+
+
+// ===== THIS MISUSE (should error or undefined) =====
+// fun bad() {
+//     return this;
+// }
+
+// Depending on your design:
+// either error OR print null/undefined
+// print(bad());
+
+
+// ===== OBJECT PRINTING =====
+print(obj);    // debug output
+print(outer);

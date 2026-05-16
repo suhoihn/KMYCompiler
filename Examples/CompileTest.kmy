@@ -1,0 +1,74 @@
+let const x = 10;
+let y = 5;
+let z = 0;
+
+// first layer
+if (x > y) {
+
+    // nested if
+    if (y < 3) {
+        print(100);
+    } else if (y < 10) {
+        print(200);
+    } else {
+        print(300);
+    }
+
+    // assignment inside branch
+    z = x + y;
+
+} else {
+
+    z = y - x;
+
+    if (z < 0) {
+        print(400);
+    } else {
+        print(500);
+    }
+}
+
+// second layer (chained logic)
+if (z > 10) {
+    print(z);
+} else if (z == 10) {
+    print(999);
+} else {
+    print(-1);
+}
+
+// assignment expression test
+y = (z = x + y);
+
+// reuse after mutation
+print(y);
+print(z);
+
+// deep nesting
+if (x > 0) {
+    if (y > 0) {
+        if (z > 0) {
+            print(x + y + z);
+        } else {
+            print(1);
+        }
+    } else {
+        print(2);
+    }
+} else {
+    print(3);
+}
+
+// 200
+// 15
+// 15
+// 40
+
+// second layer (chained logic)
+if (false) {
+    print(z);
+} else if (true) {
+    print(999);
+} else {
+    print(-1);
+}

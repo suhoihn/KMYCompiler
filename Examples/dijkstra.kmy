@@ -1,0 +1,148 @@
+// Dijkstra using classes
+
+class PriorityQueue {
+    fun init() {
+        this.values = [];
+    }
+
+    fun enqueue(node, priority) {
+        append(this.values, {
+            node: node,
+            priority: priority
+        });
+    }
+
+    fun dequeue() {
+        if (len(this.values) == 0) {
+            return null;
+        }
+
+        let lowestIndex = 0;
+        let i = 1;
+
+        while (i < len(this.values)) {
+            if (this.values[i].priority < this.values[lowestIndex].priority) {
+                lowestIndex = i;
+            }
+            i = i + 1;
+        }
+
+        return pop(this.values, lowestIndex);
+    }
+
+    fun isEmpty() {
+        return len(this.values) == 0;
+    }
+};
+
+class Dijkstra {
+    let graph;
+    let nodes;
+
+    fun init(graph, nodes) {
+        this.graph = graph;
+        this.nodes = nodes;
+    }
+
+    fun shortestPath(start) {
+        let distances = {};
+        let previous = {};
+        let nodes = this.nodes;
+
+        let pq = new PriorityQueue();
+        pq.init();
+
+        // Initialize
+        let i = 0;
+        while (i < len(nodes)) {
+            let node = nodes[i];
+
+            if (node == start) {
+                distances[node] = 0;
+                pq.enqueue(node, 0);
+            } else {
+                distances[node] = 999999;
+                pq.enqueue(node, 999999);
+            }
+
+            previous[node] = null;
+            i = i + 1;
+        }
+
+        while (!pq.isEmpty()) {
+            let smallest = pq.dequeue();
+
+            if (smallest == null) {
+                break;
+
+            }
+            let currentNode = smallest.node;
+
+            let neighbors = this.graph[currentNode];
+            let j = 0;
+
+            while (j < len(neighbors)) {
+                let nextNode = neighbors[j][0];
+                let weight = neighbors[j][1];
+
+                let candidate = distances[currentNode] + weight;
+
+                if (candidate < distances[nextNode]) {
+                    distances[nextNode] = candidate;
+                    previous[nextNode] = currentNode;
+                    pq.enqueue(nextNode, candidate);
+                }
+
+                j = j + 1;
+            }
+        }
+
+        return {
+            distances: distances,
+            previous: previous
+        };
+    }
+
+    fun buildPath(previous, target) {
+        let path = [];
+        let current = target;
+
+        while (current != null) {
+            append(path, current);
+            current = previous[current];
+        }
+
+        // Reverse path
+        let reversed = [];
+        while (len(path) > 0) {
+            append(reversed, pop(path, len(path) - 1));
+        }
+
+        return reversed;
+    }
+};
+
+// Example graph
+let graph = {
+    A: [["B", 4], ["C", 2]],
+    B: [["A", 4], ["C", 1], ["D", 5]],
+    C: [["A", 2], ["B", 1], ["D", 8], ["E", 10]],
+    D: [["B", 5], ["C", 8], ["E", 2], ["Z", 6]],
+    E: [["C", 10], ["D", 2], ["Z", 3]],
+    Z: [["D", 6], ["E", 3]]
+};
+
+let nodes = ["A", "B", "C", "D", "E", "Z"];
+
+// Run algorithm
+let solver = new Dijkstra();
+solver.init(graph, nodes);
+
+let result = solver.shortestPath("A");
+
+print(result.distances);
+//print(result.previous);
+
+let path = solver.buildPath(result.previous, "Z");
+print(path);
+print(result.distances["Z"]);

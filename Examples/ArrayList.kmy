@@ -1,0 +1,101 @@
+fun error(msg) {
+    print("ERROR: " + msg);
+}
+
+class ArrayList {
+    let data = [];
+    let size = 0;
+
+    fun add(value) {
+        append(this.data, value);
+        this.size = len(this.data);
+    }
+
+    fun get(index) {
+        if (index < 0 || index >= this.size) {
+            error("Index out of bounds");
+            return null;
+        }
+
+        return this.data[index];
+    }
+
+    fun set(index, value) {
+        if (index < 0 || index >= this.size) {
+            error("Index out of bounds");
+            return null;
+        }
+
+        data[index] = value;
+    }
+
+    fun remove(index) {
+        if (index < 0 || index >= this.size) {
+            error("Index out of bounds");
+            return null;
+        }
+
+        let newData = [];
+        let removed = null;
+        let i = 0;
+
+        while (i < this.size) {
+            if (i == index) {
+                removed = this.data[i];
+            } else {
+                append(newData, this.data[i]);
+            }
+            i = i + 1;
+        }
+
+        this.data = newData;
+        this.size = len(this.data);
+
+        return removed;
+    }
+
+    fun clear() {
+        this.data = [];
+        this.size = 0;
+    }
+
+    fun length() {
+        return this.size;
+    }
+
+    fun isEmpty() {
+        return this.size == 0;
+    }
+
+    fun contains(value) {
+        let i = 0;
+        while (i < this.size) {
+            if (this.data[i] == value) {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    fun indexOf(value) {
+        let i = 0;
+        while (i < this.size) {
+            if (this.data[i] == value) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+};
+
+let list = new ArrayList();
+
+list.add(10);
+list.add(20);
+list.add(30);
+
+print(list.get(1));
+
+list.remove(1);

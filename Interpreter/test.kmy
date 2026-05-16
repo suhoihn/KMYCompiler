@@ -1,0 +1,204 @@
+// =======================
+// BASIC EXPRESSIONS
+// =======================
+print("=== BASIC EXPRESSIONS ===");
+
+let x = 10;
+let y = 20;
+
+print(x + y);
+print(x * y);
+print((x + y) / 2);
+
+// =======================
+// IF / ELSE IF / ELSE
+// =======================
+print("=== IF / ELSE IF / ELSE ===");
+
+let a = 15;
+
+if (a < 10) {
+    print("small");
+} else if (a < 20) {
+    print("medium");
+} else {
+    print("large");
+}
+
+// =======================
+// WHILE LOOP
+// =======================
+print("=== WHILE LOOP ===");
+
+let i = 0;
+
+while (i < 5) {
+    print(i);
+    i = i + 1;
+}
+
+// =======================
+// FUNCTIONS + RETURN
+// =======================
+
+print("=== FUNCTIONS ===");
+
+fun add(a, b) {
+    return a + b;
+}
+
+fun mul(a, b) {
+    return a * b;
+}
+
+print(add(3, 4));
+print(mul(6, 7));
+
+// =======================
+// RECURSION (FACTORIAL)
+// =======================
+print("=== RECURSION FACTORIAL ===");
+
+fun fact(n) {
+    if (n == 0) {
+        return 1;
+    } else {
+        return n * fact(n - 1);
+    }
+}
+
+print(fact(5));
+
+// =======================
+// STRINGS
+// =======================
+print("=== STRINGS ===");
+
+let name = "world";
+print("hello " + name);
+print(name + "!");
+
+// =======================
+// ARRAYS
+// =======================
+print("=== ARRAYS ===");
+
+let arr = [1, 2, 3, 4, 5];
+
+print(arr[0]);
+print(arr[3]);
+
+arr[2] = 999;
+print(arr[2]);
+
+// =======================
+// HIGHER ORDER FUNCTIONS
+// =======================
+print("=== HIGHER ORDER FUNCTIONS ===");
+
+fun square(x) {
+    return x * x;
+}
+
+fun apply(f, x) {
+    return f(x);
+}
+
+print(apply(square, 10));
+
+// =======================
+// ARRAY OF FUNCTIONS
+// =======================
+print("=== ARRAY OF FUNCTIONS ===");
+
+fun addf(x, y) {
+    return x + y;
+}
+
+fun subf(x, y) {
+    return x - y;
+}
+
+fun mulf(x, y) {
+    return x * y;
+}
+
+let ops = [addf, subf, mulf];
+
+print(ops[0](10, 5));
+print(ops[1](10, 5));
+print(ops[2](10, 5));
+
+
+// =======================
+// INDIRECT FUNCTION CALL
+// =======================
+print("=== INDIRECT FUNCTION CALL ===");
+
+fun choose(f) {
+    return f;
+}
+
+let f = choose(addf);
+print(f(7, 8));
+
+// =======================
+// FIBONACCI
+// =======================
+print("=== FIBONACCI ===");
+
+fun fib(n) {
+    if (n <= 1) {
+        return n;
+    } else {
+        return fib(n - 1) + fib(n - 2);
+    }
+}
+
+let j = 0;
+
+while (j < 8) {
+    print(fib(j));
+    j = j + 1;
+}
+
+// =======================
+// FINAL MIXED STRESS TEST
+// =======================
+print("=== FINAL MIXED TEST ===");
+
+fun fact2(n) {
+    if (n == 0) {
+        return 1;
+    }
+    return n * fact2(n - 1);
+}
+
+fun square2(x) {
+    return x * x;
+}
+
+fun cube(x) {
+    return x * x * x;
+}
+
+let funcs = [fact2, square2, cube];
+
+let k = 6;
+
+let fn;
+while (k < 6) {
+    fn = funcs[k % 3];
+
+    if (k % 3 == 0) {
+        print("fact");
+    } else if (k % 3 == 1) {
+        print("square");
+    } else {
+        print("cube");
+    }
+
+    print(fn(k + 1));
+
+    k = k + 1;
+}
