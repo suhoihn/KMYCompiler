@@ -58,15 +58,7 @@ using ValueType = std::variant<
     ObjectPtr // Heap allocated values
 >;
 
-// No runtime heap-allocated value. (For compiler's constantMap)
-// Bascially, PRIMITIVES.
-using ConstValue = std::variant<
-    std::nullptr_t,
-    int,
-    double,
-    bool,
-    std::string
->;
+
 
 struct Value {
     ValueType data;
@@ -101,6 +93,9 @@ struct Upvalue {
     Value* location;
     Value closed; // The value in stack is copied.
     bool isClosed = false;
+
+    Upvalue(Value* location, Value closed, bool isClosed)
+        : location(location), closed(closed), isClosed(isClosed) {}
 };
 
 using UpvaluePtr = std::shared_ptr<Upvalue>;
@@ -109,6 +104,7 @@ struct FunctionObj : Object {
     std::vector<Parameter> params;
     StmtPtr body; // For interpreter.
     Chunk chunk; // For compiler.
+    int frameSize = 0; // For compiler. Equals to max slot index used + 1.
     
     // For closures
     std::vector<UpvaluePtr> upvalues; 

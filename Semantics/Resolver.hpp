@@ -7,17 +7,17 @@
 // Pass 2: Name Resolution
 // Resolves identifier usages to their declared symbols using the scope tree built in Pass 1.
 // Binds variables/functions/classes to Symbol objects and reports undefined references.
-// Also checks valid loop break/continue, return, and function arity.
+// Also checks valid loop break/continue, return statements.
 
 
 class Resolver : public Visitor {
 public:
-    Resolver(std::vector<StmtPtr> program, ScopePtr globalScope);
+    Resolver(FunctionExprPtr program, Scope* globalScope);
     void resolve();
 
 private:
-    const std::vector<StmtPtr>& program;
-    ScopePtr globalScope;
+    const FunctionExprPtr program;
+    Scope* globalScope;
     Scope* currScope;
 
     // TODO: Type checker's work.

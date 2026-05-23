@@ -9,6 +9,15 @@ void VM::load(const std::vector<FunctionProto>& functionProtos) {
     stack.clear();
     frames.clear();
     openUpvalues.clear();
+    frames.push_back(CallFrame{
+        &this->functionProtos[0].chunk, // global chunk
+        0, // base
+        0, // ip
+        nullptr, // no function object for global scope
+    });
+    frames[0].base = stack.size();
+    std::cout << "framesize: " << this->functionProtos[0].frameSize << std::endl;
+    stack.resize(stack.size() + this->functionProtos[0].frameSize); // or frameSize
 }
 
 Instruction VM::fetchInstr() {
@@ -35,6 +44,13 @@ Value VM::pop() {
 // Every expression must leave exactly ONE value on the stack.
 // (which is then popped at ExprStmt since its a statement!)
 // Every statement must leave NO value on the stack.
+
+/*
+| caller locals | caller temps | callee locals | callee temps |
+                              ^
+                         frame.base
+
+*/
 void VM::executeInstr(const Instruction& instr) {
     auto& frame = frames.back();
     switch (instr.opcode) {
@@ -101,7 +117,7 @@ void VM::executeInstr(const Instruction& instr) {
 
         case Opcode::STORE_LOCAL: {
             Value v = pop();
-            stack[instr.operand] = v;
+            stack[frame.base + instr.operand] = v;
             push(v); // Assignment produces a value. Including Let stmt.
             break;
         }
@@ -192,7 +208,7 @@ void VM::executeInstr(const Instruction& instr) {
 
         // ----- Functions -----
         case Opcode::MAKE_CLOSURE: {
-            FunctionPtr fn = std::get<FunctionPtr>(pop().data);
+            FunctionPtr fn = std::static_pointer_cast<FunctionObj>(std::get<ObjectPtr>(pop().data));
 
             auto closure = std::make_shared<FunctionObj>(*fn);
 
@@ -204,10 +220,12 @@ void VM::executeInstr(const Instruction& instr) {
         }
 
         case Opcode::CALL: {
-            int argc = instr.operand;
+            // Stack
+            // [ ...other stuff ] [ callee function object ] [ arg1 ] ... [ argN ] 
+            //                   ^ frame.base
 
             // 1. Get function from stack
-            Value calleeVal = stack[stack.size() - argc - 1];
+            Value calleeVal = stack[stack.size() - instr.operand - 1];
 
             if (!std::holds_alternative<ObjectPtr>(calleeVal.data)) {
                 throw std::runtime_error("Attempt to call non-function");
@@ -225,20 +243,34 @@ void VM::executeInstr(const Instruction& instr) {
             CallFrame frame;
             frame.chunk = &fn->chunk;
             frame.ip = 0;
-            frame.base = stack.size() - argc; // arguments start here
+            frame.base = stack.size() - instr.operand - 1; // arguments are already on stack
             frame.function = fn;
 
             frames.push_back(frame);
 
-            // 3. Remove callee (args stay in place)
-            stack.erase(stack.end() - argc - 1);
-
             break;
         }
 
-        case Opcode::RETURN_VOID:
-            throw std::runtime_error("RETURN not implemented");
+        case Opcode::RETURN_VOID: {
+            stack.resize(frame.base);
+            frames.pop_back();
+            push(Value(nullptr)); // return void produces null value
+            if (frames.empty()) {
+                running = false; // main function returned, stop execution
+            }
             break;
+        }  
+
+        case Opcode::RETURN_VALUE: {
+            Value retVal = pop();
+            stack.resize(frame.base);
+            frames.pop_back();
+            push(retVal);
+            if (frames.empty()) {
+                running = false; // main function returned, stop execution
+            }
+            break;
+        }
 
         // ----- Arrays -----
         

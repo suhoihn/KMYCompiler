@@ -33,7 +33,7 @@ public:
     explicit Parser(const std::vector<Token>& tokens);
 
     // Entry point
-    std::vector<StmtPtr> parse();
+    FunctionExprPtr parse();
 
 private:
     // =============================
@@ -59,6 +59,7 @@ private:
     ExprPtr parse_prefix();
     TypeNodePtr parse_functionType();
     TypeNodePtr parse_type();
+    TypeNodePtr parse_arraySuffix();
     ExprPtr finishCall(ExprPtr callee);
 
     int get_binding_power(TokenType type);

@@ -5,30 +5,29 @@
 #include "../Core/Ast.hpp"
 
 SymbolScopeBuilder::SymbolScopeBuilder(
-    std::vector<StmtPtr> program
-) : program(move(program)) 
+    FunctionExprPtr program
+) : program(program)
 {
     // Global scope made
-    currScope = std::make_unique<Scope>();
+    globalScope = new Scope();
+    currScope = globalScope;
 }
 
 // Exports the scope tree.
-ScopePtr SymbolScopeBuilder::analyse() {
-    for (auto& stmt : program) {
-        stmt->accept(*this);
-    }
-    return std::move(currScope);
+Scope* SymbolScopeBuilder::analyse() {
+    program->accept(*this);
+    return globalScope;
 }
 
 void SymbolScopeBuilder::enterScope() {
-    auto child = std::make_unique<Scope>();
-    child->parent = std::move(currScope);
-    child->depth = child->parent->depth;
-    currScope = std::move(child);
+    auto child = new Scope();
+    child->parent = currScope;
+    child->depth = currScope->depth + 1;
+    currScope = child;
 }
 
 void SymbolScopeBuilder::exitScope() {
-    currScope = std::move(currScope->parent);
+    currScope = currScope->parent;
 }
 
 SymbolPtr SymbolScopeBuilder::declare(const std::string& name, bool isMutable) {
@@ -40,7 +39,6 @@ SymbolPtr SymbolScopeBuilder::declare(const std::string& name, bool isMutable) {
     // 2. Create symbol
     SymbolPtr sym = std::make_shared<Symbol>(
         name,
-        nullptr, // Semantic type not enforced yet.
         isMutable
     );
 
@@ -50,70 +48,193 @@ SymbolPtr SymbolScopeBuilder::declare(const std::string& name, bool isMutable) {
     return sym;
 }
     
-void SymbolScopeBuilder::visit(FunctionExpr& e) {
-    enterScope();
+void SymbolScopeBuilder::visit(Literal&) {}
 
-    e.scope = currScope.get();
+void SymbolScopeBuilder::visit(Variable&) {}
+
+void SymbolScopeBuilder::visit(ArrayLiteral& e) {
+    for (auto& elem : e.elements)
+        elem->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(RecordLiteral& e) {
+    for (auto& [_, value] : e.fields)
+        value->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(BinaryExpr& e) {
+    e.left->accept(*this);
+    e.right->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(UnaryExpr& e) {
+    e.operand->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(Assignment& e) {
+    e.left->accept(*this);
+    e.right->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(Index& e) {
+    e.obj->accept(*this);
+    e.index->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(Call& e) {
+    e.func->accept(*this);
+
+    for (auto& arg : e.args)
+        arg->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(Get& e) {
+    e.obj->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(ThisExpr&) {}
+
+void SymbolScopeBuilder::visit(NewExpr& e) {
+    for (auto& arg : e.args)
+        arg->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(FunctionExpr& e) {
+    bool isRoot = (&e == program.get());
+
+    if (!isRoot)
+        enterScope();
+
+    e.scope = currScope;
 
     for (auto& param : e.params) {
-        declare(param.name, true);
+        SymbolPtr sym = declare(
+            param.name,
+            param.isMutable
+        );
+
+        if (!sym) {
+            throw KMYCompileError(
+                "Redeclaration of parameter \"" +
+                param.name + "\""
+            );
+        }
     }
 
     e.body->accept(*this);
 
-    exitScope();
+    if (!isRoot)
+        exitScope();
 }
-    
-void SymbolScopeBuilder::visit(Block& s) {
-    enterScope();
 
-    s.scope = currScope.get();
-    
+// ======================================================
+// Statements
+// ======================================================
+
+void SymbolScopeBuilder::visit(Block& s) {
+    bool isRootBody = (&s == program->body.get());
+
+    if (!isRootBody)
+        enterScope();
+
+    s.scope = currScope;
+
     for (auto& stmt : s.statements)
         stmt->accept(*this);
-    
-    exitScope();
+
+    if (!isRootBody)
+        exitScope();
 }
 
+void SymbolScopeBuilder::visit(ExprStmt& s) {
+    s.expr->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(Print& s) {
+    s.expr->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(If& s) {
+    s.condition->accept(*this);
+
+    s.thenbranch->accept(*this);
+
+    if (s.elsebranch)
+        s.elsebranch->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(While& s) {
+    s.condition->accept(*this);
+    s.body->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(Break&) {}
+
+void SymbolScopeBuilder::visit(Continue&) {}
+
+void SymbolScopeBuilder::visit(Return& s) {
+    if (s.expr)
+        s.expr->accept(*this);
+}
 
 void SymbolScopeBuilder::visit(Let& s) {
-    SymbolPtr sym = declare(s.name, s.isMutable);
-    if (!sym) {
-        throw KMYCompileError("Redeclaration of variable \"" + s.name + "\"");
-    }
-    
-    s.symbol = sym;
-
-    if (s.expr) {
-        s.expr->accept(*this);
-    }
-
-}
-
-void SymbolScopeBuilder::visit(Class& s) {
-    // Declare class name in outer scope
-    SymbolPtr sym = declare(s.name, false);
+    SymbolPtr sym = declare(
+        s.name,
+        s.isMutable
+    );
 
     if (!sym) {
         throw KMYCompileError(
-            "Redeclaration of class \"" + s.name + "\""
+            "Redeclaration of variable \"" +
+            s.name + "\""
         );
     }
 
     s.symbol = sym;
 
-    // Create class scope
+    if (s.expr)
+        s.expr->accept(*this);
+}
+
+void SymbolScopeBuilder::visit(Class& s) {
+    // Declare class in outer scope
+    SymbolPtr sym = declare(s.name, false);
+
+    if (!sym) {
+        throw KMYCompileError(
+            "Redeclaration of class \"" +
+            s.name + "\""
+        );
+    }
+
+    s.symbol = sym;
+
+    // Class scope
     enterScope();
 
-    s.scope = currScope.get();
+    s.scope = currScope;
 
-    // Visit fields
+    // Fields
     for (auto& member : s.fieldMembers) {
+        SymbolPtr fieldSym = declare(
+            member.name,
+            member.isMutable
+        );
+
+        if (!fieldSym) {
+            throw KMYCompileError(
+                "Redeclaration of field \"" +
+                member.name + "\""
+            );
+        }
+
+        member.symbol = fieldSym;
+
         if (member.initialiser)
             member.initialiser->accept(*this);
     }
 
-    // Visit methods
+    // Methods
     for (auto& member : s.methodMembers) {
         member.methodExpr->accept(*this);
     }

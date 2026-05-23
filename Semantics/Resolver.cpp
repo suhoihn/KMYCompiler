@@ -3,34 +3,36 @@
 #include "../Core/errorhandler.hpp"
 
 Resolver::Resolver(
-    std::vector<StmtPtr> program,
-    ScopePtr globalScope
+    FunctionExprPtr program,
+    Scope* _globalScope
 )
-    : program(std::move(program)),
-      globalScope(std::move(globalScope)),
-      currScope(globalScope.get())
-{}
+    : program(program),
+      globalScope(_globalScope),
+      currScope(globalScope)
+{
+    //std::cout << currScope << std::endl;
+}
 
 void Resolver::resolve() {
-    for (auto& stmt : program) {
-        stmt->accept(*this);
-    }
+    program->accept(*this);
 }
 
 
 SymbolPtr Resolver::resolveSymbol(const std::string& name) {
     Scope* scope = currScope;
-
+    std::cout << "[DEBUG] Resolving symbol: " << name << std::endl;
+    std::cout << scope << std::endl;
     while (scope) {
+        std::cout << scope << std::endl;
         auto it = scope->symbols.find(name);
 
         if (it != scope->symbols.end()) {
             return it->second;
         }
 
-        scope = scope->parent.get();
+        scope = scope->parent;
     }
-
+    std::cout << "[DEBUG] Symbol not found: " << name << std::endl;
     return nullptr; // Undefined variable.
 }
 
@@ -49,8 +51,10 @@ void Resolver::visit(RecordLiteral& e) {
 
 void Resolver::visit(Variable& e) {
     SymbolPtr sym = resolveSymbol(e.name);
+    std::cout << "[DEBUG] Resolved symbol: " << sym << std::endl;
 
     if (!sym) {
+        std::cout << "Throw?" << e.name <<  std::endl;
         throw KMYCompileError(
             "Undefined variable \"" + e.name + "\""
         );
@@ -93,6 +97,10 @@ void Resolver::visit(FunctionExpr& e) {
     Scope* old = currScope;
 
     currScope = e.scope; // scope created in Pass 1
+    std::cout << "func scope: " << currScope << std::endl;
+    for (const auto& [name, sym] : currScope->symbols) {
+        std::cout << "  " << name << " (mutable: " << sym->isMutable << ")\n";
+    }
 
     e.body->accept(*this);
 
@@ -134,6 +142,10 @@ void Resolver::visit(Block& s) {
     Scope* old = currScope;
 
     currScope = s.scope; // assigned in Pass 1
+    std::cout << "block scope: " << currScope << std::endl;
+    for (const auto& [name, sym] : currScope->symbols) {
+        std::cout << "  " << name << " (mutable: " << sym->isMutable << ")\n";
+    }
 
     for (auto& stmt : s.statements)
         stmt->accept(*this);

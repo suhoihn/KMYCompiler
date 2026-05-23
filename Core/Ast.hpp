@@ -33,7 +33,8 @@ struct BaseExpr : ASTNode {
     Type* type = nullptr;
     
     BaseExpr(ExprKind kind) : kind(kind) {}
-
+    
+    virtual bool isLValue() const { return false; }
     virtual void accept(Visitor& v) = 0;
 };
 
@@ -43,7 +44,6 @@ struct ExprHelper : BaseExpr {
     
     ExprHelper() : BaseExpr(k) {}
 
-    virtual bool isLValue() const { return false; }
     void accept(Visitor& v) override {
         v.visit(static_cast<Derived&>(*this));
     }
@@ -148,14 +148,16 @@ struct Assignment : ExprHelper<Assignment, ExprKind::Assignment> {
 struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
     std::vector<Parameter> params;
     StmtPtr body;
-    TypeNodePtr returnType;
+    TypeNodePtr annotatedReturnType;
 
     Scope* scope = nullptr;
     std::vector<UpvalueInfo> upvalues;
     int frameSize = 0;
 
-    FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr returnType);
+    FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType);
 };
+
+using FunctionExprPtr = std::shared_ptr<FunctionExpr>;
 
 struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {};
 
@@ -213,13 +215,13 @@ struct Block : StmtHelper<Block> {
 };
 
 struct Let : StmtHelper<Let> {
-    TypeNodePtr type;
+    TypeNodePtr annotatedType;
     std::string name;
     ExprPtr expr;
     bool isMutable;
     SymbolPtr symbol = nullptr;
 
-    Let(TypeNodePtr type, const std::string& name, ExprPtr expr, bool isMutable);
+    Let(TypeNodePtr annotatedType, const std::string& name, ExprPtr expr, bool isMutable);
 };
 
 struct Return : StmtHelper<Return> {
@@ -236,6 +238,7 @@ struct FieldMember : Member {
     std::string name;
     ExprPtr initialiser; // Optional
     bool isMutable;
+    SymbolPtr symbol = nullptr;
 
     FieldMember(std::string name, ExprPtr initialiser, bool isMutable);
 };

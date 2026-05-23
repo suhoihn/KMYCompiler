@@ -3,9 +3,19 @@
 #include <vector>
 #include "../Core/Ast.hpp"
 
-// Type checker.
+// Optional pass 4: Type checker.
+// Function arity, callability, parameter types all checked.
 
 class TypeChecker : public Visitor {
+
+public:
+    TypeChecker(FunctionExprPtr program);
+    void check();
+
+private:
+    const FunctionExprPtr program;
+    Type* expectedType = nullptr;
+
     // Expressions
     void visit(Literal& e) override;
     void visit(ArrayLiteral& e) override;

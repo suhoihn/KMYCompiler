@@ -110,6 +110,7 @@ void Interpreter::visit(UnaryExpr& e) {
     result = applyUnary(e.op, getResult(e.operand));
 }
 
+
 static bool isCompound(AssignmentOp op) {
     return op != AssignmentOp::Assign;
 }
@@ -214,6 +215,7 @@ void Interpreter::visit(Assignment& e) {
 
     throw std::runtime_error("Not assignable");       
 }
+
 
 Value Interpreter::visit(Index& e) {
     Value obj = getResult(e.obj);

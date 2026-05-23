@@ -1,5 +1,7 @@
 #pragma once
 #include <memory>
+#include <variant>
+#include <unordered_map>
 #include "type.hpp"
 
 struct ASTNode {
@@ -17,12 +19,17 @@ constexpr int INVALID_SLOT = -1;
 struct Symbol {
     std::string name;
     bool isMutable;
+
+
     Type* type = nullptr;
 
     // Runtime storage info.
     int slot = INVALID_SLOT;
     bool captured = false;
     int upvalueIndex = INVALID_SLOT;
+
+    Symbol(const std::string& name, bool isMutable)
+        : name(name), isMutable(isMutable) {}
 };
 
 using SymbolPtr = std::shared_ptr<Symbol>;
@@ -46,6 +53,128 @@ struct ResolvedVar {
     } kind;
 
     int index;
+};
+
+struct Scope {
+    Scope* parent = nullptr;
+    std::unordered_map<std::string, SymbolPtr> symbols; // Symbols in this scope.
+    int depth = 0;
+
+    Scope() = default;
+
+    Scope(Scope* parent, int depth)
+        : parent(parent), depth(depth) {}
+};
+
+
+enum class Opcode {
+    PUSH_CONST,   // value
+    POP,
+
+    // Arithmetic
+    ADD,
+    SUB,
+    MUL,
+    DIV,
+    MOD,
+    NEG,
+
+    // Comparison
+    EQUAL,
+    NOT_EQUAL,
+    LESS,
+    LESS_EQUAL,
+    GREATER,
+    GREATER_EQUAL,
+
+    // Logical
+    LOGICAL_AND,
+    LOGICAL_OR,
+    LOGICAL_NOT,
+
+    // Bitwise
+    BIT_AND,
+    BIT_OR,
+    BIT_XOR,
+    LEFT_SHIFT,
+    RIGHT_SHIFT,
+    BIT_NOT,
+
+    // Variables
+    LOAD_LOCAL,     // slot in stack
+    STORE_LOCAL,    // slot in stack
+    LOAD_GLOBAL,  
+    STORE_GLOBAL,   
+    LOAD_UPVALUE,   // slot in function->upvalues
+    STORE_UPVALUE,  // slot in function->upvalues
+    CAPTURE_LOCAL,
+    CAPTURE_UPVALUE,
+    CLOSE_UPVALUE,
+
+    // Control flow
+    JUMP,         // address
+    JUMP_IF_FALSE,// address
+
+    // Functions
+    MAKE_FUNCTION,
+    MAKE_CLOSURE,
+    CALL,         // function argc
+    RETURN_VOID,
+    RETURN_VALUE,
+
+    // Arrays
+    NEW_ARRAY, // size
+    GET_INDEX,
+    SET_INDEX, 
+
+    // Program end
+    HALT,
+
+    // Print the top value by popping
+    PRINT,
+};
+
+// No runtime heap-allocated value. (For compiler's constantMap)
+// Bascially, PRIMITIVES.
+using ConstValue = std::variant<
+    std::nullptr_t,
+    int,
+    double,
+    bool,
+    std::string
+>;
+
+constexpr int UNUSED_OPERAND = -1;
+struct Instruction {
+    Opcode opcode;
+    int operand = UNUSED_OPERAND; // -1 means unused. if this is used somehow, that's bad.
+};
+
+struct Chunk {
+    std::vector<Instruction> code;
+    std::vector<ConstValue> constants;
+    //std::vector<FunctionProto> functionProtos;
+
+    Chunk() = default;
+
+    Chunk(
+        std::vector<Instruction> code,
+        std::vector<ConstValue> constants
+        //std::vector<FunctionProto> functionProtos
+    ) : code(move(code)), constants(move(constants)) {}
+};  
+
+struct FunctionProto {
+    Chunk chunk; // The code it will run when called.
+    
+    int requiredParams = 0;
+    int totalParams = 0;
+    bool isVariadic = false;
+
+    int upValueCnt = 0;
+    int frameSize = 0; // For stack allocation. Equals to max slot index used + 1.
+    
+    std::vector<Chunk> defaultValues; // if ith default value is missing, run code in ith slot.
 };
 
 struct Parameter {

@@ -11,12 +11,16 @@
 Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens) {}
 
 // program → statement* EOF
-std::vector<StmtPtr> Parser::parse() {
+FunctionExprPtr Parser::parse() {
     std::vector<StmtPtr> statements;
     while (!is_at_end()) {
         statements.push_back(parse_statement());
     }
-    return statements;
+    return std::make_shared<FunctionExpr>(
+        std::vector<Parameter>{}, // No params for global scope
+        std::make_shared<Block>(move(statements)),
+        nullptr // No return type annotation for global scope
+    );
 }
 
 Token Parser::peek() const {
@@ -163,6 +167,11 @@ StmtPtr Parser::parse_statement() {
     } else if (match(TokenType::KeywordFun)) {
         return parse_functionDecl();
     } else if (match(TokenType::KeywordReturn)) {
+        if (check(TokenType::Semicolon)) {
+            // Return without expression.
+            consumeSemicolon();
+            return std::make_shared<Return>(nullptr);
+        }
         ExprPtr expr = parse_expression();
         consumeSemicolon();
         return std::make_shared<Return>(move(expr));
@@ -695,36 +704,38 @@ ExprPtr Parser::parse_prefix() {
 
 
 /*
-type        → basicType | functionType
+type        → ( basicType | functionType ) arraySuffix*
 basicType   → "int" | "string" | "bool" | "array" | "object" | "any" | "void"
 functionType → '(' typeList? ')' "->" type
 typeList    → type (',' type)*
+arraySuffix  → '[' ( integer | "..." )? ']'
 */
 
 static TypeNodePtr parseTypeToken(TokenType t) {
     switch (t) {
         case TokenType::KeywordInt:
-            return std::make_unique<NamedTypeNode>("int");
+            return std::make_shared<NamedTypeNode>("int");
 
         case TokenType::KeywordDouble:
-            return std::make_unique<NamedTypeNode>("double");
+            return std::make_shared<NamedTypeNode>("double");
 
         case TokenType::KeywordBool:
-            return std::make_unique<NamedTypeNode>("bool");
+            return std::make_shared<NamedTypeNode>("bool");
 
         case TokenType::KeywordString:
-            return std::make_unique<NamedTypeNode>("string");
+            return std::make_shared<NamedTypeNode>("string");
 
         case TokenType::KeywordAny:
-            return std::make_unique<NamedTypeNode>("any");
+            return std::make_shared<NamedTypeNode>("any");
 
         case TokenType::KeywordVoid:
-            return std::make_unique<NamedTypeNode>("void");
+            return std::make_shared<NamedTypeNode>("void");
 
         default:
             throw KMYParseError("Invalid type keyword token");
     }
 }
+
 
 TypeNodePtr Parser::parse_functionType() {
     consume(TokenType::LeftParen, "Expected '('");
@@ -738,18 +749,40 @@ TypeNodePtr Parser::parse_functionType() {
     consume(TokenType::Arrow, "Expected \"->\"");
     
     TypeNodePtr returnType = parse_type();
-    return std::make_unique<FunctionTypeNode>(
+    return std::make_shared<FunctionTypeNode>(
         std::move(paramTypes),
         std::move(returnType)
     );
 }
 
 TypeNodePtr Parser::parse_type() {
+    TypeNodePtr result;
     if (check(TokenType::LeftParen)) {
-        return parse_functionType();
+        result = parse_functionType();
+    } else {
+        Token typeToken = advance();
+        result = parseTypeToken(typeToken.type);
     }
-    Token typeToken = advance();
-    return parseTypeToken(typeToken.type);
+
+    while (match(TokenType::LeftBracket)) {
+        if (match(TokenType::RightBracket)) {
+            // Static array, e.g., int[]
+            result = std::make_shared<ArrayTypeNode>(result, -1, false, false);
+        } else if (match(TokenType::Ellipsis)) {
+            // Dynamic array, e.g., int[...]
+            consume(TokenType::RightBracket, "Expected ']' after '...'");
+            result = std::make_shared<ArrayTypeNode>(result, 0, true, true);
+        } else if (check(TokenType::Int)) {
+            // Bounded array, e.g., int[5]
+            Token sizeToken = consume(TokenType::Int, "Expected integer for array size.");
+            consume(TokenType::RightBracket, "Expected ']' after array size.");
+            result = std::make_shared<ArrayTypeNode>(result, std::stoi(sizeToken.lexeme), true, false);
+        } else {
+            throw KMYParseError("Invalid array type syntax. Expected ']', '...' or an integer.");
+        }
+    }
+
+    return result;
 }
 
 /*

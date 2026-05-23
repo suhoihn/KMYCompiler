@@ -20,8 +20,8 @@ Assignment::Assignment(AssignmentOp op, ExprPtr left, ExprPtr right) : op(op), l
 Index::Index(ExprPtr obj, ExprPtr index) : obj(move(obj)), index(move(index)) {}
 Call::Call(ExprPtr func, std::vector<ExprPtr> args) : func(move(func)), args(move(args)) {}
 Get::Get(ExprPtr obj, const std::string& name) : obj(move(obj)), name(name) {}
-FunctionExpr::FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr returnType) 
-    : params(move(params)), body(move(body)), returnType(std::move(returnType)) {}
+FunctionExpr::FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType) 
+    : params(move(params)), body(move(body)), annotatedReturnType(std::move(annotatedReturnType)) {}
 // Nothing for ThisLiteral.
 NewExpr::NewExpr(std::string typeName, std::vector<ExprPtr> args) : typeName(move(typeName)), args(move(args)) {}
 
@@ -32,8 +32,8 @@ While::While(ExprPtr condition, StmtPtr body) : condition(move(condition)), body
 // Nothing for Break
 // Nothing for Continue
 Block::Block(std::vector<StmtPtr> statements) : statements(move(statements)) {}
-Let::Let(TypeNodePtr type, const std::string& name, ExprPtr expr, bool isMutable) 
-    : type(std::move(type)), name(name), expr(move(expr)), isMutable(isMutable) {}
+Let::Let(TypeNodePtr annotatedType, const std::string& name, ExprPtr expr, bool isMutable) 
+    : annotatedType(std::move(annotatedType)), name(name), expr(move(expr)), isMutable(isMutable) {}
 Return::Return(ExprPtr expr) : expr(move(expr)) {}
 FieldMember::FieldMember(std::string name, ExprPtr initialiser, bool isMutable) 
     : name(move(name)), initialiser(move(initialiser)), isMutable(isMutable) {}

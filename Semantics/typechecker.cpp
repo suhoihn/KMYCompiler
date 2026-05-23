@@ -19,6 +19,64 @@ static void setType(ASTNode* n, Type* t) {
     typeInfo[n] = t;
 }
 
+TypeChecker::TypeChecker(const FunctionExprPtr program)
+    : program(program) {}
+
+void TypeChecker::check() {
+    program->accept(*this);
+}
+
+static bool isAssignable(Type* from, Type* to) {
+    if (to == &Types::ANY_TYPE) {
+        return true;
+    }
+    
+    if (from == &Types::INT_TYPE && to == &Types::DOUBLE_TYPE) {
+        return true; // int can be assigned to double.
+    }
+
+    if (from == &Types::NULL_TYPE && to->kind == TypeKind::RECORD) {
+        return true; // null can be assigned to record types.
+    }
+    return from == to;
+}
+
+Type* typeSigToType(const TypeNodePtr& type) {
+    switch (type->kind) {
+        case TypeNodeKind::NAMED: {
+            const NamedTypeNode& named = static_cast<NamedTypeNode&>(*type);
+            if (named.name == "int") {
+                return &Types::INT_TYPE;
+            } else if (named.name == "double") {
+                return &Types::DOUBLE_TYPE;
+            } else if (named.name == "bool") {
+                return &Types::BOOL_TYPE;
+            } else if (named.name == "string") {
+                return &Types::STRING_TYPE;
+            } else if (named.name == "null") {
+                return &Types::NULL_TYPE;
+            } else if (named.name == "void") {
+                return &Types::VOID_TYPE;
+            } else if (named.name == "any") {
+                return &Types::ANY_TYPE;
+            } else {
+                throw KMYCompileError("Unknown type name: " + named.name);
+            }
+        }
+        case TypeNodeKind::FUNCTION: {
+            const FunctionTypeNode& named = static_cast<FunctionTypeNode&>(*type);
+            std::vector<Type*> paramTypes;
+            for (const auto& param : named.params) {
+                paramTypes.push_back(typeSigToType(param));
+            }
+            Type* returnType = typeSigToType(named.returnType);
+            // TODO: Raw. new. memory leek guaraneed.
+            return new FunctionType(paramTypes, returnType);
+        }
+    }
+
+    throw KMYCompileError("Unknown type node kind.");
+}
 
 void TypeChecker::visit(Literal& e) {
     e.type = std::visit([](auto&& value) -> Type* {
@@ -30,36 +88,51 @@ void TypeChecker::visit(Literal& e) {
             return &Types::DOUBLE_TYPE;
         else if constexpr (std::is_same_v<T, bool>)
             return &Types::BOOL_TYPE;
+        else if constexpr (std::is_same_v<T, std::string>)
+            return &Types::STRING_TYPE;
+        else if constexpr (std::is_same_v<T, std::nullptr_t>)
+            return &Types::NULL_TYPE;
         else
             return nullptr;
 
     }, e.value);
 }
 void TypeChecker::visit(ArrayLiteral& e) {
-    bool uniformType = true;
     Type* baseType = nullptr;
     for (auto& elem : e.elements) {
         elem->accept(*this);
         if (baseType) {
-            if (baseType != elem->type) {
+            if (baseType != elem->type && elem->type != &Types::ANY_TYPE) {
                 throw KMYCompileError("Unmatched type.");
             }
         } else {
             baseType = elem->type;
         }
-        
     }
+    // TODO: Disgusting memory leak.
+    // nullptr type for array means empty array.
+    if (e.elements.empty()) {
+        if (expectedType->kind != TypeKind::ARRAY) {
+            throw KMYCompileError("Expected array type!!!");
+        }
+        auto arrayType = static_cast<ArrayType*>(expectedType);
+        e.type = new ArrayType(arrayType->elementType);
+        return;
+    }
+
+    e.type = new ArrayType(baseType);
 }
 void TypeChecker::visit(RecordLiteral& e) {}
 void TypeChecker::visit(Variable& e) {
     if (!e.symbol) {
-        throw KMYCompileError("Unresolved variable.");
+        throw KMYCompileError("CRITICAL: Unresolved variable. Should be resolved in pass 2.");
     }
 
-    if (!e.symbol->type) {
-        throw KMYCompileError("Variable has no type.");
+    if (false) {// !e.symbol->initialised) {
+        // Uses of uninitialised variables.
+        throw KMYCompileError("Uses of uninitialised variable.");
     }
-
+    
     e.type = e.symbol->type;
 }
 
@@ -82,120 +155,86 @@ Type* testBinary(BinaryOp op, Type* leftType, Type* rightType) {
 
 
 
-        case BinaryOp::Percent: 
-        
-        {
-            if (toDouble(right) == 0.0)
-                throw std::runtime_error("Modulo by zero");
-            
-            if (isDouble(left)) {
+        case BinaryOp::Percent: {
+            if (leftType == &Types::DOUBLE_TYPE) {
                 throw std::runtime_error("Divident cannot be double.");
             }
 
-            if (isDouble(right)) {
+            if (rightType == &Types::DOUBLE_TYPE) {
                 throw std::runtime_error("Divisor cannot be double.");
             }
 
             // C-style: integer modulo only
-            return Value(toInt(left) % toInt(right));
+            return &Types::INT_TYPE;
         }
-            
+        // TODO: Combine?
         case BinaryOp::LShift: {
-            if (isDouble(left) || isDouble(right)) {
+            if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
                 throw std::runtime_error("Invalid operand.");
             }
-            return Value(toInt(left) << toInt(right));
+            return &Types::INT_TYPE;
         }
 
         case BinaryOp::RShift: {
-            if (isDouble(left) || isDouble(right)) {
+            if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
                 throw std::runtime_error("Invalid operand.");
             }
-            return Value(toInt(left) >> toInt(right));
+            return &Types::INT_TYPE;
         }
 
         case BinaryOp::BitAnd: {
-            if (isDouble(left) || isDouble(right)) {
+            if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
                 throw std::runtime_error("Invalid operand.");
             }
-            return Value(toInt(left) & toInt(right));
+            return &Types::INT_TYPE;
         }
 
         case BinaryOp::BitOr: {
-            if (isDouble(left) || isDouble(right)) {
+            if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
                 throw std::runtime_error("Invalid operand.");
             }
-            return Value(toInt(left) | toInt(right));
+            return &Types::INT_TYPE;
         }
 
         case BinaryOp::BitXor:{
-            if (isDouble(left) || isDouble(right)) {
+            if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
                 throw std::runtime_error("Invalid operand.");
             }
-            return Value(toInt(left) ^ toInt(right));
+            return &Types::INT_TYPE;
         }
 
+
+        // ========================
+        // LOGICAL
+        // ========================
+
+        // Following C style permissivity.
+        case BinaryOp::LogicalAnd:
+        case BinaryOp::LogicalOr:
+            return &Types::BOOL_TYPE;
+
+        // ========================
+        // COMPARISON
+        // ========================
+
+        // Equality following modern language strictness.
+        case BinaryOp::EqualEqual:
+        case BinaryOp::NotEqual:
+        case BinaryOp::Greater:
+        case BinaryOp::GreaterEqual:
+        case BinaryOp::Less:
+        case BinaryOp::LessEqual: {
+            if (leftType != rightType) {
+                throw std::runtime_error("Cannot compare different types.");
+            }
+            return &Types::BOOL_TYPE;
+        }
         default:
-            break;
+            throw std::runtime_error("Unsupported binary operator");
     }
 }
 
-    // ========================
-    // LOGICAL
-    // ========================
-    if (op == BinaryOp::LogicalAnd)
-        return Value(isTruthy(left) && isTruthy(right));
 
-    if (op == BinaryOp::LogicalOr)
-        return Value(isTruthy(left) || isTruthy(right));
-
-    // ========================
-    // COMPARISON
-    // ========================
-    if (op == BinaryOp::EqualEqual)
-        return Value(isEqual(left, right));
-
-    if (op == BinaryOp::NotEqual)
-        return Value(!isEqual(left, right));
-
-    if (op == BinaryOp::Greater ||
-        op == BinaryOp::GreaterEqual ||
-        op == BinaryOp::Less ||
-        op == BinaryOp::LessEqual) {
-
-        // numeric comparison
-        if (isNumber(left) && isNumber(right)) {
-            double a = toDouble(left);
-            double b = toDouble(right);
-
-            switch (op) {
-                case BinaryOp::Greater: return Value(a > b);
-                case BinaryOp::GreaterEqual: return Value(a >= b);
-                case BinaryOp::Less: return Value(a < b);
-                case BinaryOp::LessEqual: return Value(a <= b);
-                default: break;
-            }
-        }
-
-        // string comparison
-        if (isString(left) && isString(right)) {
-            const auto& a = std::get<std::string>(left.data);
-            const auto& b = std::get<std::string>(right.data);
-
-            switch (op) {
-                case BinaryOp::Greater: return Value(a > b);
-                case BinaryOp::GreaterEqual: return Value(a >= b);
-                case BinaryOp::Less: return Value(a < b);
-                case BinaryOp::LessEqual: return Value(a <= b);
-                default: break;
-            }
-        }
-
-        throw std::runtime_error("Invalid operands for comparison");
-    }
-
-    throw std::runtime_error("Unsupported binary operator");
-}
 
 void TypeChecker::visit(BinaryExpr& e) {
     e.left->accept(*this);
@@ -203,63 +242,201 @@ void TypeChecker::visit(BinaryExpr& e) {
 
     e.type = testBinary(e.op, e.left->type, e.right->type);
 }
-void TypeChecker::visit(UnaryExpr& e) {}
-void TypeChecker::visit(Assignment& e) {}
-void TypeChecker::visit(Index& e) {}
+void TypeChecker::visit(UnaryExpr& e) {
+    e.operand->accept(*this);
+    if (e.operand->type != &Types::INT_TYPE) {
+        throw std::runtime_error("Unary operator only supports int operand... for now.");
+    }
+    e.type = e.operand->type; // Int.
+}
+
+void TypeChecker::visit(Assignment& e) {   
+    if (!e.left->isLValue()) {
+        throw KMYCompileError("Left-hand side of assignment must be assignable.");
+    }
+    e.left->accept(*this);
+    
+    Type* oldET = expectedType;
+    expectedType = e.left->type;
+
+    e.right->accept(*this);
+
+    expectedType = oldET;
+
+    if (!isAssignable(e.right->type, e.left->type)) {
+        // TODO: Covariant and contravariant type checking.
+        throw KMYCompileError("Type mismatch in assignment.");
+    }
+}
+
+void TypeChecker::visit(Index& e) {
+    e.obj->accept(*this);
+    e.index->accept(*this);
+
+    if (e.obj->type->kind != TypeKind::ARRAY) {
+        throw KMYCompileError("Only arrays can be indexed... for now.");
+    }
+    if (e.index->type != &Types::INT_TYPE) {
+        throw KMYCompileError("Index must be an integer.");
+    }
+
+    e.type = static_cast<ArrayType*>(e.obj->type)->elementType;
+}
+
 void TypeChecker::visit(Call& e) {
+    e.func->accept(*this);
     if (e.func->type->kind != TypeKind::FUNCTION) {
         throw KMYCompileError("Uncallable object.");
     }
+
+    auto fn = std::static_pointer_cast<FunctionExpr>(e.func);
+
+    int requiredCnt = 0;
+    bool isVariadic = false;
+    for (const auto& param : fn->params) {
+        if (!param.defaultExists) {
+            requiredCnt++;
+        }
+        if (param.isVariadic) {
+            isVariadic = true;
+        }
+    }
+
+    // Min check
+    if (e.args.size() < static_cast<size_t>(requiredCnt)) {
+        throw KMYCompileError("Not enough arguments provided.");
+    }
+
+    // Max check
+    if (!isVariadic && e.args.size() > fn->params.size()) {
+        throw KMYCompileError("Too many arguments provided.");
+    }
+
+    for (size_t i = 0; i < e.args.size(); ++i) {
+        e.args[i]->accept(*this);
+        if (i < fn->params.size()) {
+            if (e.args[i]->type != fn->params[i].symbol->type) {
+                throw KMYCompileError("Argument type mismatch.");
+            }
+        } else {
+            // Variadic args.
+            if (e.args[i]->type != fn->params.back().symbol->type) {
+                throw KMYCompileError("Argument type mismatch.");
+            }
+        }
+    }
+
+    if (fn->annotatedReturnType) {
+        e.type = typeSigToType(fn->annotatedReturnType);
+    } else {
+        e.type = &Types::ANY_TYPE; // No annotation means we don't know the return type. Assume any.
+    }
 }
 void TypeChecker::visit(Get& e) {
-    e.obj->type;
+    throw KMYCompileError("Property access not supported yet.");
+    e.obj->accept(*this);
 }
+
+
 void TypeChecker::visit(FunctionExpr& e) {
-    e.params;
+    for (auto& param : e.params) {
+        if (!param.type) {
+            throw KMYCompileError("Parameter must have explicit type signature.");
+        }
+
+        param.symbol->type = typeSigToType(param.type);
+        if (param.defaultExists) {
+            param.defaultValue->accept(*this);
+            if (param.defaultValue->type != param.symbol->type) {
+                throw KMYCompileError("Default value type mismatch.");
+            }
+        }
+    }
+    e.body->accept(*this);
 }
-void TypeChecker::visit(ThisExpr& e) {}
-void TypeChecker::visit(NewExpr& e) {}
+
+void TypeChecker::visit(ThisExpr& e) {
+    throw KMYCompileError("Not yet.");
+}
+
+void TypeChecker::visit(NewExpr& e) {
+    throw KMYCompileError("Object instantiation not supported yet.");
+}
 
 void TypeChecker::visit(Print& s) {
     s.expr->accept(*this);
 }
-void TypeChecker::visit(If& s) {}
-void TypeChecker::visit(While& s) {}
-void TypeChecker::visit(Block& s) {
-
+void TypeChecker::visit(If& s) {
+    s.condition->accept(*this);
+    s.thenbranch->accept(*this);
+    if (s.elsebranch) {
+        s.elsebranch->accept(*this);
+    }
 }
+
+void TypeChecker::visit(While& s) {
+    s.condition->accept(*this);
+    s.body->accept(*this);
+}
+
+void TypeChecker::visit(Block& s) {
+    for (auto& stmt : s.statements) {
+        stmt->accept(*this);
+    }
+}
+
 void TypeChecker::visit(Break& s) {}
 void TypeChecker::visit(Continue& s) {}
 
-Type* typeSigToType(const TypeNodePtr& type) {
-    switch (type->kind) {
-        case TypeNodeKind::NAMED: {
-            const NamedTypeNode& named = static_cast<NamedTypeNode&>(*type);
-            if (named.name == "int") {
-                return &Types::INT_TYPE;
-            }
+void TypeChecker::visit(Let& s) {
+
+    Type* annotated = nullptr;
+
+    if (s.annotatedType) {
+        annotated = typeSigToType(s.annotatedType);
+
+        if (annotated == &Types::VOID_TYPE) {
+            throw KMYCompileError("Variable cannot be of type void.");
         }
-        case TypeNodeKind::FUNCTION: {
-            const FunctionTypeNode& named = static_cast<FunctionTypeNode&>(*type);
-            named.params;
+    }
+
+    Type* inferred = nullptr;
+
+    if (s.expr) {
+        s.expr->accept(*this);
+        inferred = s.expr->type;
+    }
+
+    // CASE 1: annotated type exists
+    if (annotated) {
+
+        if (inferred && !isAssignable(inferred, annotated)) {
+            throw KMYCompileError("Type mismatch in initializer.");
         }
+
+        s.symbol->type = annotated;
+    }
+
+    // CASE 2: no annotation → infer
+    else {
+        if (!inferred) {
+            throw KMYCompileError("Cannot infer type of uninitialised variable.");
+        }
+
+        s.symbol->type = inferred;
     }
 }
 
-void TypeChecker::visit(Let& s) {
+void TypeChecker::visit(Return& s) {
     if (s.expr) {
         s.expr->accept(*this);
     }
-
-    if (s.type) {
-        // Type signature exists
-        if (s.expr->type != typeSigToType(s.type)) {
-            KMYCompileError("Different type detected from signature.");
-        }
-    }
-    // No type signature: infer.
-    s.symbol->type = s.expr ? s.expr->type : &Types::UNINITIALISED;
 }
-void TypeChecker::visit(Return& s) {}
-void TypeChecker::visit(Class& s) {}
-void TypeChecker::visit(ExprStmt& s) {}
+
+void TypeChecker::visit(Class& s) {
+    throw KMYCompileError("Classes not supported yet. since it is damn hard.");
+}
+
+void TypeChecker::visit(ExprStmt& s) {
+    s.expr->accept(*this);
+}

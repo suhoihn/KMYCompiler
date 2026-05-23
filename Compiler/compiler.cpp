@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <exception>
+#include <cassert>
 #include "../Core/Ast.hpp"
 #include "../BytecodeVM/vm.hpp"
 #include "../Core/errorhandler.hpp"
@@ -10,17 +11,19 @@ void Compiler::emit(Opcode op, int operand=-1) {
     currCtx->chunk.code.push_back(Instruction{op, operand});
 }
 
-Compiler::Compiler(const std::vector<StmtPtr>& program) 
-    : program(std::move(program)) {}
+Compiler::Compiler(FunctionExprPtr program) 
+    : program(program)
+{
+    // Initialize the first function context for the global scope.
+    currCtx = new CodegenFnCtx;
+}
 
-Chunk Compiler::compile(void) {
-    for (auto& stmt : program) {
-        stmt->accept(*this);
-    }
+std::vector<FunctionProto> Compiler::compile(void) {
+    program->accept(*this);
 
     emit(Opcode::HALT);
-    
-    return;
+
+    return funcProtos;
 }
 
 
@@ -50,7 +53,6 @@ void Compiler::visit(Literal& e) {
     emit(Opcode::PUSH_CONST, index);
 }
 
-
 void Compiler::visit(ArrayLiteral& e) {
     for (auto it = e.elements.rbegin(); it != e.elements.rend(); ++it) {
         (*it)->accept(*this);
@@ -64,11 +66,13 @@ void Compiler::visit(RecordLiteral& e) { throw std::runtime_error("NOT IMPLEMENT
 
 
 void Compiler::visit(Variable& e) {
+    /*
+    // This will be done in closure analysis stage.
     if (!e.resolved) {
         e.resolved = true;   
         e.resolution = resolveVariable(e.name);
     }
-
+    */
     switch (e.resolution.kind) {
         case ResolvedVar::Kind::LOCAL:
             emit(Opcode::LOAD_LOCAL, e.resolution.index);
@@ -154,12 +158,12 @@ void Compiler::visit(Assignment& e) {
     e.right->accept(*this);
     
     // Case 1: variable assignment
+    assert(e.left->isLValue());
+
     if (e.left->kind == ExprKind::Variable) {
         auto var = std::static_pointer_cast<Variable>(e.left);
 
-        if (!var->symbol->isMutable) {
-            throw KMYCompileError("Immuable modified.");
-        }
+        assert(var->symbol->isMutable);
 
         // compound assignment
         if (e.op != AssignmentOp::Assign) {
@@ -169,7 +173,19 @@ void Compiler::visit(Assignment& e) {
         }
 
         // TODO. STORE_LOCAL or STORE_UPVALUE?
-        var->accept(*this);
+        switch(var->resolution.kind) {
+            case ResolvedVar::Kind::LOCAL:
+                emit(Opcode::STORE_LOCAL, var->resolution.index);
+                break;
+
+            case ResolvedVar::Kind::UPVALUE:
+                emit(Opcode::STORE_UPVALUE, var->resolution.index);
+                break;
+
+            case ResolvedVar::Kind::GLOBAL:
+                emit(Opcode::STORE_GLOBAL, var->resolution.index);
+                break;
+        }
         return;
     }
 
@@ -232,7 +248,6 @@ void Compiler::visit(Assignment& e) {
 
 void Compiler::visit(Index& e) { 
     // Push array
-    // TODO: no type check here?
     e.obj->accept(*this);
 
     // Push index
@@ -257,25 +272,29 @@ void Compiler::visit(Get& e) { throw std::runtime_error("NOT IMPLEMENTED"); }
 
 
 int Compiler::allocateFuncProto(const FunctionProto& fnProto) {
-    int idx = funcProtoCnt++;
-    funcProtos[idx] = fnProto;
+    int idx = funcProtos.size();
+    funcProtos.push_back(fnProto);
     return idx;
 }
 
 
 void Compiler::visit(FunctionExpr& e) {
-    // 1. Create new context
-    // Manual memory management required.
-    FunctionContext* fnCtx = new FunctionContext;
-    fnCtx->parent = currCtx;
-    currCtx = fnCtx;
-
     FunctionProto fnProto;
     fnProto.totalParams = e.params.size();
+    fnProto.frameSize = e.frameSize;
 
-    // 2. Parameters
+    auto temp = new CodegenFnCtx;
+    temp->parent = currCtx;
+    currCtx = temp;
+
     for (auto& param : e.params) {
         allocateLocal(param.symbol);
+    }
+
+    for (auto& param : e.params) {
+        if (param.defaultExists) {
+            // Not implemented yet...
+        }
     }
 
     // 3. Body
@@ -283,19 +302,21 @@ void Compiler::visit(FunctionExpr& e) {
 
     // 4. Implicit return
     emit(Opcode::RETURN_VOID);
-
+    
     // 5. Extract compiled context
-    fnProto.chunk = std::move(fnCtx->chunk);
-    fnProto.upValueCnt = fnCtx->upvalues.size();
+    fnProto.chunk = std::move(currCtx->chunk);
+    fnProto.upValueCnt = e.upvalues.size();
 
     // 6. Register proto
     int fnIndex = allocateFuncProto(fnProto);
 
+    currCtx = currCtx->parent;
+    
     // 7. Emit closure (NOT MAKE_FUNCTION)
     emit(Opcode::MAKE_CLOSURE, fnIndex);
 
     // 8. Capture variables
-    for (auto up : fnCtx->upvalues) {
+    for (auto up : e.upvalues) {
         // CAPTURE opcode creates a runtime heap object UpValueObj
         if (up.isLocal) {
             // From immediate parent,
@@ -307,8 +328,7 @@ void Compiler::visit(FunctionExpr& e) {
         }
     }
 
-    currCtx = fnCtx->parent;
-    delete fnCtx;
+    delete temp;
 }
 
 
@@ -363,12 +383,21 @@ void Compiler::visit(While& s) {
     // jump out if false
     int exitJumpPos = emitJump(Opcode::JUMP_IF_FALSE);
 
+    loopStack.push_back(CodegenLoopCtx{loopStartPos, {}});
+
     // loop body
     s.body->accept(*this);
 
+    auto loopCtx = loopStack.back();
+    
     // jump back to loop start
     emit(Opcode::JUMP, loopStartPos);
-
+    
+    // patch break jumps to here (loop exit)
+    loopStack.pop_back();
+    for (int breakPos : loopCtx.breakPositions) {
+        patchJump(breakPos);
+    }
     // patch exit jump
     patchJump(exitJumpPos);
 }
@@ -395,36 +424,62 @@ void Compiler::visit(Block& s) {
     }
 }
 
-void Compiler::visit(Break& s) { throw std::runtime_error("NOT IMPLEMENTED"); }
-void Compiler::visit(Continue& s) { throw std::runtime_error("NOT IMPLEMENTED"); }
+void Compiler::visit(Break& s) { 
+    if (loopStack.empty()) {
+        throw KMYCompileError("Invalid break statement. Not inside a loop.");
+    }
+
+    // Emit jump and record its position to patch later.
+    int breakJumpPos = emitJump(Opcode::JUMP);
+
+    // Record this break position in the current loop context.
+    loopStack.back().breakPositions.push_back(breakJumpPos);
+}
+
+void Compiler::visit(Continue& s) {
+    if (loopStack.empty()) {
+        throw KMYCompileError("Invalid continue statement. Not inside a loop.");
+    }
+
+    // Emit jump to loop start
+    emit(Opcode::JUMP, loopStack.back().continuePos);
+}
 
 
-int Compiler::allocateLocal(SymbolPtr sym) {
-    int slot = currCtx->nextSlot++;
-
+void Compiler::allocateLocal(SymbolPtr sym) {
     currCtx->locals.push_back(Local{
         sym,
-        slot,
+        sym->slot,
         currCtx->scopeDepth,
         false, // initially not captured.
     });
-
-    return slot;
 }
 
 void Compiler::visit(Let& s) { 
     if (s.expr) {
         s.expr->accept(*this);
     } else {
-        emit(Opcode::PUSH_CONST, addConstant(nullptr));
+        // emit(Opcode::PUSH_CONST, addConstant(nullptr));
     }
-    int slot = allocateLocal(s.symbol);
-    emit(Opcode::STORE_LOCAL, slot);
-    emit(Opcode::POP); // Important: Ensures stack size invariance after statement.
+    
+    allocateLocal(s.symbol);
+    if (s.expr) {
+        // Only push or pop values when there is an initialiser.
+        emit(Opcode::STORE_LOCAL, s.symbol->slot);
+        emit(Opcode::POP); // Important: Ensures stack size invariance after statement.
+    }
 }
 
 
-void Compiler::visit(Return& s) { throw std::runtime_error("NOT IMPLEMENTED"); }
+void Compiler::visit(Return& s) { 
+    if (s.expr) {
+        s.expr->accept(*this);
+        emit(Opcode::RETURN_VALUE);
+    } else {
+        emit(Opcode::RETURN_VOID);
+    }
+}
+
 void Compiler::visit(Class& s) { throw std::runtime_error("NOT IMPLEMENTED"); }
 
 void Compiler::visit(ExprStmt& s) { 

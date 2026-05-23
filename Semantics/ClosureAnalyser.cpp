@@ -1,20 +1,22 @@
 #include "ClosureAnalyser.hpp"
 #include "../Core/errorhandler.hpp"
 
-ClosureAnalyser::ClosureAnalyser(std::vector<StmtPtr> program)
-    : program(std::move(program)) {}
+ClosureAnalyser::ClosureAnalyser(FunctionExprPtr program)
+    : program(program)
+{
+    currCtx = new FunctionContext; // global context
+}
 
 
 void ClosureAnalyser::analyse() {
-    for (auto& stmt : program) {
-        stmt->accept(*this);
-    }
+    program->accept(*this);
 }
 
 static int resolveUpvalue(FunctionContext* fnCtx, SymbolPtr sym) {
     // Returns the slot of upvalue where name belongs in fnCtx's context.
+    // std::cout << "[DEBUG] Resolving upvalue for symbol: " << sym->name << std::endl;
 
-    auto& parentCtx = fnCtx->parent;
+    auto parentCtx = fnCtx->parent;
     if (!parentCtx) {
         // Parent doesn't exist (woah!)
         return -1;
@@ -106,15 +108,16 @@ int ClosureAnalyser::allocateLocal(SymbolPtr sym) {
     int slot = currCtx->nextSlot++;
     currCtx->localMap[sym] = slot;
 
-    // TODO
-    sym->slot = slot;
-
+    std::cout << sym << std::endl;
+    std::cout << slot << std::endl;
     currCtx->locals.push_back(Local{
         sym,
         slot,
         currCtx->scopeDepth,
         false, // initially not captured.
     });
+
+    std::cout << "good" << std::endl;
 
     return slot;
 }
@@ -180,11 +183,16 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
         allocateLocal(param.symbol);
     }
 
+    std::cout << "go" << std::endl;
     // 3. Body
     e.body->accept(*this);
+    std::cout << "done" << std::endl;
 
     currCtx = fnCtx->parent;
     
+    std::cout << "framesize: " << fnCtx->nextSlot << std::endl;
+    std::cout << "upvalue cnt: " << fnCtx->upvalues.size() << std::endl;
+
     e.upvalues = fnCtx->upvalues;
     e.frameSize = fnCtx->nextSlot;
 

@@ -10,7 +10,7 @@ ObjKind typeToObjectKind(TypeKind t) {
     switch(t) {
         case TypeKind::ARRAY: return ObjKind::Array;
         case TypeKind::FUNCTION : return ObjKind::Function;
-        case TypeKind::OBJECT: return ObjKind::Record;
+        case TypeKind::RECORD: return ObjKind::Record;
         //case TypeKind::   : return ObjKind::Array;
     }
 
@@ -26,7 +26,6 @@ bool checkObjType(const Value& obj, ObjKind k) {
 
 bool typeMatches(const Value& v, const Type& t) {
     switch (t.kind) {
-
         case TypeKind::INT:
             return std::holds_alternative<int>(v.data);
 
@@ -40,7 +39,7 @@ bool typeMatches(const Value& v, const Type& t) {
             return std::holds_alternative<std::string>(v.data);
 
         case TypeKind::ARRAY:
-        case TypeKind::OBJECT:
+        case TypeKind::RECORD:
         case TypeKind::FUNCTION:
             return std::holds_alternative<ObjectPtr>(v.data) && 
                    checkObjType(v, typeToObjectKind(t.kind));
@@ -421,7 +420,11 @@ Value applyUnary(UnaryOp op, const Value& v) {
             if (!isNumber(v)) 
                 throw std::runtime_error("Cannot apply unary - to non-number.");
             
-            return Value( - (isInt(v) ? toDouble(v) : toInt(v)) );
+            if (isInt(v)) {
+                return Value(-toInt(v));
+            }
+
+            return Value(-toDouble(v));
         }
         case UnaryOp::Plus: {
             if (!isNumber(v)) 

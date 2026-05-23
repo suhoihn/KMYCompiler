@@ -7,42 +7,46 @@
 #include "../BytecodeVM/vm.hpp"
 #include "../Semantics/Resolver.hpp"
 
-
-
-
-
-
-struct FunctionContext {
-    FunctionContext* parent;
+struct FunctionContextOld {
+    FunctionContextOld* parent;
 
     Chunk chunk;
     
-    std::vector<Local> locals;
     std::unordered_map<std::string, int> localMap;
     
-    std::unordered_map<ConstValue, int> constantMap; // Constants are accessed via chunk.constants
-
-    int scopeDepth = 0;
+    
     int nextSlot = 0;
-
+    
     std::unordered_map<std::string, int> upvalueMap;
+};
+
+struct CodegenFnCtx {
+    int scopeDepth = 0;
+    std::vector<Local> locals;
     std::vector<UpvalueInfo> upvalues;
+    std::unordered_map<ConstValue, int> constantMap; // Constants are accessed via chunk.constants
+    CodegenFnCtx* parent = nullptr;
+    Chunk chunk;
+};
+
+struct CodegenLoopCtx {
+    int continuePos;
+    std::vector<int> breakPositions;
 };
 
 class Compiler : public Visitor {
 public:
-    Compiler(const std::vector<StmtPtr>& program);
-    Chunk compile(void);
+    Compiler(FunctionExprPtr program);
+    std::vector<FunctionProto> compile(void);
 private:
-    // const Resolver& resolver;
-    const std::vector<StmtPtr> program; // ASTs (read-only)
+    const FunctionExprPtr program; // AST (read-only)
 
-    ResolvedVar Compiler::resolveVariable(const std::string& name);
+    // ResolvedVar Compiler::resolveVariable(const std::string& name);
    
     void emit(Opcode op, int operand);
     
     // Tracking current function context.
-    FunctionContext* currCtx;
+    CodegenFnCtx* currCtx = new CodegenFnCtx;
 
     // Function Prototypes (immutable function codes)
     int allocateFuncProto(const FunctionProto& fnProto);
@@ -53,7 +57,7 @@ private:
     std::unordered_map<std::string, int> globals;
 
     // For locals    
-    int allocateLocal(SymbolPtr sym);
+    void allocateLocal(SymbolPtr sym);
 
     // For constants
     int addConstant(const ConstValue& v);
@@ -61,6 +65,9 @@ private:
     // For branches
     int emitJump(Opcode op);
     void patchJump(int pos);
+
+    // For loops
+    std::vector<CodegenLoopCtx> loopStack;
 
     // Expressions
     void visit(Literal& e) override;

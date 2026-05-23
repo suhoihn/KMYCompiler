@@ -31,8 +31,8 @@ Token Parser::advance() {
     return tokens[current - 1];
 }
 
+// IMPORTANT: match consumes the token if it matches!
 bool Parser::match(TokenType type) {
-    // IMPORTANT: match consumes the token if it matches!
     if (check(type)) {
         advance();
         return true;

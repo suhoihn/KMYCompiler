@@ -1,3 +1,5 @@
+// TODO: WILL BE COMBINED WITH COMPILER.
+
 #pragma once
 
 #include <vector>
@@ -8,6 +10,7 @@
 // Determines runtime storage for variables.
 // Detects captured variables/upvalues and assigns local stack slots
 // and closure indices required for code generation.
+
 struct FunctionContext {
     FunctionContext* parent;
     
@@ -28,13 +31,14 @@ struct FunctionContext {
 
 class ClosureAnalyser : public Visitor {
 public:
-    ClosureAnalyser(std::vector<StmtPtr> program);
+    ClosureAnalyser(FunctionExprPtr program);
     void analyse();
 
 private:
-    const std::vector<StmtPtr>& program;
+    const FunctionExprPtr program;
     
-    FunctionContext* currCtx = nullptr; // global
+    // TODO: to constructor?
+    FunctionContext* currCtx;
     ResolvedVar resolveVariable(SymbolPtr sym);
     int allocateLocal(SymbolPtr sym);
 
