@@ -6,6 +6,43 @@
 // Pass 1: Scope & Symbol Construction
 // Builds scope hierarchy and registers all declarations (variables, functions, classes).
 // Creates symbols and stores them in the correct scope.
+// Symbols are semantic identities of a variable, function (which are variables here)
+
+// A Symbol represents a semantic binding/declaration in the program.
+//
+// It is NOT just a name string.
+//
+// A symbol uniquely identifies a declared entity such as:
+// - variable
+// - parameter
+// - function
+// - field
+// - method
+// - class/record
+//
+// Multiple declarations with the same textual name
+// produce different symbols due to lexical scoping.
+//
+// Example:
+//
+//     let x = 1;
+//     {
+//         let x = 2;
+//     }
+//
+// The two `x` declarations are different symbols.
+//
+// Symbols store semantic/compiler information such as:
+// - declared name
+// - mutability
+// - resolved type
+// - scope ownership
+// - stack/local slot
+// - closure capture info
+// - runtime metadata
+//
+// AST identifier nodes resolve to symbols during semantic analysis.
+
 class SymbolScopeBuilder : public Visitor {
 public:
     SymbolScopeBuilder(FunctionExprPtr program);
@@ -21,6 +58,7 @@ private:
     void exitScope();
 
     SymbolPtr declare(const std::string& name, bool isMutable);
+    TypeSymbol* declareType(const std::string& name, bool isMutable);
 
     void visit(Literal& e) override;
     void visit(ArrayLiteral& e) override;
@@ -45,6 +83,7 @@ private:
     void visit(Continue& s) override;
     void visit(Let& s) override;
     void visit(Return& s) override;
-    void visit(Class& s) override;
+    void visit(Aggregate& s) override;
+    void visit(TypeAlias& s) override;
     void visit(ExprStmt& s) override;
 };

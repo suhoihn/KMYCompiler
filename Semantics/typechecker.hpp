@@ -40,6 +40,7 @@ private:
     void visit(Continue& s) override;
     void visit(Let& s) override;
     void visit(Return& s) override;
-    void visit(Class& s) override;
+    void visit(Aggregate& s) override;
+    void visit(TypeAlias& s) override;
     void visit(ExprStmt& s) override;
 };

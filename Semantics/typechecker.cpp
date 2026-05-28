@@ -35,7 +35,7 @@ static bool isAssignable(Type* from, Type* to) {
         return true; // int can be assigned to double.
     }
 
-    if (from == &Types::NULL_TYPE && to->kind == TypeKind::RECORD) {
+    if (from == &Types::NULL_TYPE && to->kind == TypeKind::AGGREGATE) {
         return true; // null can be assigned to record types.
     }
     return from == to;
@@ -123,6 +123,7 @@ void TypeChecker::visit(ArrayLiteral& e) {
     e.type = new ArrayType(baseType);
 }
 void TypeChecker::visit(RecordLiteral& e) {}
+
 void TypeChecker::visit(Variable& e) {
     if (!e.symbol) {
         throw KMYCompileError("CRITICAL: Unresolved variable. Should be resolved in pass 2.");
@@ -242,6 +243,7 @@ void TypeChecker::visit(BinaryExpr& e) {
 
     e.type = testBinary(e.op, e.left->type, e.right->type);
 }
+
 void TypeChecker::visit(UnaryExpr& e) {
     e.operand->accept(*this);
     if (e.operand->type != &Types::INT_TYPE) {
@@ -332,6 +334,7 @@ void TypeChecker::visit(Call& e) {
         e.type = &Types::ANY_TYPE; // No annotation means we don't know the return type. Assume any.
     }
 }
+
 void TypeChecker::visit(Get& e) {
     throw KMYCompileError("Property access not supported yet.");
     e.obj->accept(*this);
@@ -341,7 +344,12 @@ void TypeChecker::visit(Get& e) {
 void TypeChecker::visit(FunctionExpr& e) {
     for (auto& param : e.params) {
         if (!param.type) {
-            throw KMYCompileError("Parameter must have explicit type signature.");
+            // No annotation means we don't know the type. Assume any.
+            // We delegate this in runtime.
+            param.symbol->type = &Types::ANY_TYPE;
+
+            // If strict mode:
+            // throw KMYCompileError("Parameter must have explicit type signature.");
         }
 
         param.symbol->type = typeSigToType(param.type);
@@ -366,6 +374,7 @@ void TypeChecker::visit(NewExpr& e) {
 void TypeChecker::visit(Print& s) {
     s.expr->accept(*this);
 }
+
 void TypeChecker::visit(If& s) {
     s.condition->accept(*this);
     s.thenbranch->accept(*this);
@@ -433,7 +442,7 @@ void TypeChecker::visit(Return& s) {
     }
 }
 
-void TypeChecker::visit(Class& s) {
+void TypeChecker::visit(Aggregate& s) {
     throw KMYCompileError("Classes not supported yet. since it is damn hard.");
 }
 

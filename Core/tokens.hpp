@@ -70,6 +70,8 @@ enum class TokenType {
     KeywordThis,
     KeywordClass,
     KeywordNew,
+    KeywordTypealias,
+    KeywordRecord,
 
     // Type keywords
     KeywordInt, // Not that this is different from just Int
@@ -77,8 +79,8 @@ enum class TokenType {
     KeywordBool,
     KeywordString,
     KeywordVoid,
-    KeywordArray,
-    KeywordObject,
+    KeywordArray,  // ?
+    KeywordObject, // ?
     KeywordAny,
 
     // Symbols

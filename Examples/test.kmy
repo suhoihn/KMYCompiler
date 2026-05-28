@@ -1,4 +1,11 @@
-let main = fun() {
-    return true;
-};
-print(main());
+fun main() {
+    print("hi");
+    let x = 3;
+    let inner = fun(a, b) { return a + b + x; };
+    return inner;
+}
+
+print("Do I even run");
+let add = main();
+print(add);
+print(add(1, 2));

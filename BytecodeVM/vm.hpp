@@ -74,6 +74,9 @@ private:
     std::vector<CallFrame> frames; // Current frame running (has its own ip and chunk)
    
     std::vector<UpvaluePtr> openUpvalues;
+    std::unordered_map<int, UpvaluePtr> openUpvalueMap; // For quick lookup of open upvalues by their stack location.
+    void closeUpvalues(int base);
+    UpvaluePtr captureUpvalue(int stackSlot);
 
     // Execution
     Instruction fetchInstr(void);

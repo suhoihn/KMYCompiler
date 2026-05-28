@@ -176,7 +176,11 @@ StmtPtr Parser::parse_statement() {
         consumeSemicolon();
         return std::make_shared<Return>(move(expr));
     } else if (match(TokenType::KeywordClass)) {
-        return parse_class();
+        return parse_aggregate(AggregateKind::CLASS);
+    } else if (match(TokenType::KeywordRecord)) {
+        return parse_aggregate(AggregateKind::RECORD);
+    } else if (match(TokenType::KeywordTypealias)) {
+        return parse_typeAlias();
     } else {
         ExprPtr expr = parse_expression();
         consumeSemicolon();
@@ -295,10 +299,11 @@ StmtPtr Parser::parse_for() {
 }
 
 /*
-class_stmt   → "class" IDENTIFIER '{' class_member* '}' ';'
-class_member → functionDecl | let_stmt
+class_stmt   → "class" IDENTIFIER '{' aggregate_member* '}' ';'
+record_stmt → "record" IDENTIFIER '{' aggregate_member* '}' ';'
+aggregate_member → functionDecl | let_stmt (TODO: change to fieldDecl. its actually not letstmt.)
 */
-StmtPtr Parser::parse_class() {
+StmtPtr Parser::parse_aggregate(AggregateKind kind) {
     //consume(TokenType::KeywordClass, "Expected class keyword.");
 
     consume(TokenType::Identifier, "Expected an identifier.");
@@ -312,6 +317,7 @@ StmtPtr Parser::parse_class() {
             std::shared_ptr<Let> letStmt = std::static_pointer_cast<Let>(parse_let());
             fieldMembers.push_back(
                 FieldMember(
+                    letStmt->annotatedType,
                     move(letStmt->name),
                     move(letStmt->expr),
                     letStmt->isMutable
@@ -334,20 +340,38 @@ StmtPtr Parser::parse_class() {
 
     consumeSemicolon();
 
-    return std::make_shared<Class>(
+    return std::make_shared<Aggregate>(
+        kind,
         move(name.lexeme),
         move(fieldMembers),
         move(methodMembers)
     );
 }
 
+/*
+typealias_stmt → "typealias" IDENTIFIER '=' type ';'
+*/
+StmtPtr Parser::parse_typeAlias() {
+    consume(TokenType::Assign, "Expected '='");
+    
+    Token name = consume(TokenType::Identifier, "Expected an identifier.");
+
+    TypeNodePtr type = parse_type();
+
+    consumeSemicolon();
+
+    return std::make_shared<TypeAlias>(
+        name.lexeme,
+        std::move(type)
+    );
+}
 
 
 // =============================
 // Helpers
 // =============================
 
-// TODO: INCOMPLETE!!!! &= fails.
+// TODO: INCOMPLETE!!!! &= fails. (Really?)
 int Parser::get_binding_power(TokenType type) {
     switch (type) {
         case TokenType::Assign:
@@ -622,7 +646,7 @@ primary →
     LITERAL |
     '(' expression ')'
     '[' array_elements? ']' |
-    object |
+    record |
     fnExpr |
     newExpr
 */
@@ -679,7 +703,7 @@ ExprPtr Parser::parse_prefix() {
             return parse_functionExpr();
         
         case TokenType::LeftBrace:
-            return parse_objectExpr();
+            return parse_recordExpr();
 
         case TokenType::KeywordThis:
             return std::make_shared<ThisExpr>();
@@ -704,15 +728,20 @@ ExprPtr Parser::parse_prefix() {
 
 
 /*
-type        → ( basicType | functionType ) arraySuffix*
+type        → ( basicType | functionType | recordType ) arraySuffix*
 basicType   → "int" | "string" | "bool" | "array" | "object" | "any" | "void"
+
 functionType → '(' typeList? ')' "->" type
 typeList    → type (',' type)*
 arraySuffix  → '[' ( integer | "..." )? ']'
+
+recordType → '{'  typePairs?  '}'
+typePairs → typePair (',' typePair)*
+typePair → IDENTIFIER ':' type
 */
 
-static TypeNodePtr parseTypeToken(TokenType t) {
-    switch (t) {
+static TypeNodePtr parseTypeToken(Token t) {
+    switch (t.type) {
         case TokenType::KeywordInt:
             return std::make_shared<NamedTypeNode>("int");
 
@@ -732,10 +761,33 @@ static TypeNodePtr parseTypeToken(TokenType t) {
             return std::make_shared<NamedTypeNode>("void");
 
         default:
-            throw KMYParseError("Invalid type keyword token");
+            return std::make_shared<NamedTypeNode>(t.lexeme);
     }
 }
 
+TypeNodePtr Parser::parse_recordType() {
+    consume(TokenType::LeftBrace, "Expected '{'");
+
+    std::vector<std::pair<std::string, TypeNodePtr>> paramTypePairs; 
+
+    if (!check(TokenType::RightBrace)) {
+        do {
+            Token name = consume(TokenType::Identifier, "Expected an identifier.");
+            
+            consume(TokenType::Colon, "Expected ':'");
+
+            TypeNodePtr type = parse_type();
+
+            paramTypePairs.push_back( { name.lexeme, type } );
+        } while(match(TokenType::Comma));
+    }
+
+    consume(TokenType::RightBrace, "Expected '}'");
+
+    return std::make_shared<RecordTypeNode>(
+        std::move(paramTypePairs)
+    );
+}
 
 TypeNodePtr Parser::parse_functionType() {
     consume(TokenType::LeftParen, "Expected '('");
@@ -759,9 +811,11 @@ TypeNodePtr Parser::parse_type() {
     TypeNodePtr result;
     if (check(TokenType::LeftParen)) {
         result = parse_functionType();
+    } else if (check(TokenType::LeftBrace)) {
+        result = parse_recordType();
     } else {
         Token typeToken = advance();
-        result = parseTypeToken(typeToken.type);
+        result = parseTypeToken(typeToken);
     }
 
     while (match(TokenType::LeftBracket)) {
@@ -850,11 +904,11 @@ ExprPtr Parser::parse_functionExpr() {
 
 
 /*
-object → '{' (pair (',' pair)*)? '}'
+record → '{' (pair (',' pair)*)? '}'
 pair   → IDENTIFIER ':' expression
 */
-ExprPtr Parser::parse_objectExpr() {
-    std::unordered_map<std::string, ExprPtr> fields;
+ExprPtr Parser::parse_recordExpr() {
+    std::vector<std::pair<std::string, ExprPtr>> fields;
 
     if (check(TokenType::RightBrace)) {
         advance();
@@ -864,20 +918,17 @@ ExprPtr Parser::parse_objectExpr() {
     }
 
     do {
-        if (!match(TokenType::Identifier)) {
-            throw KMYParseError("Expected an identifier.");
-        }
-        Token name = previous();
+        Token name = consume(TokenType::Identifier, "Expected an identifier.");
         if (!match(TokenType::Colon)) {
             throw KMYParseError("Expected ':'");
         }
         ExprPtr expr = parse_expression();
-        fields[name.lexeme] = expr;
+        fields.push_back({name.lexeme, expr});
 
     } while (match(TokenType::Comma));
     
     if (!match(TokenType::RightBrace)) {
-        throw KMYParseError("Expected '}' after object declaration.");
+        throw KMYParseError("Expected '}' after record declaration.");
     }
 
     return std::make_shared<RecordLiteral>(

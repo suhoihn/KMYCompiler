@@ -26,7 +26,7 @@ enum class ExprKind {
 };
 
 
-struct BaseExpr : ASTNode {
+struct BaseExpr : public ASTNode {
     // This allows the memory management of recursive types since destructor is called
     // when derived objects are destroyed.
     ExprKind kind;
@@ -40,7 +40,7 @@ struct BaseExpr : ASTNode {
 
 // Double dispatch for visitors.
 template <typename Derived, ExprKind k>
-struct ExprHelper : BaseExpr {
+struct ExprHelper : public BaseExpr {
     
     ExprHelper() : BaseExpr(k) {}
 
@@ -71,9 +71,10 @@ struct ArrayLiteral : ExprHelper<ArrayLiteral, ExprKind::ArrayLiteral> {
 };
 
 struct RecordLiteral : ExprHelper<RecordLiteral, ExprKind::RecordLiteral> {
-    std::unordered_map<std::string, ExprPtr> fields;
+    std::vector<std::pair<std::string, ExprPtr>> fields;
+    std::unordered_map<std::string, int> layout; // field name to index mapping for codegen
 
-    RecordLiteral(std::unordered_map<std::string, ExprPtr> fields);
+    RecordLiteral(std::vector<std::pair<std::string, ExprPtr>> fields);
 };
 
 struct Variable : ExprHelper<Variable, ExprKind::Variable> { 
@@ -128,6 +129,7 @@ struct Get : ExprHelper<Get, ExprKind::Get> {
     ExprPtr obj;
     std::string name; // TODO change all these string fields to TOKENS for debugging.
 
+    int fieldIdx; // For codegen, set by Resolver.      
     virtual bool isLValue() const { return true; }
 
     Get(ExprPtr obj, const std::string& name);
@@ -159,7 +161,9 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
 
 using FunctionExprPtr = std::shared_ptr<FunctionExpr>;
 
-struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {};
+struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {
+    SymbolPtr symbol = nullptr;
+};
 
 struct NewExpr : ExprHelper<NewExpr, ExprKind::NewExpr> {
     std::string typeName;
@@ -170,13 +174,13 @@ struct NewExpr : ExprHelper<NewExpr, ExprKind::NewExpr> {
 
 
 // -----AST nodes for statements
-struct BaseStmt : ASTNode {
+struct BaseStmt : public ASTNode {
     virtual ~BaseStmt() = default;
     virtual void accept(Visitor& v) = 0;
 };
 
 template <typename Derived>
-struct StmtHelper : BaseStmt {
+struct StmtHelper : public BaseStmt {
     void accept(Visitor& v) override {
         v.visit(static_cast<Derived&>(*this));
     }
@@ -232,37 +236,57 @@ struct Return : StmtHelper<Return> {
 
 struct Member {
     virtual ~Member() = default;
+    SymbolPtr symbol = nullptr;
 };
 
 struct FieldMember : Member {
     std::string name;
     ExprPtr initialiser; // Optional
     bool isMutable;
-    SymbolPtr symbol = nullptr;
+    TypeNodePtr annotatedType;
 
-    FieldMember(std::string name, ExprPtr initialiser, bool isMutable);
+    FieldMember(TypeNodePtr annotatedType, std::string name, ExprPtr initialiser, bool isMutable);
 };
 
 struct MethodMember : Member {
     std::string name;
-    std::shared_ptr<FunctionExpr> methodExpr;
+    FunctionExprPtr methodExpr;
 
-    MethodMember(std::string name, std::shared_ptr<FunctionExpr> methodExpr);    
+    MethodMember(std::string name, FunctionExprPtr methodExpr);    
 };
 
-struct Class : StmtHelper<Class> {
+// Same syntax and semantics for records and classes.
+enum class AggregateKind {
+    RECORD,
+    CLASS
+};
+
+struct Aggregate : StmtHelper<Aggregate> {
+    AggregateKind kind;
+    
     std::string name;
     std::vector<FieldMember> fieldMembers; // fields 
     std::vector<MethodMember> methodMembers; // methods (which are actually let stmts)
 
     SymbolPtr symbol = nullptr;
-    Scope* scope = nullptr;
+    TypeSymbol* typeSymbol = nullptr;
 
-    Class (
+    Scope* scope = nullptr;
+    int fieldCount = 0;
+    Aggregate (
+        AggregateKind kind,
         std::string name,
         std::vector<FieldMember> fieldMembers, 
         std::vector<MethodMember> methodMembers
     );
+};
+
+struct TypeAlias : StmtHelper<TypeAlias> {
+    std::string name;
+    TypeSymbol* typeSymbol = nullptr;
+    TypeNodePtr annotatedType;
+
+    TypeAlias(std::string name, TypeNodePtr annotatedType);
 };
 
 struct ExprStmt : StmtHelper<ExprStmt> {
@@ -270,7 +294,20 @@ struct ExprStmt : StmtHelper<ExprStmt> {
     ExprStmt(ExprPtr expr);
 };
 
+// -----AST nodes for declarations
+struct BaseDecl : ASTNode {
+    virtual ~BaseDecl() = default;
+    virtual void accept(Visitor& v) = 0;
+};
 
+template <typename Derived>
+struct DeclHelper : BaseDecl {
+    void accept(Visitor& v) override {
+        v.visit(static_cast<Derived&>(*this));
+    }
+};
+
+// TO BE CONSIDERED: Move decls to separate wrappers. DeclStmt (Why? just for semantic categorisation.)
 
 // std::variant is a type-safe union that can hold one of several types.
-// using Stmt = std::variant<Print, If, While, Block, ExprStmt>;
+

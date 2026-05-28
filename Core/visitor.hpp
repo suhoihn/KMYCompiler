@@ -24,7 +24,8 @@ struct Break;
 struct Continue;
 struct Let;
 struct Return;
-struct Class;
+struct Aggregate;
+struct TypeAlias;
 struct ExprStmt;
 
 // Visitor interface
@@ -54,7 +55,8 @@ public:
     virtual void visit(Continue& s) {}
     virtual void visit(Let& s) {}
     virtual void visit(Return& s) {}
-    virtual void visit(Class& s) {}
+    virtual void visit(Aggregate& s) {}
+    virtual void visit(TypeAlias& s) {}
     virtual void visit(ExprStmt& s) {}
 
     virtual ~Visitor() = default;

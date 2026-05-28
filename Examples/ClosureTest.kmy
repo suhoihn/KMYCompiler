@@ -1,0 +1,25 @@
+let obj = { x: 1, y: 2, z: { nigga: "nigga" } };
+let otherObj = obj;
+
+print(obj.x);
+print(obj.z.nigga);
+obj.z.nigga = "Don't use bad words";
+print(obj);
+
+otherObj.x = 3;
+print(otherObj);
+
+fun makeObjCopy(): {x:int, y:int, z:{nigga:any}} {
+    return obj; // obj = {x:1 y:2, z: {nigga: "Don't use bad words"}}
+}
+
+let suho = makeObjCopy();
+suho.x = 99999;
+suho.z.nigga = { nested: "nested Again?" };
+print(suho);
+
+let anotherSuho = suho;
+// TODO: suho.z.nigga.nested = "something" -> this fails.
+// Make GET_PROPERTY_DYNAMIC.
+suho.z.nigga = "i modified u";
+print(anotherSuho);

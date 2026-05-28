@@ -8,7 +8,7 @@
 // Resolves identifier usages to their declared symbols using the scope tree built in Pass 1.
 // Binds variables/functions/classes to Symbol objects and reports undefined references.
 // Also checks valid loop break/continue, return statements.
-
+// Also does some type building.
 
 class Resolver : public Visitor {
 public:
@@ -20,10 +20,16 @@ private:
     Scope* globalScope;
     Scope* currScope;
 
-    // TODO: Type checker's work.
+    Type* expectedType = nullptr;
+
     int loopDepth = 0;
 
+    Type* typeSigToType(const TypeNodePtr& type);
+    TypeSymbol* resolveTypeSymbol(const std::string& name);
     SymbolPtr resolveSymbol(const std::string& name);
+
+    AggregateType* currentAggregate = nullptr;
+    SymbolPtr currentThis = nullptr; 
 
     // Expressions
     void visit(Literal& e) override;
@@ -49,6 +55,7 @@ private:
     void visit(Continue& s) override;
     void visit(Let& s) override;
     void visit(Return& s) override;
-    void visit(Class& s) override;
+    void visit(Aggregate& s) override;
+    void visit(TypeAlias& s) override;
     void visit(ExprStmt& s) override;
 };

@@ -10,7 +10,7 @@
 #include "../Semantics/SymbolScopeBuilder.hpp" // Pass 1
 #include "../Semantics/Resolver.hpp" // Pass 2
 #include "../Semantics/ClosureAnalyser.hpp" // Pass 3?
-#include "../Semantics/typechecker.hpp" // Optional pass 4
+// #include "../Semantics/typechecker.hpp" // Optional pass 4
 #include "compiler.hpp" // Closure check and code gen in pass 4
 #include <cstring>
 
@@ -100,10 +100,12 @@ int main(int argc, char *argv[]) {
         // 3-4. Type check
         if (strictTypes) {
             std::cout << "[DEBUG]: Strict type check enabled." << std::endl;
-            TypeChecker checker(program);
-            checker.check();
-            std::cout << "[DEBUG]: Type checks done." << std::endl;
+            std::cout << "[WARNING]: DEPRECATED. Already done in resolver. Nothing will be done here.\n";
+            // TypeChecker checker(program);
+            // checker.check();
+            // std::cout << "[DEBUG]: Type checks done." << std::endl;
         }
+        
         std::cout << "[DEBUG]: Ready for code generation." << std::endl;
 
         // 4. Code gen (Stack VM)
@@ -111,8 +113,11 @@ int main(int argc, char *argv[]) {
         auto fnProtos = compiler.compile();
 
         std::cout << "[DEBUG]: Compilation done. Ready to run VM." << std::endl;
+        int fnProtoId = 0;
         for (auto& fnProto : fnProtos) {
+            std::cout << "Function proto " << fnProtoId << ":\n";
             std::cout << chunkToString(fnProto.chunk) << std::endl;
+            fnProtoId++;
         }
 
         // 4. run

@@ -5,12 +5,13 @@
 #include <stdexcept>
 #include "tokens.hpp"
 #include "errorhandler.hpp"
+#include <iostream>
 
 ObjKind typeToObjectKind(TypeKind t) {
     switch(t) {
         case TypeKind::ARRAY: return ObjKind::Array;
         case TypeKind::FUNCTION : return ObjKind::Function;
-        case TypeKind::RECORD: return ObjKind::Record;
+        case TypeKind::INSTANCE: return ObjKind::Instance;
         //case TypeKind::   : return ObjKind::Array;
     }
 
@@ -38,9 +39,12 @@ bool typeMatches(const Value& v, const Type& t) {
         case TypeKind::STRING:
             return std::holds_alternative<std::string>(v.data);
 
+        case TypeKind::AGGREGATE:
+            return std::holds_alternative<RecordPtr>(v.data);
+
         case TypeKind::ARRAY:
-        case TypeKind::RECORD:
         case TypeKind::FUNCTION:
+        case TypeKind::INSTANCE:
             return std::holds_alternative<ObjectPtr>(v.data) && 
                    checkObjType(v, typeToObjectKind(t.kind));
 
@@ -69,6 +73,18 @@ std::string Value::toString() const {
     if (std::holds_alternative<std::string>(data)) {
         return std::get<std::string>(data);
     }
+    if (std::holds_alternative<RecordPtr>(data)) {
+        const RecordPtr& rec = std::get<RecordPtr>(data);
+        std::string result = "{";
+        for (size_t i = 0; i < rec->fields.size(); ++i) {
+            result += rec->fields[i].toString();
+            if (i + 1 < rec->fields.size()) {
+                result += ", ";
+            }
+        }
+        result += "}";
+        return result;
+    }
     if (std::holds_alternative<std::nullptr_t>(data)) {
         return "null";
     }
@@ -96,30 +112,19 @@ std::string Value::toString() const {
         if (checkObjType(*this, ObjKind::NativeFn)) {
             return "NativeFunction";
         }
-        if (checkObjType(*this, ObjKind::Record)) {
-            auto rec = std::static_pointer_cast<RecordObj>(obj);
-
-            std::string result = "{";
-            bool first = true;
-
-            for (const auto& [key, field] : rec->fields) {
-                if (!first) result += ", ";
-                first = false;
-
-                result += key + ": " + field.toString();
-            }
-
-            result += "}";
-            return result;
-        }
-        if (checkObjType(*this, ObjKind::BoundFn)) {
-            return "BoundFunction";
-        }
         if (checkObjType(*this, ObjKind::Class)) {
             return "Class";
         }
     }
     return "unknown";
+}
+
+Value Value::clone() const {
+    if (std::holds_alternative<RecordPtr>(data)) {
+        return Value(std::get<RecordPtr>(data)->clone());
+    }
+    // For other types, the default copy is fine (they are either primitive or shared_ptr).
+    return *this;
 }
 
 static bool isString(const Value& v) {
@@ -252,7 +257,9 @@ ArrayPtr getArray(const Value& v) {
 }
 
 Value applyBinary(BinaryOp op, const Value& left, const Value& right) {
-
+    std::cout << (int)op << std::endl;
+    std::cout << "Applying binary operator to " << left.toString() << " and " << right.toString() << std::endl;
+    
     // ========================
     // STRING CONCAT
     // ========================
@@ -277,6 +284,7 @@ Value applyBinary(BinaryOp op, const Value& left, const Value& right) {
         switch (op) {
 
             case BinaryOp::Plus: {
+                std::cout << "Applying + to " << left.toString() << " and " << right.toString() << std::endl;
                 if (resultIsInt)
                     return Value(toInt(left) + toInt(right));
                 return Value(toDouble(left) + toDouble(right));

@@ -4,20 +4,101 @@
 #include "../Core/value.hpp"
 #include <iostream>
 
+// DEBUG
+static std::string opcodeToString(Opcode op) {
+    switch (op) {
+        case Opcode::PUSH_CONST: return "PUSH_CONST";
+        case Opcode::POP: return "POP";
+
+        case Opcode::ADD: return "ADD";
+        case Opcode::SUB: return "SUB";
+        case Opcode::MUL: return "MUL";
+        case Opcode::DIV: return "DIV";
+        case Opcode::MOD: return "MOD";
+        case Opcode::NEG: return "NEG";
+
+        case Opcode::EQUAL: return "EQUAL";
+        case Opcode::NOT_EQUAL: return "NOT_EQUAL";
+        case Opcode::LESS: return "LESS";
+        case Opcode::LESS_EQUAL: return "LESS_EQUAL";
+        case Opcode::GREATER: return "GREATER";
+        case Opcode::GREATER_EQUAL: return "GREATER_EQUAL";
+
+        case Opcode::LOGICAL_AND: return "LOGICAL_AND";
+        case Opcode::LOGICAL_OR: return "LOGICAL_OR";
+        case Opcode::LOGICAL_NOT: return "LOGICAL_NOT";
+
+        case Opcode::BIT_AND: return "BIT_AND";
+        case Opcode::BIT_OR: return "BIT_OR";
+        case Opcode::BIT_XOR: return "BIT_XOR";
+        case Opcode::LEFT_SHIFT: return "LEFT_SHIFT";
+        case Opcode::RIGHT_SHIFT: return "RIGHT_SHIFT";
+        case Opcode::BIT_NOT: return "BIT_NOT";
+
+        case Opcode::LOAD_LOCAL: return "LOAD_LOCAL";
+        case Opcode::LOAD_UPVALUE: return "LOAD_UPVALUE";
+        case Opcode::STORE_LOCAL: return "STORE_LOCAL";
+        case Opcode::STORE_UPVALUE: return "STORE_UPVALUE";
+        case Opcode::CAPTURE_LOCAL: return "CAPTURE_LOCAL";
+        case Opcode::CAPTURE_UPVALUE: return "CAPTURE_UPVALUE";
+        case Opcode::CLOSE_UPVALUE: return "CLOSE_UPVALUE";
+        case Opcode::MAKE_CLOSURE: return "MAKE_CLOSURE";
+
+        case Opcode::JUMP: return "JUMP";
+        case Opcode::JUMP_IF_FALSE: return "JUMP_IF_FALSE";
+
+        case Opcode::CALL: return "CALL";
+        case Opcode::RETURN_VALUE: return "RETURN_VALUE";
+        case Opcode::RETURN_VOID: return "RETURN_VOID";
+
+        case Opcode::NEW_ARRAY: return "NEW_ARRAY";
+        case Opcode::GET_INDEX: return "GET_INDEX";
+        case Opcode::SET_INDEX: return "SET_INDEX"; 
+
+        case Opcode::MAKE_RECORD: return "MAKE_RECORD";
+        case Opcode::GET_PROPERTY: return "GET_PROPERTY";
+        case Opcode::SET_PROPERTY: return "SET_PROPERTY";
+
+        case Opcode::HALT: return "HALT";
+        case Opcode::PRINT: return "PRINT";
+
+        default: return "UNKNOWN";
+    }
+}
+
+static std::string constValueToString(const ConstValue& v) {
+    return std::visit([](auto&& arg) -> std::string {
+        using T = std::decay_t<decltype(arg)>;
+
+        if constexpr (std::is_same_v<T, std::nullptr_t>) {
+            return "null";
+        }
+        else if constexpr (std::is_same_v<T, std::string>) {
+            return "\"" + arg + "\"";
+        }
+        else if constexpr (std::is_same_v<T, bool>) {
+            return arg ? "true" : "false";
+        }
+        else {
+            return std::to_string(arg);
+        }
+    }, v);
+}
+
 void VM::load(const std::vector<FunctionProto>& functionProtos) {
     this->functionProtos = std::move(functionProtos);
     stack.clear();
     frames.clear();
     openUpvalues.clear();
     frames.push_back(CallFrame{
-        &this->functionProtos[0].chunk, // global chunk
+        &this->functionProtos.back().chunk, // global chunk
         0, // base
         0, // ip
         nullptr, // no function object for global scope
     });
-    frames[0].base = stack.size();
-    std::cout << "framesize: " << this->functionProtos[0].frameSize << std::endl;
-    stack.resize(stack.size() + this->functionProtos[0].frameSize); // or frameSize
+    frames.back().base = stack.size();
+    std::cout << "framesize: " << this->functionProtos.back().frameSize << std::endl;
+    stack.resize(stack.size() + this->functionProtos.back().frameSize); // or frameSize
 }
 
 Instruction VM::fetchInstr() {
@@ -51,6 +132,47 @@ Value VM::pop() {
                          frame.base
 
 */
+
+void VM::closeUpvalues(int base) {
+    // iterate manually (safe for modification)
+    for (size_t i = 0; i < openUpvalues.size(); ) {
+        UpvaluePtr uv = openUpvalues[i];
+
+        if (uv->stackSlot >= base) {
+            // close it
+            std::cout << "Closing upvalue at stack slot " << uv->stackSlot << std::endl;
+            uv->closed = stack[uv->stackSlot];
+            uv->isClosed = true;
+
+            // remove from open list (swap-remove)
+            openUpvalues[i] = openUpvalues.back();
+            openUpvalues.pop_back();
+        } else {
+            i++;
+        }
+    }
+}
+
+UpvaluePtr VM::captureUpvalue(int stackSlot) {
+    // Reuse existing open upvalue
+    for (auto& uv : openUpvalues) {
+        if (!uv->isClosed && uv->stackSlot == stackSlot) {
+            return uv;
+        }
+    }
+
+    auto uv = std::make_shared<Upvalue>(
+        stackSlot,
+        nullptr,
+        false
+    );
+
+    openUpvalues.push_back(uv);
+    openUpvalueMap[stackSlot] = uv;
+
+    return uv;
+}
+
 void VM::executeInstr(const Instruction& instr) {
     auto& frame = frames.back();
     switch (instr.opcode) {
@@ -117,13 +239,17 @@ void VM::executeInstr(const Instruction& instr) {
 
         case Opcode::STORE_LOCAL: {
             Value v = pop();
-            stack[frame.base + instr.operand] = v;
+            stack[frame.base + instr.operand] = v.clone();
             push(v); // Assignment produces a value. Including Let stmt.
             break;
         }
         case Opcode::LOAD_UPVALUE: {
             auto up = frame.function->upvalues[instr.operand];
-            push(*(up->location));
+            if (up->isClosed) {
+                push(up->closed);
+            } else {
+                push(stack[up->stackSlot]);
+            }
             break;
         }
         
@@ -131,67 +257,26 @@ void VM::executeInstr(const Instruction& instr) {
             Value v = pop();
 
             auto up = frame.function->upvalues[instr.operand];
-            *(up->location) = v;
+            if (up->isClosed) {
+                up->closed = v;
+            } else {
+                stack[up->stackSlot] = v.clone();
+            }
 
             push(v);
             break;
         }
         
-        case Opcode::CAPTURE_LOCAL: {
-            int slot = instr.operand;
-
-            Value* ptr = &stack[frame.base + slot];
-
-            UpvaluePtr uv = std::make_shared<Upvalue>(
-                ptr,
-                nullptr,
-                false
-            );
-
-            openUpvalues.push_back(uv);
-
-            // closure being built gets this upvalue
-            frame.function->upvalues.push_back(uv);
-            break;
-        }
-
+        case Opcode::CAPTURE_LOCAL: 
         case Opcode::CAPTURE_UPVALUE: {
-            int index = instr.operand;
-
-            // parent closure is on call stack / current function
-            UpvaluePtr parentUV = frame.function->upvalues[index];
-
-            // reuse SAME upvalue object (critical!)
-            frame.function->upvalues.push_back(parentUV);
+            throw std::runtime_error("Capture_xxx deprecated.");
             break;
         }
 
         case Opcode::CLOSE_UPVALUE: {
-            int slot = instr.operand;
-
-            Value* target = &stack[frame.base + slot];
-
-            // iterate manually (safe for modification)
-            for (size_t i = 0; i < openUpvalues.size(); ) {
-                UpvaluePtr uv = openUpvalues[i];
-
-                if (uv->location == target) {
-                    // close it
-                    uv->closed = *uv->location;
-                    uv->location = &uv->closed;
-                    uv->isClosed = true;
-
-                    // remove from open list (swap-remove)
-                    openUpvalues[i] = openUpvalues.back();
-                    openUpvalues.pop_back();
-                } else {
-                    i++;
-                }
-            }
-
+            throw std::runtime_error("Close_upvalue deprecated.");
             break;
         }
-
 
         // ----- Control flow  -----
         case Opcode::JUMP:
@@ -208,12 +293,46 @@ void VM::executeInstr(const Instruction& instr) {
 
         // ----- Functions -----
         case Opcode::MAKE_CLOSURE: {
-            FunctionPtr fn = std::static_pointer_cast<FunctionObj>(std::get<ObjectPtr>(pop().data));
+            auto fnProto = this->functionProtos[instr.operand];
 
-            auto closure = std::make_shared<FunctionObj>(*fn);
+            auto upvalues = std::vector<UpvaluePtr>(fnProto.upValueCnt);
+
+            for (int i = 0; i < fnProto.upValueCnt; i++) {
+                auto& up = fnProto.upvalues[i];
+                int slot = up.index;
+                if (up.isLocal) {
+                    // From immediate parent,
+                    // take x directly from parent stack frame
+                    // Value* ptr = &stack[frame.base + slot];
+
+                    // ensure it's in openUpvalues and get the UpvaluePtr
+                    UpvaluePtr uv = captureUpvalue(frame.base + slot);
+
+                    upvalues[i] = uv;
+                } else {
+                    // take variable from my parent closure’s upvalue list
+            
+                    // parent closure is the current function calling this opcode.
+                    UpvaluePtr parentUV = frame.function->upvalues[slot];
+
+                    // reuse SAME upvalue object.
+                    upvalues[i] = parentUV;
+                }
+            }
+
+            auto closure = std::make_shared<FunctionObj>(
+                std::vector<Parameter>{}, // not used in VM
+                fnProto.chunk,
+                fnProto.frameSize,
+                std::move(upvalues)
+            );
 
             // allocate upvalue slots
-            closure->upvalues.resize(fn->upvalues.size());
+            std::cout << "Upvalue count: " << fnProto.upValueCnt << std::endl;
+            for (int i = 0; i < fnProto.upValueCnt; i++) {
+                std::cout << "Upvalue " << i << ": " << (closure->upvalues[i]->isClosed ? "closed" : "open") << std::endl;
+                std::cout << "  Stack Slot: " << closure->upvalues[i]->stackSlot << std::endl;
+            }
 
             push(Value(closure));
             break;
@@ -221,8 +340,8 @@ void VM::executeInstr(const Instruction& instr) {
 
         case Opcode::CALL: {
             // Stack
-            // [ ...other stuff ] [ callee function object ] [ arg1 ] ... [ argN ] 
-            //                   ^ frame.base
+            // [ ...other stuff ] [ callee function object ] [ arg1 ] ... [ argN ] [ local0 ] ...
+            //                                              ^ frame.base
 
             // 1. Get function from stack
             Value calleeVal = stack[stack.size() - instr.operand - 1];
@@ -243,8 +362,11 @@ void VM::executeInstr(const Instruction& instr) {
             CallFrame frame;
             frame.chunk = &fn->chunk;
             frame.ip = 0;
-            frame.base = stack.size() - instr.operand - 1; // arguments are already on stack
+            frame.base = stack.size() - instr.operand; // arguments are already on stack
             frame.function = fn;
+            
+            stack.resize(frame.base + frame.function->frameSize); // or frameSize
+
 
             frames.push_back(frame);
 
@@ -252,7 +374,8 @@ void VM::executeInstr(const Instruction& instr) {
         }
 
         case Opcode::RETURN_VOID: {
-            stack.resize(frame.base);
+            closeUpvalues(frame.base);
+            stack.resize(frame.base - 1);
             frames.pop_back();
             push(Value(nullptr)); // return void produces null value
             if (frames.empty()) {
@@ -262,8 +385,9 @@ void VM::executeInstr(const Instruction& instr) {
         }  
 
         case Opcode::RETURN_VALUE: {
+            closeUpvalues(frame.base);
             Value retVal = pop();
-            stack.resize(frame.base);
+            stack.resize(frame.base - 1);
             frames.pop_back();
             push(retVal);
             if (frames.empty()) {
@@ -330,10 +454,48 @@ void VM::executeInstr(const Instruction& instr) {
                 throw std::runtime_error("Index out of bounds");
             }
 
-            realArr->array[intIdx] = val;
+            realArr->array[intIdx] = val.clone();
 
             push(val);
 
+            break;
+        }
+
+        // ----- Records -----
+        case Opcode::MAKE_RECORD: {
+            auto rec = std::make_shared<Record>();
+
+            for (int i = 0; i < instr.operand; ++i) {
+                rec->fields.push_back(pop());
+            }
+
+            push(Value(rec));
+            break;
+        }
+
+        case Opcode::GET_PROPERTY: {
+            Value rec = pop();
+
+            if (!std::holds_alternative<RecordPtr>(rec.data)) {
+                throw std::runtime_error("Serious Illegal Operation: Getting property of non-record.");
+            }
+
+            auto recPtr = std::get<RecordPtr>(rec.data);
+            push(recPtr->fields[instr.operand]);
+            break;
+        }
+
+        case Opcode::SET_PROPERTY: {
+            Value rec = pop();
+            Value val = pop();
+
+            if (!std::holds_alternative<RecordPtr>(rec.data)) {
+                throw std::runtime_error("Serious Illegal Operation: Setting property of non-record.");
+            }
+
+            auto recPtr = std::get<RecordPtr>(rec.data);
+            recPtr->fields[instr.operand] = val;
+            push(val);
             break;
         }
 
@@ -341,7 +503,7 @@ void VM::executeInstr(const Instruction& instr) {
 
         case Opcode::PRINT: {
             Value v = pop();
-            std::cout << v.toString() << "\n";
+            std::cout << "\033[31m" << v.toString() << "\033[0m" << std::endl;
             break;
         }
 
@@ -360,86 +522,17 @@ void VM::run(void) {
     running = true;
     while (running) {
         //std::cout << "STACK SIZE: " << stack.size() << "\n";
+        for(auto& v : stack) {
+            std::cout << v.toString() << " | ";
+        }
+        std::cout << std::endl;
+        
         Instruction instr = fetchInstr();
+        std::cout << "Executing: " << opcodeToString(instr.opcode) << " " << instr.operand << std::endl;
         executeInstr(instr);
     }
 }
 
-// DEBUG
-static std::string opcodeToString(Opcode op) {
-    switch (op) {
-        case Opcode::PUSH_CONST: return "PUSH_CONST";
-        case Opcode::POP: return "POP";
-
-        case Opcode::ADD: return "ADD";
-        case Opcode::SUB: return "SUB";
-        case Opcode::MUL: return "MUL";
-        case Opcode::DIV: return "DIV";
-        case Opcode::MOD: return "MOD";
-        case Opcode::NEG: return "NEG";
-
-        case Opcode::EQUAL: return "EQUAL";
-        case Opcode::NOT_EQUAL: return "NOT_EQUAL";
-        case Opcode::LESS: return "LESS";
-        case Opcode::LESS_EQUAL: return "LESS_EQUAL";
-        case Opcode::GREATER: return "GREATER";
-        case Opcode::GREATER_EQUAL: return "GREATER_EQUAL";
-
-        case Opcode::LOGICAL_AND: return "LOGICAL_AND";
-        case Opcode::LOGICAL_OR: return "LOGICAL_OR";
-        case Opcode::LOGICAL_NOT: return "LOGICAL_NOT";
-
-        case Opcode::BIT_AND: return "BIT_AND";
-        case Opcode::BIT_OR: return "BIT_OR";
-        case Opcode::BIT_XOR: return "BIT_XOR";
-        case Opcode::LEFT_SHIFT: return "LEFT_SHIFT";
-        case Opcode::RIGHT_SHIFT: return "RIGHT_SHIFT";
-        case Opcode::BIT_NOT: return "BIT_NOT";
-
-        case Opcode::LOAD_LOCAL: return "LOAD_LOCAL";
-        case Opcode::LOAD_UPVALUE: return "LOAD_UPVALUE";
-        case Opcode::STORE_LOCAL: return "STORE_LOCAL";
-        case Opcode::STORE_UPVALUE: return "STORE_UPVALUE";
-        case Opcode::CAPTURE_LOCAL: return "CAPTURE_LOCAL";
-        case Opcode::CAPTURE_UPVALUE: return "CAPTURE_UPVALUE";
-        case Opcode::CLOSE_UPVALUE: return "CLOSE_UPVALUE";
-        
-        case Opcode::JUMP: return "JUMP";
-        case Opcode::JUMP_IF_FALSE: return "JUMP_IF_FALSE";
-
-        case Opcode::CALL: return "CALL";
-        case Opcode::RETURN_VALUE: return "RETURN_VALUE";
-        case Opcode::RETURN_VOID: return "RETURN_VOID";
-
-        case Opcode::NEW_ARRAY: return "NEW_ARRAY";
-        case Opcode::GET_INDEX: return "GET_INDEX";
-        case Opcode::SET_INDEX: return "SET_INDEX"; 
-
-        case Opcode::HALT: return "HALT";
-        case Opcode::PRINT: return "PRINT";
-
-        default: return "UNKNOWN";
-    }
-}
-
-static std::string constValueToString(const ConstValue& v) {
-    return std::visit([](auto&& arg) -> std::string {
-        using T = std::decay_t<decltype(arg)>;
-
-        if constexpr (std::is_same_v<T, std::nullptr_t>) {
-            return "null";
-        }
-        else if constexpr (std::is_same_v<T, std::string>) {
-            return "\"" + arg + "\"";
-        }
-        else if constexpr (std::is_same_v<T, bool>) {
-            return arg ? "true" : "false";
-        }
-        else {
-            return std::to_string(arg);
-        }
-    }, v);
-}
 
 std::string chunkToString(const Chunk& chunk) {
     std::string out;
@@ -466,10 +559,14 @@ std::string chunkToString(const Chunk& chunk) {
             ins.opcode == Opcode::CAPTURE_LOCAL ||
             ins.opcode == Opcode::CAPTURE_UPVALUE ||
             ins.opcode == Opcode::CLOSE_UPVALUE ||
+            ins.opcode == Opcode::MAKE_CLOSURE ||
             ins.opcode == Opcode::JUMP ||
             ins.opcode == Opcode::JUMP_IF_FALSE ||
             ins.opcode == Opcode::CALL ||
-            ins.opcode == Opcode::NEW_ARRAY
+            ins.opcode == Opcode::NEW_ARRAY ||
+            ins.opcode == Opcode::MAKE_RECORD ||
+            ins.opcode == Opcode::GET_PROPERTY ||
+            ins.opcode == Opcode::SET_PROPERTY
         ) {
 
             out += " " + std::to_string(ins.operand);

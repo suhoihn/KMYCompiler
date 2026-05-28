@@ -79,6 +79,8 @@ static std::unordered_map<std::string, TokenType> keywords = {
     {"this", TokenType::KeywordThis},
     {"class", TokenType::KeywordClass},
     {"new", TokenType::KeywordNew},
+    {"typealias", TokenType::KeywordTypealias},
+    {"record", TokenType::KeywordRecord},
 
     {"int", TokenType::KeywordInt},
     {"double", TokenType::KeywordDouble},
@@ -245,3 +247,4 @@ std::vector<Token> Lexer::tokenise() {
     tokens.push_back(Token{TokenType::EndOfFile, "", line, column, current, current});
     return tokens;
 }
+

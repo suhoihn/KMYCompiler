@@ -46,7 +46,7 @@ private:
     void emit(Opcode op, int operand);
     
     // Tracking current function context.
-    CodegenFnCtx* currCtx = new CodegenFnCtx;
+    CodegenFnCtx* currCtx;
 
     // Function Prototypes (immutable function codes)
     int allocateFuncProto(const FunctionProto& fnProto);
@@ -68,6 +68,9 @@ private:
 
     // For loops
     std::vector<CodegenLoopCtx> loopStack;
+
+    // For aggregates
+    bool compilingMethod = false;
 
     // Expressions
     void visit(Literal& e) override;
@@ -93,6 +96,7 @@ private:
     void visit(Continue& s) override;
     void visit(Let& s) override;
     void visit(Return& s) override;
-    void visit(Class& s) override;
+    void visit(Aggregate& s) override;
+    void visit(TypeAlias& s) override;
     void visit(ExprStmt& s) override;
 };

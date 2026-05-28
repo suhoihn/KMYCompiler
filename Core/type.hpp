@@ -5,7 +5,8 @@
 enum class TypeNodeKind {
     NAMED,
     FUNCTION,
-    ARRAY
+    ARRAY,
+    RECORD
 };
 
 struct TypeNode {
@@ -37,6 +38,14 @@ struct FunctionTypeNode : TypeNode {
     {}
 };
 
+struct RecordTypeNode : TypeNode {
+    std::vector<std::pair<std::string, TypeNodePtr>> paramTypePairs;
+
+    RecordTypeNode(
+        std::vector<std::pair<std::string, TypeNodePtr>> paramTypePairs
+    ) : TypeNode(TypeNodeKind::RECORD), paramTypePairs(std::move(paramTypePairs)) {}
+};
+
 struct ArrayTypeNode : TypeNode {
     TypeNodePtr elementType;
     int size;
@@ -47,6 +56,7 @@ struct ArrayTypeNode : TypeNode {
         : TypeNode(TypeNodeKind::ARRAY), elementType(std::move(elementType)), size(size), isSizeDetermined(isSizeDetermined), isDynamic(isDynamic) {}
 };
 
+
 enum class TypeKind {
     INT,
     DOUBLE,
@@ -54,7 +64,8 @@ enum class TypeKind {
     STRING,
     NULLTYPE,
     ARRAY,
-    RECORD, // custom {...} or class instances.
+    AGGREGATE, // record or class definitions + annoymous records {...}
+    INSTANCE, // class instances
     FUNCTION, // Just denotes that the type is a function. 
     VOID, // Denotes no type. Only used for functions.
     ANY,
@@ -68,18 +79,42 @@ struct Type {
     Type(TypeKind kind) : kind(kind) {}
 };
 
+struct ParamTypeInfo {
+    bool hasDefault;
+    bool isVariadic;
+    Type* type;
+};
+
+
 struct FunctionType : Type {
     std::vector<Type*> paramTypes;
-    const Type* const returnType;
+    Type* returnType;
 
-    FunctionType(std::vector<Type*> paramTypes, const Type* returnType) 
-        : Type(TypeKind::FUNCTION), paramTypes(move(paramTypes)), returnType(returnType) {}
+    std::vector<ParamTypeInfo> info;
+    bool infoExists = false;
+
+    // No parameter info exists.
+    FunctionType(std::vector<Type*> paramTypes, Type* returnType) 
+        : Type(TypeKind::FUNCTION), paramTypes(move(paramTypes)), returnType(returnType), infoExists(false) {}
+ 
+    // Parameter info exists.
+    FunctionType(std::vector<Type*> paramTypes, std::vector<ParamTypeInfo> info, Type* returnType) 
+        : Type(TypeKind::FUNCTION), paramTypes(move(paramTypes)), info(move(info)), returnType(returnType), infoExists(true) {}
 };
 
 struct ArrayType : Type {
     Type* elementType;
 
     ArrayType(Type* elementType) : Type(TypeKind::ARRAY), elementType(elementType) {}
+};
+
+struct AggregateType : Type {
+    std::unordered_map<std::string, Type*> fieldTypes;
+    std::unordered_map<std::string, int> layout;
+
+    AggregateType() : Type(TypeKind::AGGREGATE) {}
+    AggregateType(std::unordered_map<std::string, Type*> fieldTypes, std::unordered_map<std::string, int> layout)
+        : Type(TypeKind::AGGREGATE), fieldTypes(move(fieldTypes)), layout(move(layout)) {}
 };
 
 namespace Types {

@@ -20,7 +20,6 @@ struct Symbol {
     std::string name;
     bool isMutable;
 
-
     Type* type = nullptr;
 
     // Runtime storage info.
@@ -30,6 +29,11 @@ struct Symbol {
 
     Symbol(const std::string& name, bool isMutable)
         : name(name), isMutable(isMutable) {}
+};
+
+struct TypeSymbol {
+    std::string name;
+    Type* type = nullptr;
 };
 
 using SymbolPtr = std::shared_ptr<Symbol>;
@@ -58,6 +62,7 @@ struct ResolvedVar {
 struct Scope {
     Scope* parent = nullptr;
     std::unordered_map<std::string, SymbolPtr> symbols; // Symbols in this scope.
+    std::unordered_map<std::string, TypeSymbol*> types;
     int depth = 0;
 
     Scope() = default;
@@ -127,6 +132,11 @@ enum class Opcode {
     GET_INDEX,
     SET_INDEX, 
 
+    // Records
+    MAKE_RECORD, // field count
+    GET_PROPERTY, // slot
+    SET_PROPERTY, // slot
+
     // Program end
     HALT,
 
@@ -172,6 +182,7 @@ struct FunctionProto {
     bool isVariadic = false;
 
     int upValueCnt = 0;
+    std::vector<UpvalueInfo> upvalues; // For closure. The actual upvalue objects are created at runtime by CAPTURE opcodes.
     int frameSize = 0; // For stack allocation. Equals to max slot index used + 1.
     
     std::vector<Chunk> defaultValues; // if ith default value is missing, run code in ith slot.

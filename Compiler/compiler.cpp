@@ -15,13 +15,17 @@ Compiler::Compiler(FunctionExprPtr program)
     : program(program)
 {
     // Initialize the first function context for the global scope.
-    currCtx = new CodegenFnCtx;
+    currCtx = nullptr;
 }
 
 std::vector<FunctionProto> Compiler::compile(void) {
+    std::cout << "Starting compilation..." << std::endl;
     program->accept(*this);
+    std::cout << "Done" << std::endl;
 
-    emit(Opcode::HALT);
+     // Emit HALT at the end of global chunk to prevent fallthrough into function chunks.
+
+    // emit(Opcode::HALT);
 
     return funcProtos;
 }
@@ -61,8 +65,13 @@ void Compiler::visit(ArrayLiteral& e) {
 }
 
 
-void Compiler::visit(RecordLiteral& e) { throw std::runtime_error("NOT IMPLEMENTED"); }
+void Compiler::visit(RecordLiteral& e) {
+    for (auto it = e.fields.rbegin(); it != e.fields.rend(); ++it) {
+        it->second->accept(*this);
+    }
 
+    emit(Opcode::MAKE_RECORD, e.fields.size());
+}
 
 
 void Compiler::visit(Variable& e) {
@@ -199,49 +208,14 @@ void Compiler::visit(Assignment& e) {
         return;
     }
 
-    // 2. Resolve target
-
-    /*
-    std::visit([&](auto& t) {
-        using T = std::decay_t<decltype(t)>;
-
-        if constexpr (std::is_same_v<T, Variable>) {
-            int index = resolveLocalIndex(t.name);
-
-            if (!locals[index].isMutable) {
-                throw KMYCompileError("Immuable modified.");
-            }
-
-            // compound assignment
-            if (e.op != AssignmentOp::Assign) {
-
-                // load old value
-                emit(Opcode::LOAD_LOCAL locals[index].slot);
-
-                emit(binaryOpToOpcode(compoundToBinaryOp(e.op)));
-            }
-
-            emit(Opcode::STORE, locals[index].slot);
-            return;
-        }
-        
-        else if constexpr (std::is_same_v<T, Index>) {
-            // stack: [ ... value, array, index ]
-            t.obj->accept(*this);
-            t.index->accept(*this);
-            emit(Opcode::SET_INDEX);
-        }
-        
-        
-        else if constexpr (std::is_same_v<T, Get>) {
-            // stack: [ ... object, value ]
-            int nameConst = addConstant(t.name);
-            emit(Opcode::SET_PROPERTY, nameConst);
-        }
-        
-
-    }, e.left);
-    */
+    // Case 3: record field assignment
+    if (e.left->kind == ExprKind::Get) {
+        auto get = std::static_pointer_cast<Get>(e.left);
+        // stack: [ ... value, object ]
+        get->obj->accept(*this);
+        emit(Opcode::SET_PROPERTY, get->fieldIdx);
+        return;
+    }
 
     throw KMYCompileError("Invalid assignment target");
 }
@@ -257,18 +231,25 @@ void Compiler::visit(Index& e) {
 }
 
 void Compiler::visit(Call& e) { 
+    std::cout << "Compiling function call..." << std::endl;
+
     // Push function
     e.func->accept(*this);
 
     // Push args
-    for(auto it = e.args.rbegin(); it >= e.args.rend(); ++it) {
+    for(auto it = e.args.rbegin(); it != e.args.rend(); ++it) {
         (*it)->accept(*this);
     }
 
     emit(Opcode::CALL, e.args.size());
 }
 
-void Compiler::visit(Get& e) { throw std::runtime_error("NOT IMPLEMENTED"); }
+void Compiler::visit(Get& e) {
+    // Push object
+    e.obj->accept(*this);
+
+    emit(Opcode::GET_PROPERTY, e.fieldIdx);
+}
 
 
 int Compiler::allocateFuncProto(const FunctionProto& fnProto) {
@@ -279,6 +260,7 @@ int Compiler::allocateFuncProto(const FunctionProto& fnProto) {
 
 
 void Compiler::visit(FunctionExpr& e) {
+    std::cout << "Compiling function..." << std::endl;
     FunctionProto fnProto;
     fnProto.totalParams = e.params.size();
     fnProto.frameSize = e.frameSize;
@@ -297,42 +279,68 @@ void Compiler::visit(FunctionExpr& e) {
         }
     }
 
+    std::cout << "body compile" << std::endl;
     // 3. Body
     e.body->accept(*this);
+    
+    std::cout << "body compile done" << std::endl;
 
     // 4. Implicit return
-    emit(Opcode::RETURN_VOID);
-    
+    if (currCtx->parent == nullptr) {
+        // Top level function. Emit HALT.
+        emit(Opcode::HALT);
+    } else {
+        // Not top level. Just return.
+        emit(Opcode::RETURN_VOID);
+    }
     // 5. Extract compiled context
     fnProto.chunk = std::move(currCtx->chunk);
+    fnProto.upvalues = e.upvalues;
     fnProto.upValueCnt = e.upvalues.size();
+
+    currCtx = currCtx->parent;
+    std::cout << "currctx: " << currCtx << std::endl;
 
     // 6. Register proto
     int fnIndex = allocateFuncProto(fnProto);
-
-    currCtx = currCtx->parent;
     
     // 7. Emit closure (NOT MAKE_FUNCTION)
-    emit(Opcode::MAKE_CLOSURE, fnIndex);
-
-    // 8. Capture variables
-    for (auto up : e.upvalues) {
-        // CAPTURE opcode creates a runtime heap object UpValueObj
-        if (up.isLocal) {
-            // From immediate parent,
-            // take x directly from parent stack frame
-            emit(Opcode::CAPTURE_LOCAL, up.index);
-        } else {
-            // take variable from my parent closure’s upvalue list
-            emit(Opcode::CAPTURE_UPVALUE, up.index);
+    
+    if (currCtx) {
+        if (!compilingMethod) {
+            emit(Opcode::MAKE_CLOSURE, fnIndex);
         }
-    }
+        // Not a top level function.
+        // 8. Capture variables
+        std::cout << "Capture" << std::endl;
+        for (auto up : e.upvalues) {
+            std::cout << up.index << std::endl;
+            // CAPTURE opcode creates a runtime heap object UpValueObj
+            if (up.isLocal) {
+                // From immediate parent,
+                // take x directly from parent stack frame
+                //emit(Opcode::CAPTURE_LOCAL, up.index);
+            } else {
+                // take variable from my parent closure’s upvalue list
+                //emit(Opcode::CAPTURE_UPVALUE, up.index);
+            }
+        }
+        std::cout << "Capture done" << std::endl;
+        
 
+        std::cout << "Delete temp" << std::endl;
+    }
     delete temp;
+    std::cout << "function compiled" << std::endl;
 }
 
 
-void Compiler::visit(ThisExpr& e) { throw std::runtime_error("NOT IMPLEMENTED"); }
+void Compiler::visit(ThisExpr& e) {
+    // "this" is already guaranteed to be inside methods.
+    // Thus always load the 0th slot.
+    emit(Opcode::LOAD_LOCAL, 0);
+}
+
 void Compiler::visit(NewExpr& e) { throw std::runtime_error("NOT IMPLEMENTED"); }
 
 
@@ -343,6 +351,8 @@ void Compiler::visit(Print& s) {
 
     // Emit print instruction
     emit(Opcode::PRINT);
+
+    std::cout << "Print statement compiled." << std::endl;
 }
 
 
@@ -480,7 +490,35 @@ void Compiler::visit(Return& s) {
     }
 }
 
-void Compiler::visit(Class& s) { throw std::runtime_error("NOT IMPLEMENTED"); }
+struct MethodInfo {
+    std::string name;
+    int protoIdx;
+};
+
+struct AggregateInfo {
+    int fieldSize = 0;
+    int constructorProtoIdx = -1;
+
+    std::vector<MethodInfo> methodInfos; 
+};
+
+void Compiler::visit(Aggregate& s) {     
+    // We don't generate code for fields.
+
+    AggregateInfo aggInfo;
+    aggInfo.fieldSize = s.fieldCount;
+
+    compilingMethod = true;
+    for (auto& method : s.methodMembers) {
+        method.methodExpr->accept(*this);
+
+        aggInfo.methodInfos.push_back({ method.name, funcProtoCnt });
+
+    }
+    compilingMethod = false;
+}
+
+void Compiler::visit(TypeAlias& s) {}
 
 void Compiler::visit(ExprStmt& s) { 
     s.expr->accept(*this);

@@ -54,12 +54,15 @@ private:
 
     ExprPtr parse_expression(int minBP=BP_ASSIGNMENT);
     ExprPtr parse_functionExpr();
-    ExprPtr parse_objectExpr();
+    ExprPtr parse_recordExpr();
     ExprPtr parse_newExpr();
     ExprPtr parse_prefix();
-    TypeNodePtr parse_functionType();
+
     TypeNodePtr parse_type();
+    TypeNodePtr parse_functionType();
     TypeNodePtr parse_arraySuffix();
+    TypeNodePtr parse_recordType();
+    
     ExprPtr finishCall(ExprPtr callee);
 
     int get_binding_power(TokenType type);
@@ -75,7 +78,8 @@ private:
     StmtPtr parse_let();
     StmtPtr parse_functionDecl(); // "fun f(a,b) {}" form
     StmtPtr parse_for();
-    StmtPtr parse_class();
+    StmtPtr parse_aggregate(AggregateKind kind);
+    StmtPtr parse_typeAlias();
 
     const std::vector<Token> tokens;
     size_t current = 0;

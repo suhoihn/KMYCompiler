@@ -80,6 +80,8 @@ static const std::unordered_map<TokenType, std::string> tokenTypeNames = {
     {TokenType::KeywordThis, "KeywordThis"},
     {TokenType::KeywordClass, "KeywordClass"},
     {TokenType::KeywordNew, "KeywordNew"},
+    {TokenType::KeywordTypealias, "KeywordTypealias"},
+    {TokenType::KeywordRecord, "KeywordRecord"},
 
     // Type keywords
     {TokenType::KeywordInt, "KeywordInt"},

@@ -3,6 +3,7 @@
 #include <vector>
 #include "../Core/errorhandler.hpp"
 #include "../Core/Ast.hpp"
+#include <unordered_set>
 
 SymbolScopeBuilder::SymbolScopeBuilder(
     FunctionExprPtr program
@@ -48,6 +49,22 @@ SymbolPtr SymbolScopeBuilder::declare(const std::string& name, bool isMutable) {
     return sym;
 }
     
+TypeSymbol* SymbolScopeBuilder::declareType(const std::string& name, bool isMutable) {
+    // New types can only be declared via aggregate (class or record) or typealias.
+    
+    // 1. Check current scope only (NOT parents)
+    if (currScope->types.find(name) != currScope->types.end()) {
+        throw KMYCompileError("Redeclaration of the same type \"" + name + "\""); // redeclaration in same scope.
+    }
+
+    TypeSymbol* sym = new TypeSymbol {name, nullptr};
+
+    // 2. Store in scope.
+    currScope->types[name] = sym;
+
+    return sym;
+}
+
 void SymbolScopeBuilder::visit(Literal&) {}
 
 void SymbolScopeBuilder::visit(Variable&) {}
@@ -58,8 +75,18 @@ void SymbolScopeBuilder::visit(ArrayLiteral& e) {
 }
 
 void SymbolScopeBuilder::visit(RecordLiteral& e) {
-    for (auto& [_, value] : e.fields)
+    std::unordered_set<std::string> fieldNames; // for checking duplicate field names
+    std::unordered_map<std::string, int> fieldNameToIndex;
+    for (auto& [fieldName, value] : e.fields) {
+        if (fieldNames.find(fieldName) != fieldNames.end()) {
+            throw KMYCompileError("Duplicate field name \"" + fieldName + "\" in record literal.");
+        }
+        fieldNames.insert(fieldName);
+        fieldNameToIndex[fieldName] = fieldNameToIndex.size();
         value->accept(*this);
+    }
+
+    e.layout = std::move(fieldNameToIndex);
 }
 
 void SymbolScopeBuilder::visit(BinaryExpr& e) {
@@ -115,10 +142,10 @@ void SymbolScopeBuilder::visit(FunctionExpr& e) {
 
         if (!sym) {
             throw KMYCompileError(
-                "Redeclaration of parameter \"" +
-                param.name + "\""
+                "Redeclaration of parameter \"" + param.name + "\""
             );
         }
+        param.symbol = sym;
     }
 
     e.body->accept(*this);
@@ -178,15 +205,11 @@ void SymbolScopeBuilder::visit(Return& s) {
 }
 
 void SymbolScopeBuilder::visit(Let& s) {
-    SymbolPtr sym = declare(
-        s.name,
-        s.isMutable
-    );
+    SymbolPtr sym = declare(s.name, s.isMutable);
 
     if (!sym) {
         throw KMYCompileError(
-            "Redeclaration of variable \"" +
-            s.name + "\""
+            "Redeclaration of variable \"" + s.name + "\""
         );
     }
 
@@ -196,18 +219,24 @@ void SymbolScopeBuilder::visit(Let& s) {
         s.expr->accept(*this);
 }
 
-void SymbolScopeBuilder::visit(Class& s) {
-    // Declare class in outer scope
-    SymbolPtr sym = declare(s.name, false);
+void SymbolScopeBuilder::visit(Aggregate& s) {
+    // Declare class in outer scope (maybe not.)
+    // SymbolPtr sym = declare(s.name, false);
 
+    // class is immutable type?
+    s.typeSymbol = declareType(s.name, false);
+
+    /*
     if (!sym) {
         throw KMYCompileError(
-            "Redeclaration of class \"" +
-            s.name + "\""
+            "Redeclaration of " + 
+            std::string(s.kind == AggregateKind::RECORD ? "record" : "class") +
+            " \"" + s.name + "\""
         );
     }
 
     s.symbol = sym;
+    */
 
     // Class scope
     enterScope();
@@ -216,15 +245,11 @@ void SymbolScopeBuilder::visit(Class& s) {
 
     // Fields
     for (auto& member : s.fieldMembers) {
-        SymbolPtr fieldSym = declare(
-            member.name,
-            member.isMutable
-        );
+        SymbolPtr fieldSym = declare(member.name, member.isMutable);
 
         if (!fieldSym) {
             throw KMYCompileError(
-                "Redeclaration of field \"" +
-                member.name + "\""
+                "Redeclaration of field \"" + member.name + "\""
             );
         }
 
@@ -236,8 +261,29 @@ void SymbolScopeBuilder::visit(Class& s) {
 
     // Methods
     for (auto& member : s.methodMembers) {
+        // Methods are not mutable.
+        SymbolPtr methodSym = declare(member.name, false);
+
+        if (!methodSym) {
+            throw KMYCompileError(
+                "Redeclaration of method \"" + member.name + "\""
+            );
+        }
+
+        member.symbol = methodSym;
         member.methodExpr->accept(*this);
     }
 
+    s.scope = currScope;
+
     exitScope();
+}
+
+void SymbolScopeBuilder::visit(TypeAlias& s) {
+    // STUB
+    s.typeSymbol = declareType(s.name, false);
+}
+
+void SymbolScopeBuilder::visit(ExprStmt& s) {
+    s.expr->accept(*this);
 }

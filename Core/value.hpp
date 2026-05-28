@@ -35,9 +35,10 @@ enum class ObjKind {
     Array,
     Function,
     NativeFn,
-    BoundFn,
+    //BoundFn,
     Record,
-    Class
+    Class,
+    Instance
 };
 
 // This represents HEAP ALLOCATED VALUES (not {}; they are records.)
@@ -49,16 +50,17 @@ struct Object {
 
 using ObjectPtr = std::shared_ptr<Object>;
 
+using RecordPtr = std::shared_ptr<struct Record>;
+
 using ValueType = std::variant<
     std::nullptr_t,
     int,
     double,
     bool,
     std::string,
+    RecordPtr,
     ObjectPtr // Heap allocated values
 >;
-
-
 
 struct Value {
     ValueType data;
@@ -70,9 +72,37 @@ struct Value {
     Value(double v) : data(v) {}
     Value(bool b) : data(b) {}
     Value(const std::string& s) : data(s) {}
+    Value(RecordPtr r) : data(std::move(r)) {}
     Value(const ObjectPtr& o) : data(o) {}
 
     std::string toString() const;
+    Value clone() const; // For copying records (value semantics)
+};
+
+// Record is stack allocated, so it is not an object and copies happen when assigned.
+struct Record {
+    // Old.
+    // std::unordered_map<std::string, Value> fields;
+
+    std::vector<Value> fields;
+
+    Record() = default;
+    Record(const std::vector<Value>& fields) : fields(fields) {};
+    RecordPtr clone() const {
+        auto record = std::make_shared<Record>();
+        for (const auto& field : fields) {
+            if (std::holds_alternative<RecordPtr>(field.data)) {
+                // Recursive clone happens inside Value constructor.
+
+                record->fields.push_back(
+                    Value(std::get<RecordPtr>(field.data)->clone())
+                );
+            } else {
+                record->fields.push_back(field);
+            }
+        }
+        return record;
+    }
 };
 
 using ArrayPtr = std::shared_ptr<struct ArrayObj>;
@@ -90,12 +120,12 @@ struct ArrayObj : Object {
 // A shared mutable cell for closures
 // Runtime object.
 struct Upvalue {
-    Value* location;
+    int stackSlot;
     Value closed; // The value in stack is copied.
     bool isClosed = false;
 
-    Upvalue(Value* location, Value closed, bool isClosed)
-        : location(location), closed(closed), isClosed(isClosed) {}
+    Upvalue(int stackSlot, Value closed, bool isClosed)
+        : stackSlot(stackSlot), closed(closed), isClosed(isClosed) {}
 };
 
 using UpvaluePtr = std::shared_ptr<Upvalue>;
@@ -113,6 +143,13 @@ struct FunctionObj : Object {
         const std::vector<Parameter>& params,
         StmtPtr body
     ) : Object(ObjKind::Function), params(move(params)), body(move(body)) {}
+
+    FunctionObj (
+        const std::vector<Parameter>& params,
+        Chunk chunk,
+        int frameSize,
+        std::vector<UpvaluePtr> upvalues
+    ) : Object(ObjKind::Function), params(move(params)), chunk(chunk), frameSize(frameSize), upvalues(move(upvalues)) {}
 };
 
 struct NativeFnObj : Object {
@@ -123,27 +160,16 @@ struct NativeFnObj : Object {
           func(std::move(f)) {}
 };
 
-struct RecordObj : Object {
+struct InstanceObj : Object {
     std::unordered_map<std::string, Value> fields;
     ClassPtr cls = nullptr;
 
-    RecordObj() : Object(ObjKind::Record) {}
+    InstanceObj() : Object(ObjKind::Instance) {}
 
-    RecordObj(
+    InstanceObj(
         std::unordered_map<std::string, Value> fields,
         ClassPtr cls = nullptr
-    ) : Object(ObjKind::Record), fields(std::move(fields)), cls(std::move(cls)) {}
-};
-
-struct BoundFnObj : Object {
-    FunctionPtr fn;
-    ObjectPtr receiver; // The object the function is called from.
-    // i.e., "receiver" called "fn"
-
-    BoundFnObj(FunctionPtr fn, ObjectPtr receiver)
-        : Object(ObjKind::BoundFn),
-        fn(std::move(fn)),
-        receiver(std::move(receiver)) {}
+    ) : Object(ObjKind::Instance), fields(std::move(fields)), cls(std::move(cls)) {}
 };
 
 struct ClassObj : Object {

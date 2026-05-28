@@ -109,15 +109,13 @@ int ClosureAnalyser::allocateLocal(SymbolPtr sym) {
     currCtx->localMap[sym] = slot;
 
     std::cout << sym << std::endl;
-    std::cout << slot << std::endl;
+    std::cout << "Allocating local variable: " << sym->name << " at slot " << slot << std::endl;
     currCtx->locals.push_back(Local{
         sym,
         slot,
         currCtx->scopeDepth,
         false, // initially not captured.
     });
-
-    std::cout << "good" << std::endl;
 
     return slot;
 }
@@ -174,6 +172,9 @@ void ClosureAnalyser::visit(Get& e) {
 
 void ClosureAnalyser::visit(FunctionExpr& e) {
     // 1. Create new context
+
+    std::cout << "Entering function: " << e.params.size() << " params\n";
+
     FunctionContext* fnCtx = new FunctionContext;
     fnCtx->parent = currCtx;
     currCtx = fnCtx;
@@ -183,10 +184,10 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
         allocateLocal(param.symbol);
     }
 
-    std::cout << "go" << std::endl;
+    std::cout << "Local alloc done. body check." << std::endl;
     // 3. Body
     e.body->accept(*this);
-    std::cout << "done" << std::endl;
+    std::cout << "body check done" << std::endl;
 
     currCtx = fnCtx->parent;
     
@@ -263,8 +264,23 @@ void ClosureAnalyser::visit(Return& s) {
         s.expr->accept(*this);
 }
 
-void ClosureAnalyser::visit(Class& s) {
-    
+void ClosureAnalyser::visit(Aggregate& s) {
+    std::cout << "Entering class: ";
+
+    int offset = 0;
+    for (auto& field : s.fieldMembers) {
+        field.symbol->slot = offset++;
+        if (field.initialiser) {
+            field.initialiser->accept(*this);
+        }
+    }
+
+    for (auto& method : s.methodMembers) {
+        method.methodExpr->accept(*this);
+    }
+
+    s.fieldCount = offset;
+    std::cout << "member check done" << std::endl;
 }
 
 void ClosureAnalyser::visit(ExprStmt& s) {

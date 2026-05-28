@@ -37,10 +37,12 @@ public:
 private:
     const FunctionExprPtr program;
     
-    // TODO: to constructor?
     FunctionContext* currCtx;
     ResolvedVar resolveVariable(SymbolPtr sym);
     int allocateLocal(SymbolPtr sym);
+
+    bool insideMethod = false;
+    Aggregate* currentAggregate = nullptr;
 
     // Expressions
     void visit(Literal& e) override;
@@ -66,6 +68,7 @@ private:
     void visit(Continue& s) override;
     void visit(Let& s) override;
     void visit(Return& s) override;
-    void visit(Class& s) override;
+    void visit(Aggregate& s) override;
+    void visit(TypeAlias& s) override;
     void visit(ExprStmt& s) override;
 };
