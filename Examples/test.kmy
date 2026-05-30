@@ -1,11 +1,28 @@
 fun main() {
     print("hi");
-    let x = 3;
-    let inner = fun(a, b) { return a + b + x; };
+    let x: int = 3;
+    let inner = fun(a:int , b:int): int { return a + b + x; };
     return inner;
 }
+
+fun endPrinter(): void { print("bye"); }
 
 print("Do I even run");
 let add = main();
 print(add);
 print(add(1, 2));
+
+class X {
+    let x = 7;
+    fun giveMeFourtyTwo() {
+        return 42;
+    }
+    fun main() {
+        let y = this.giveMeFourtyTwo();
+        print(this.x + y);
+    }
+};
+
+let obj: X;
+
+endPrinter();

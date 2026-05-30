@@ -2,6 +2,8 @@
 #include <vector>
 #include <memory>
 
+using SymbolPtr = std::shared_ptr<struct Symbol>;
+
 enum class TypeNodeKind {
     NAMED,
     FUNCTION,
@@ -64,13 +66,13 @@ enum class TypeKind {
     STRING,
     NULLTYPE,
     ARRAY,
-    AGGREGATE, // record or class definitions + annoymous records {...}
-    INSTANCE, // class instances
+    STRUCTUAL, // annonymous records {...}
+    INSTANCE, // record or class instances
     FUNCTION, // Just denotes that the type is a function. 
     VOID, // Denotes no type. Only used for functions.
     ANY,
     UNKNOWN,
-    UNINITIALISED
+    UNINITIALISED // TODO: not rly a type, should be separate bool flag?
 };
 
 struct Type {
@@ -79,6 +81,7 @@ struct Type {
     Type(TypeKind kind) : kind(kind) {}
 };
 
+// TODO: to symbol maybe?
 struct ParamTypeInfo {
     bool hasDefault;
     bool isVariadic;
@@ -108,14 +111,40 @@ struct ArrayType : Type {
     ArrayType(Type* elementType) : Type(TypeKind::ARRAY), elementType(elementType) {}
 };
 
-struct AggregateType : Type {
+
+struct StructualType : Type {
     std::unordered_map<std::string, Type*> fieldTypes;
     std::unordered_map<std::string, int> layout;
 
-    AggregateType() : Type(TypeKind::AGGREGATE) {}
-    AggregateType(std::unordered_map<std::string, Type*> fieldTypes, std::unordered_map<std::string, int> layout)
-        : Type(TypeKind::AGGREGATE), fieldTypes(move(fieldTypes)), layout(move(layout)) {}
+    StructualType() : Type(TypeKind::STRUCTUAL) {}
+    StructualType(std::unordered_map<std::string, Type*> fieldTypes, std::unordered_map<std::string, int> layout)
+        : Type(TypeKind::STRUCTUAL), fieldTypes(move(fieldTypes)), layout(move(layout)) {}
 };
+
+// TODO: Use those instead of symbols later...
+struct FieldInfo {
+    int offset;
+    Type* type;
+};
+
+struct MethodInfo {
+    int fnProtoIdx;
+    Type* type;
+};
+
+struct InstanceType : Type {
+    std::unordered_map<std::string, SymbolPtr> fieldMap;
+    std::unordered_map<std::string, SymbolPtr> methodMap;
+
+    InstanceType() : Type(TypeKind::INSTANCE) {}
+
+    InstanceType(
+        std::unordered_map<std::string, SymbolPtr> fieldMap,
+        std::unordered_map<std::string, SymbolPtr> methodMap
+    ) 
+        : Type(TypeKind::INSTANCE), fieldMap(move(fieldMap)), methodMap(move(methodMap)) {}
+};
+
 
 namespace Types {
     inline Type INT_TYPE = { TypeKind::INT };

@@ -39,7 +39,8 @@ bool typeMatches(const Value& v, const Type& t) {
         case TypeKind::STRING:
             return std::holds_alternative<std::string>(v.data);
 
-        case TypeKind::AGGREGATE:
+            //TODO?
+        case TypeKind::STRUCTUAL:
             return std::holds_alternative<RecordPtr>(v.data);
 
         case TypeKind::ARRAY:

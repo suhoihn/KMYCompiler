@@ -108,6 +108,9 @@ int ClosureAnalyser::allocateLocal(SymbolPtr sym) {
     int slot = currCtx->nextSlot++;
     currCtx->localMap[sym] = slot;
 
+    // For debug.
+    sym->slot = slot;
+
     std::cout << sym << std::endl;
     std::cout << "Allocating local variable: " << sym->name << " at slot " << slot << std::endl;
     currCtx->locals.push_back(Local{
@@ -122,12 +125,10 @@ int ClosureAnalyser::allocateLocal(SymbolPtr sym) {
 
 
 void ClosureAnalyser::visit(Literal&) {}
-
 void ClosureAnalyser::visit(ArrayLiteral& e) {
     for (auto& elem : e.elements)
         elem->accept(*this);
 }
-
 void ClosureAnalyser::visit(RecordLiteral& e) {
     for (auto& [_, value] : e.fields)
         value->accept(*this);
@@ -144,37 +145,31 @@ void ClosureAnalyser::visit(BinaryExpr& e) {
     e.left->accept(*this);
     e.right->accept(*this);
 }
-
 void ClosureAnalyser::visit(UnaryExpr& e) {
     e.operand->accept(*this);
 }
-
 void ClosureAnalyser::visit(Assignment& e) {
     e.left->accept(*this);
     e.right->accept(*this);
 }
-
 void ClosureAnalyser::visit(Index& e) {
     e.obj->accept(*this);
     e.index->accept(*this);
 }
-
 void ClosureAnalyser::visit(Call& e) {
     e.func->accept(*this);
 
     for (auto& arg : e.args)
         arg->accept(*this);
 }
-
 void ClosureAnalyser::visit(Get& e) {
     e.obj->accept(*this);
 }
 
 void ClosureAnalyser::visit(FunctionExpr& e) {
-    // 1. Create new context
-
     std::cout << "Entering function: " << e.params.size() << " params\n";
-
+    
+    // 1. Create new context
     FunctionContext* fnCtx = new FunctionContext;
     fnCtx->parent = currCtx;
     currCtx = fnCtx;
@@ -201,7 +196,6 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
 }
 
 void ClosureAnalyser::visit(ThisExpr&) {}
-
 void ClosureAnalyser::visit(NewExpr& e) {
     for (auto& arg : e.args)
         arg->accept(*this);
@@ -212,7 +206,6 @@ void ClosureAnalyser::visit(NewExpr& e) {
 void ClosureAnalyser::visit(Print& s) {
     s.expr->accept(*this);
 }
-
 void ClosureAnalyser::visit(If& s) {
     s.condition->accept(*this);
 
@@ -221,12 +214,10 @@ void ClosureAnalyser::visit(If& s) {
     if (s.elsebranch)
         s.elsebranch->accept(*this);
 }
-
 void ClosureAnalyser::visit(While& s) {
     s.condition->accept(*this);
     s.body->accept(*this);
 }
-
 void ClosureAnalyser::visit(Block& s) {
     currCtx->scopeDepth++;   // ENTER scope
 
@@ -265,11 +256,11 @@ void ClosureAnalyser::visit(Return& s) {
 }
 
 void ClosureAnalyser::visit(Aggregate& s) {
-    std::cout << "Entering class: ";
+    std::cout << "Entering class: \n";
 
     int offset = 0;
     for (auto& field : s.fieldMembers) {
-        field.symbol->slot = offset++;
+        field.symbol->fieldOffset = offset++;
         if (field.initialiser) {
             field.initialiser->accept(*this);
         }
@@ -283,6 +274,7 @@ void ClosureAnalyser::visit(Aggregate& s) {
     std::cout << "member check done" << std::endl;
 }
 
+void ClosureAnalyser::visit(TypeAlias& s) {}
 void ClosureAnalyser::visit(ExprStmt& s) {
     s.expr->accept(*this);
 }

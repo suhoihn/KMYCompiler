@@ -2,11 +2,11 @@
 
 #include <iostream>
 #include <string>
-#include <vector>
-#include "tokens.hpp"
-#include "parser.hpp"
-#include "AstBaseForward.hpp"
 #include <unordered_map>
+#include <vector>
+#include "../Core/tokens.hpp"
+#include "../Core/AstBaseForward.hpp"
+#include "../Core/Ast.hpp"
 
 using namespace std; // TODO. please no.
 
@@ -364,8 +364,8 @@ static void printStmt(const StmtPtr stmt, int depth = 0) {
         cout << indent << "Return(\n";
         printExpr(r->expr, depth + 1);
         cout << indent << ")\n";
-    } else if (auto* c = dynamic_cast<Class*>(raw)) {
-        cout << indent << "Class(\n";
+    } else if (auto* c = dynamic_cast<Aggregate*>(raw)) {
+        cout << indent << "Aggregate(\n";
 
         cout << indent << "  Name: " << c->name << "\n";
         cout << indent << "  FieldMembers: (\n";
@@ -397,6 +397,10 @@ static void printStmt(const StmtPtr stmt, int depth = 0) {
         printExpr(exprStmt->expr, depth + 1);
         cout << indent << ")\n";
     }
+}
+
+void printAST(const ExprPtr expr) {
+    printExpr(expr);
 }
 
 void printAST(const vector<StmtPtr>& stmts) {

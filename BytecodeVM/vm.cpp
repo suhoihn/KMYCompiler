@@ -461,7 +461,7 @@ void VM::executeInstr(const Instruction& instr) {
             break;
         }
 
-        // ----- Records -----
+        // ----- Aggregates -----
         case Opcode::MAKE_RECORD: {
             auto rec = std::make_shared<Record>();
 
@@ -471,6 +471,10 @@ void VM::executeInstr(const Instruction& instr) {
 
             push(Value(rec));
             break;
+        }
+
+        case Opcode::MAKE_INSTANCE: {
+
         }
 
         case Opcode::GET_PROPERTY: {

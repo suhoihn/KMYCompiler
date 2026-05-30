@@ -106,11 +106,11 @@ Type* Resolver::typeSigToType(const TypeNodePtr& type) {
                 std::cout << layout.size() << std::endl;
             }
 
-            return new AggregateType(std::move(fieldTypes), std::move(layout));
+            return new StructualType(std::move(fieldTypes), std::move(layout));
         }
     }
 
-    throw KMYCompileError("Unknown type node kind.");
+    throw KMYCompileError("Severe: Unknown type node kind.");
 }
 
 
@@ -176,7 +176,7 @@ void Resolver::visit(RecordLiteral& e) {
         std::cout << "name: " << name << "slot: " << slot << std::endl;
     }
 
-    e.type = new AggregateType(std::move(fieldTypes), std::move(e.layout));
+    e.type = new StructualType(std::move(fieldTypes), std::move(e.layout));
 }
 
 void Resolver::visit(Variable& e) {
@@ -421,25 +421,49 @@ void Resolver::visit(Call& e) {
 
 void Resolver::visit(Get& e) {
     e.obj->accept(*this);
-    if (e.obj->type->kind != TypeKind::AGGREGATE && e.obj->type->kind != TypeKind::INSTANCE && e.obj->type != &Types::ANY_TYPE) {
+    if (e.obj->type->kind != TypeKind::STRUCTUAL && e.obj->type->kind != TypeKind::INSTANCE && e.obj->type != &Types::ANY_TYPE) {
         throw KMYCompileError("Only record or class instances can be accessed with dot operator.");
     }
 
     std::cout << "In get, this guy's type kind in int: " << (int)(e.obj->type->kind) << "\n";
     
     // HACK!!!
-    if (e.obj->type->kind == TypeKind::AGGREGATE) {
-        AggregateType* recordType = static_cast<AggregateType*>(e.obj->type);
+    if (e.obj->type->kind == TypeKind::STRUCTUAL) {
+        StructualType* recordType = static_cast<StructualType*>(e.obj->type);
         auto it = recordType->fieldTypes.find(e.name);
-        if (it == recordType->fieldTypes.end()) {
-            throw KMYCompileError("Field not found: " + e.name);
-        }
-        e.type = it->second;
-        e.fieldIdx = recordType->layout[e.name];
-        return;
+        if (it != recordType->fieldTypes.end()) {
+            e.type = it->second;
+            e.fieldIdx = recordType->layout[e.name];
+            return;
+        } 
+
+        throw KMYCompileError("Field not found: " + e.name);
 
     } else if (e.obj->type->kind == TypeKind::INSTANCE) {
-        throw KMYCompileError("Not yet bozo.");
+        InstanceType* aggType = static_cast<InstanceType*>(e.obj->type);
+
+        {
+            auto it = aggType->fieldMap.find(e.name);
+            if (it != aggType->fieldMap.end()) {
+                auto memberSym = it->second;
+                e.type = memberSym->type;
+                e.fieldIdx = memberSym->fieldOffset;
+                return;
+            } 
+        }
+            
+
+        {
+            auto it = aggType->methodMap.find(e.name);
+            if (it != aggType->methodMap.end()) {
+                auto memberSym = it->second;
+                e.type = memberSym->type;
+                // e.resolvedMethod = true; // Used later for lowering
+                return;
+            } 
+        }
+
+        throw KMYCompileError("Property not found: " + e.name);
     }
 
     // Fallback
@@ -504,11 +528,21 @@ void Resolver::visit(ThisExpr& e) {
         throw KMYCompileError("\"this\" used outside of method... :(");
     }
 
+    // TODO: symbol created? what? idt i need symbol here just types?
     e.symbol = currentThis;
     e.type = currentThis->type;
 }
 
 void Resolver::visit(NewExpr& e) {
+    TypeSymbol* aggType = resolveTypeSymbol(e.typeName);
+    
+    // TODO: Separate instance and agg type...
+    if (aggType->type->kind != TypeKind::INSTANCE) {
+        throw KMYCompileError("\"new\" keyword applied to non aggregate (record / class).");
+    }
+
+    e.type = aggType->type;
+
     for (auto& arg : e.args)
         arg->accept(*this);
 }
@@ -518,7 +552,6 @@ void Resolver::visit(NewExpr& e) {
 void Resolver::visit(Print& s) {
     s.expr->accept(*this);
 }
-
 void Resolver::visit(If& s) {
     s.condition->accept(*this);
 
@@ -527,7 +560,6 @@ void Resolver::visit(If& s) {
     if (s.elsebranch)
         s.elsebranch->accept(*this);
 }
-
 void Resolver::visit(While& s) {
     loopDepth++;
 
@@ -536,7 +568,6 @@ void Resolver::visit(While& s) {
 
     loopDepth--;
 }
-
 void Resolver::visit(Block& s) {
     Scope* old = currScope;
 
@@ -551,21 +582,18 @@ void Resolver::visit(Block& s) {
 
     currScope = old;
 }
-
 void Resolver::visit(Break&) {
     if (loopDepth <= 0) {
         // Not inside a loop.
         throw KMYCompileError("Invalid break position.");
     }
 }
-
 void Resolver::visit(Continue&) {
     if (loopDepth <= 0) {
         // Not inside a loop.
         throw KMYCompileError("Invalid continue position.");
     }
 }
-
 void Resolver::visit(Let& s) {
     Type* annotated = nullptr;
 
@@ -613,7 +641,6 @@ void Resolver::visit(Let& s) {
         s.symbol->type = inferred;
     }
 }
-
 void Resolver::visit(Return& s) {
     if (currScope->depth <= 0) {
         // Not in a function
@@ -632,9 +659,10 @@ void Resolver::visit(Aggregate& s) {
     currScope = s.scope;
 
     // Critical: make class type right after. Initially its inner types are empty.
-    AggregateType* classType = new AggregateType();
-    s.typeSymbol->type = classType;
-    currentAggregate = classType;
+    InstanceType* aggType = new InstanceType();
+
+    s.typeSymbol->type = aggType;
+    currentAggregate = aggType;
 
     for (auto& field : s.fieldMembers) {
         Type* fieldType;
@@ -651,22 +679,21 @@ void Resolver::visit(Aggregate& s) {
             fieldType = &Types::ANY_TYPE;
             // OR throw error...?
         }
-
-        classType->fieldTypes[field.name] = fieldType;
-        classType->layout[field.name] = classType->layout.size();
-
         field.symbol->type = fieldType;
+        aggType->fieldMap[field.name] = field.symbol;
     }
 
     auto oldThis = currentThis;
+    // TODO: needed?
     currentThis = std::make_shared<Symbol>("this", false);
     currentThis->type = currentAggregate;
 
     for (auto& member : s.methodMembers) {
         member.methodExpr->accept(*this);
         member.symbol->type = member.methodExpr->type; 
+        aggType->methodMap[member.name] = member.symbol;
     }
-    
+
     currentThis = oldThis;
     currentAggregate = oldAgg;
     currScope = old;

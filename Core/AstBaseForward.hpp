@@ -27,6 +27,12 @@ struct Symbol {
     bool captured = false;
     int upvalueIndex = INVALID_SLOT;
 
+    // Aggregate Info (if used)
+    int fieldOffset = INVALID_SLOT;
+
+    // Function Info (if used)
+    int funcProtoIdx = INVALID_SLOT;
+
     Symbol(const std::string& name, bool isMutable)
         : name(name), isMutable(isMutable) {}
 };
@@ -132,8 +138,10 @@ enum class Opcode {
     GET_INDEX,
     SET_INDEX, 
 
-    // Records
+    // Annonymous records, nominal records, and classes
     MAKE_RECORD, // field count
+    MAKE_INSTANCE, // aggregate id
+    MAKE_INSTANCE_SHARED, // aggregate id
     GET_PROPERTY, // slot
     SET_PROPERTY, // slot
 

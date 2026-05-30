@@ -129,7 +129,11 @@ struct Get : ExprHelper<Get, ExprKind::Get> {
     ExprPtr obj;
     std::string name; // TODO change all these string fields to TOKENS for debugging.
 
-    int fieldIdx; // For codegen, set by Resolver.      
+    int fieldIdx; // For codegen, set by Resolver. Only for fields.
+    
+    // For lowering. Check if its a form of obj.f (obj is aggregate, f is method)
+    bool resolvedMethod;
+
     virtual bool isLValue() const { return true; }
 
     Get(ExprPtr obj, const std::string& name);
@@ -155,6 +159,7 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
     Scope* scope = nullptr;
     std::vector<UpvalueInfo> upvalues;
     int frameSize = 0;
+    int fnProtoIdx = INVALID_SLOT;
 
     FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType);
 };

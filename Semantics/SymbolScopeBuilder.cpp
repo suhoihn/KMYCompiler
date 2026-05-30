@@ -66,61 +66,49 @@ TypeSymbol* SymbolScopeBuilder::declareType(const std::string& name, bool isMuta
 }
 
 void SymbolScopeBuilder::visit(Literal&) {}
-
 void SymbolScopeBuilder::visit(Variable&) {}
-
 void SymbolScopeBuilder::visit(ArrayLiteral& e) {
     for (auto& elem : e.elements)
         elem->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(RecordLiteral& e) {
-    std::unordered_set<std::string> fieldNames; // for checking duplicate field names
-    std::unordered_map<std::string, int> fieldNameToIndex;
+    std::unordered_set<std::string> seen;
+
     for (auto& [fieldName, value] : e.fields) {
-        if (fieldNames.find(fieldName) != fieldNames.end()) {
-            throw KMYCompileError("Duplicate field name \"" + fieldName + "\" in record literal.");
+        if (!seen.insert(fieldName).second) {
+            throw KMYCompileError(
+                "Duplicate field name \"" + fieldName + "\" in record literal."
+            );
         }
-        fieldNames.insert(fieldName);
-        fieldNameToIndex[fieldName] = fieldNameToIndex.size();
+
         value->accept(*this);
     }
-
-    e.layout = std::move(fieldNameToIndex);
 }
-
 void SymbolScopeBuilder::visit(BinaryExpr& e) {
     e.left->accept(*this);
     e.right->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(UnaryExpr& e) {
     e.operand->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(Assignment& e) {
     e.left->accept(*this);
     e.right->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(Index& e) {
     e.obj->accept(*this);
     e.index->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(Call& e) {
     e.func->accept(*this);
 
     for (auto& arg : e.args)
         arg->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(Get& e) {
     e.obj->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(ThisExpr&) {}
-
 void SymbolScopeBuilder::visit(NewExpr& e) {
     for (auto& arg : e.args)
         arg->accept(*this);
@@ -129,16 +117,13 @@ void SymbolScopeBuilder::visit(NewExpr& e) {
 void SymbolScopeBuilder::visit(FunctionExpr& e) {
     bool isRoot = (&e == program.get());
 
-    if (!isRoot)
+    if (!isRoot) {
         enterScope();
-
+    }
     e.scope = currScope;
 
     for (auto& param : e.params) {
-        SymbolPtr sym = declare(
-            param.name,
-            param.isMutable
-        );
+        SymbolPtr sym = declare(param.name, param.isMutable);
 
         if (!sym) {
             throw KMYCompileError(
@@ -150,8 +135,9 @@ void SymbolScopeBuilder::visit(FunctionExpr& e) {
 
     e.body->accept(*this);
 
-    if (!isRoot)
+    if (!isRoot) {
         exitScope();
+    }
 }
 
 // ======================================================
@@ -173,10 +159,6 @@ void SymbolScopeBuilder::visit(Block& s) {
         exitScope();
 }
 
-void SymbolScopeBuilder::visit(ExprStmt& s) {
-    s.expr->accept(*this);
-}
-
 void SymbolScopeBuilder::visit(Print& s) {
     s.expr->accept(*this);
 }
@@ -196,9 +178,7 @@ void SymbolScopeBuilder::visit(While& s) {
 }
 
 void SymbolScopeBuilder::visit(Break&) {}
-
 void SymbolScopeBuilder::visit(Continue&) {}
-
 void SymbolScopeBuilder::visit(Return& s) {
     if (s.expr)
         s.expr->accept(*this);

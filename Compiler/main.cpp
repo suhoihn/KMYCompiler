@@ -2,16 +2,18 @@
 #include <fstream>
 #include <exception>
 
+#include "../Utils/utils.hpp"
+#include "../Utils/SymbolPrinter.hpp"
 #include "../Core/lexer.hpp"
-#include "../Core/utils.hpp"
 #include "../Core/newParser.hpp"
 #include "../Core/Ast.hpp"
 #include "../Core/errorhandler.hpp"
 #include "../Semantics/SymbolScopeBuilder.hpp" // Pass 1
 #include "../Semantics/Resolver.hpp" // Pass 2
-#include "../Semantics/ClosureAnalyser.hpp" // Pass 3?
-// #include "../Semantics/typechecker.hpp" // Optional pass 4
-#include "compiler.hpp" // Closure check and code gen in pass 4
+#include "../Semantics/ClosureAnalyser.hpp" // Pass 3
+#include "../Semantics/MethodLower.hpp" // Pass 4
+// #include "../Semantics/typechecker.hpp" // Planned pass 5
+#include "compiler.hpp" // Code gen in pass 6
 #include <cstring>
 
 int main(int argc, char *argv[]) {
@@ -70,6 +72,10 @@ int main(int argc, char *argv[]) {
         // 2. Parse
         Parser parser(tokens);
         FunctionExprPtr program = parser.parse();
+        if (debugOutput) {
+            std::cout << "[DEBUG]: Tokens:\n";
+            printAST(program);
+        }
         
         std::cout << "[DEBUG]: Parsing finished. Ready to move onto semantic analysis." << std::endl;
         
@@ -79,21 +85,45 @@ int main(int argc, char *argv[]) {
 
         std::cout << "[DEBUG]: Symbol building done. Ready to resolve variables." << std::endl;
         
-        std::cout << "[DEBUG]: Global scope symbols:\n";
-        std::cout << globalScope << std::endl;
-        for (const auto& [name, sym] : globalScope->symbols) {
-            std::cout << "  " << name << " (mutable: " << sym->isMutable << ")\n";
+        if (debugOutput) {
+            std::cout << "[DEBUG]: Symbols built:\n";
+            SymbolPrinter symPrinter(program);
+            symPrinter.print();
         }
-        std::cout << "so it was empty" << std::endl;
+
         // 3-2. Variable resolvance
         Resolver resolver(program, globalScope);
         resolver.resolve();
         
-        std::cout << "[DEBUG]: Variable resolvance done. Ready to allocate local slots and analyse closures." << std::endl;
-        
-        // 3-3. Closure analysis?
+        if (debugOutput) {
+            std::cout << "[DEBUG]: Symbols built:\n";
+            SymbolPrinter symPrinter(program);
+            symPrinter.print();
+        }
+
+        std::cout << "[DEBUG]: Variable resolvance done. Ready to lower methods if one exists." << std::endl;
+
+        //3-2.5(?). Method lowering
+        MethodLower lower(program);
+        lower.lower();
+
+        if (debugOutput) {
+            std::cout << "[DEBUG]: Symbols built:\n";
+            SymbolPrinter symPrinter(program);
+            symPrinter.print();
+        }
+
+        std::cout << "[DEBUG]: Method lowering done. Ready to allocate local slots and analyse closures." << std::endl;
+
+        // 3-3. Closure analysis and slot allocation.
         ClosureAnalyser analyser(program);
         analyser.analyse();
+
+        if (debugOutput) {
+            std::cout << "[DEBUG]: Symbols built:\n";
+            SymbolPrinter symPrinter(program);
+            symPrinter.print();
+        }
         
         std::cout << "[DEBUG]: Slot allocation and closure analysis done." << std::endl;
         
@@ -105,6 +135,7 @@ int main(int argc, char *argv[]) {
             // checker.check();
             // std::cout << "[DEBUG]: Type checks done." << std::endl;
         }
+
         
         std::cout << "[DEBUG]: Ready for code generation." << std::endl;
 

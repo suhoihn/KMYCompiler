@@ -2,36 +2,19 @@
 
 #include <vector>
 #include "../Core/Ast.hpp"
-#include "SymbolScopeBuilder.hpp" // hack?
 
-// Pass 2: Name Resolution
-// Resolves identifier usages to their declared symbols using the scope tree built in Pass 1.
-// Binds variables/functions/classes to Symbol objects and reports undefined references.
-// Also checks valid loop break/continue, return statements.
-// Also does some type building.
-
-class Resolver : public Visitor {
+class SymbolPrinter : public Visitor {
 public:
-    Resolver(FunctionExprPtr program, Scope* globalScope);
-    void resolve();
-
+    SymbolPrinter(FunctionExprPtr program);
+    void print();
+    
 private:
-    const FunctionExprPtr program;
-    Scope* globalScope;
-    Scope* currScope;
+    int depth = 0;
+    std::string indent();
+    void printSymbol(SymbolPtr sym);
 
-    Type* expectedType = nullptr;
+    FunctionExprPtr program;
 
-    int loopDepth = 0;
-
-    Type* typeSigToType(const TypeNodePtr& type);
-    TypeSymbol* resolveTypeSymbol(const std::string& name);
-    SymbolPtr resolveSymbol(const std::string& name);
-
-    InstanceType* currentAggregate = nullptr;
-    SymbolPtr currentThis = nullptr; 
-
-    // Expressions
     void visit(Literal& e) override;
     void visit(ArrayLiteral& e) override;
     void visit(RecordLiteral& e) override;

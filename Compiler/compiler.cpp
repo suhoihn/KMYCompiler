@@ -490,6 +490,7 @@ void Compiler::visit(Return& s) {
     }
 }
 
+/*
 struct MethodInfo {
     std::string name;
     int protoIdx;
@@ -501,18 +502,20 @@ struct AggregateInfo {
 
     std::vector<MethodInfo> methodInfos; 
 };
+*/
 
 void Compiler::visit(Aggregate& s) {     
     // We don't generate code for fields.
 
-    AggregateInfo aggInfo;
-    aggInfo.fieldSize = s.fieldCount;
+    // AggregateInfo aggInfo;
+    // aggInfo.fieldSize = s.fieldCount;
 
     compilingMethod = true;
     for (auto& method : s.methodMembers) {
         method.methodExpr->accept(*this);
+        method.methodExpr->fnProtoIdx = funcProtoCnt;
 
-        aggInfo.methodInfos.push_back({ method.name, funcProtoCnt });
+        //aggInfo.methodInfos.push_back({ method.name, funcProtoCnt });
 
     }
     compilingMethod = false;
