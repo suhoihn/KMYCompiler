@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "../Core/errorhandler.hpp"
 #include "../Core/tokens.hpp"
 #include "../Core/AstBaseForward.hpp"
 #include "../Core/Ast.hpp"
@@ -82,6 +83,7 @@ static const std::unordered_map<TokenType, std::string> tokenTypeNames = {
     {TokenType::KeywordNew, "KeywordNew"},
     {TokenType::KeywordTypealias, "KeywordTypealias"},
     {TokenType::KeywordRecord, "KeywordRecord"},
+    {TokenType::KeywordInit, "KeywordInit"},
 
     // Type keywords
     {TokenType::KeywordInt, "KeywordInt"},
@@ -174,7 +176,11 @@ static const unordered_map<TokenType, string> tokenTypeSymbols = {
 
 void printTokens(const vector<Token>& tokens) {
     for (const auto& token : tokens) {
-        cout << "[" << tokenTypeNames.at(token.type) << ", \"" << token.lexeme << "\"]" << endl;
+        if (!tokenTypeNames.count(token.type)) {
+            throw std::runtime_error("Unknown token type to print. Maybe u forgot to add in the map.");
+        }
+        auto& tokenStr = tokenTypeNames.at(token.type);
+        cout << "[" << tokenStr << ", \"" << token.lexeme << "\"]" << endl;
      }
 }
 

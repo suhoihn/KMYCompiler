@@ -3,6 +3,8 @@
 #include <vector>
 #include "../Core/Ast.hpp"
 
+std::string typeToString(Type* type);
+
 class SymbolPrinter : public Visitor {
 public:
     SymbolPrinter(FunctionExprPtr program);

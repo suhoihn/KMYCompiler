@@ -22,6 +22,8 @@ private:
 
     Type* expectedType = nullptr;
 
+    bool assigning = false;
+
     int loopDepth = 0;
 
     Type* typeSigToType(const TypeNodePtr& type);

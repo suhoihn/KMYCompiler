@@ -234,7 +234,28 @@ void Compiler::visit(Call& e) {
     std::cout << "Compiling function call..." << std::endl;
 
     // Push function
-    e.func->accept(*this);
+    if (e.func->kind == ExprKind::Get) {
+        // obj.f()
+        // ^^^^^callee
+        auto callee = std::static_pointer_cast<Get>(e.func);
+        // change maybe. hard to track.
+        if (callee->resolvedMethod) {
+            // Instance object.
+            if (callee->obj->type->kind != TypeKind::INSTANCE) {
+                throw KMYCompileError("Serious error. not an instance?");
+            }
+            auto aggType = static_cast<InstanceType*>(callee->obj->type);
+
+            // To be used for vtables.
+            int methodIdx = callee->methodIdx;
+
+            emit(Opcode::MAKE_CLOSURE, aggType->methodMap[callee->name]->funcProtoIdx);
+        } else {
+            e.func->accept(*this);
+        }
+    } else {
+        e.func->accept(*this);
+    }
 
     // Push args
     for(auto it = e.args.rbegin(); it != e.args.rend(); ++it) {
@@ -280,8 +301,12 @@ void Compiler::visit(FunctionExpr& e) {
     }
 
     std::cout << "body compile" << std::endl;
+
+    bool isCompilingMethod = compilingMethod;
+    compilingMethod = false;
     // 3. Body
     e.body->accept(*this);
+    compilingMethod = isCompilingMethod;
     
     std::cout << "body compile done" << std::endl;
 
@@ -289,6 +314,11 @@ void Compiler::visit(FunctionExpr& e) {
     if (currCtx->parent == nullptr) {
         // Top level function. Emit HALT.
         emit(Opcode::HALT);
+    } else if (isConstructor) {
+        
+        // Constructor returns "this". (because of "new")
+        emit(Opcode::LOAD_LOCAL, 0);
+        emit(Opcode::RETURN_VALUE);
     } else {
         // Not top level. Just return.
         emit(Opcode::RETURN_VOID);
@@ -303,11 +333,12 @@ void Compiler::visit(FunctionExpr& e) {
 
     // 6. Register proto
     int fnIndex = allocateFuncProto(fnProto);
+    e.fnProtoIdx = fnIndex;
     
     // 7. Emit closure (NOT MAKE_FUNCTION)
     
     if (currCtx) {
-        if (!compilingMethod) {
+        if (!isCompilingMethod) {
             emit(Opcode::MAKE_CLOSURE, fnIndex);
         }
         // Not a top level function.
@@ -341,7 +372,44 @@ void Compiler::visit(ThisExpr& e) {
     emit(Opcode::LOAD_LOCAL, 0);
 }
 
-void Compiler::visit(NewExpr& e) { throw std::runtime_error("NOT IMPLEMENTED"); }
+void Compiler::visit(NewExpr& e) { 
+    // NewExpr's type is always aggregate... right?
+    if (e.type->kind != TypeKind::INSTANCE) {
+        throw KMYCompileError("new applied to non aggregate type. but this should not print here.");
+    }
+    auto aggType = static_cast<InstanceType*>(e.type);
+    int argCnt = e.args.size();
+
+    for (auto& constructor : aggType->constructorVec) {
+        std::cout << "good. now crash.\n";
+        if (constructor->type->kind != TypeKind::FUNCTION) {
+            throw KMYCompileError("Constuctor is not a function? This is weird.");
+        }
+        auto constrFuncType = static_cast<FunctionType*>(constructor->type);
+        // HACK HACK HACK
+        if (constrFuncType->paramTypes.size() == argCnt) {
+            // HACK
+            // TODO: argCnt needs update
+            // Calling the user constructor
+            // Inside, the field init func will run first.
+            emit(Opcode::MAKE_CLOSURE, constructor->funcProtoIdx);
+            
+            // Basically allocating memory.
+            for (size_t i = 0; i < aggType->fieldMap.size(); ++i) {
+                // field init
+                emit(Opcode::PUSH_UNINITIALISED);
+            }
+            emit(Opcode::MAKE_RECORD, aggType->fieldMap.size());
+            
+            for(auto it = e.args.begin(); it != e.args.end(); ++it) {
+                (*it)->accept(*this);
+            }
+            emit(Opcode::CALL, argCnt + 1);
+            return;
+        }
+    }
+    throw KMYCompileError("Cannot find a constructor matching arg cnt from new expr.");
+}
 
 
 // Statements
@@ -513,11 +581,22 @@ void Compiler::visit(Aggregate& s) {
     compilingMethod = true;
     for (auto& method : s.methodMembers) {
         method.methodExpr->accept(*this);
-        method.methodExpr->fnProtoIdx = funcProtoCnt;
+        method.symbol->funcProtoIdx = method.methodExpr->fnProtoIdx;
 
         //aggInfo.methodInfos.push_back({ method.name, funcProtoCnt });
 
     }
+
+    isConstructor = true;
+    for (auto& constructor : s.constructorMembers) {
+        constructor.initFuncExpr->accept(*this);
+        constructor.symbol->funcProtoIdx = constructor.initFuncExpr->fnProtoIdx;
+
+        //aggInfo.methodInfos.push_back({ method.name, funcProtoCnt });
+    }
+    isConstructor = false;
+
+
     compilingMethod = false;
 }
 

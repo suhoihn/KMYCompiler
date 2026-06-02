@@ -58,8 +58,9 @@ using ValueType = std::variant<
     double,
     bool,
     std::string,
-    RecordPtr,
-    ObjectPtr // Heap allocated values
+    RecordPtr, // Internally, records are passed by references. Only on usages they are copied.
+    ObjectPtr, // Heap allocated values
+    GarbageValue
 >;
 
 struct Value {
@@ -74,6 +75,7 @@ struct Value {
     Value(const std::string& s) : data(s) {}
     Value(RecordPtr r) : data(std::move(r)) {}
     Value(const ObjectPtr& o) : data(o) {}
+    Value(GarbageValue g) : data(g) {}
 
     std::string toString() const;
     Value clone() const; // For copying records (value semantics)
@@ -172,6 +174,7 @@ struct InstanceObj : Object {
     ) : Object(ObjKind::Instance), fields(std::move(fields)), cls(std::move(cls)) {}
 };
 
+// NOTE: This is unused after moving to bytecode VM.
 struct ClassObj : Object {
     // Used for instantiating objects.
     // When a new instance is created, all values in fieldDefaults are COPIED.

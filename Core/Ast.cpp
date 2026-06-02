@@ -27,8 +27,10 @@ NewExpr::NewExpr(std::string typeName, std::vector<ExprPtr> args) : typeName(mov
 
 // -----Statements
 Print::Print(ExprPtr expr) : expr(move(expr)) {}
-If::If(ExprPtr condition, StmtPtr thenbranch, StmtPtr elsebranch=nullptr) : condition(move(condition)), thenbranch(move(thenbranch)), elsebranch(move(elsebranch)) {}
-While::While(ExprPtr condition, StmtPtr body) : condition(move(condition)), body(move(body)) {}
+If::If(ExprPtr condition, StmtPtr thenbranch, StmtPtr elsebranch=nullptr) 
+    : condition(move(condition)), thenbranch(move(thenbranch)), elsebranch(move(elsebranch)) {}
+While::While(ExprPtr condition, StmtPtr body) 
+    : condition(move(condition)), body(move(body)) {}
 // Nothing for Break
 // Nothing for Continue
 Block::Block(std::vector<StmtPtr> statements) : statements(move(statements)) {}
@@ -41,12 +43,23 @@ FieldMember::FieldMember(TypeNodePtr annotatedType, std::string name, ExprPtr in
 MethodMember::MethodMember(std::string name, FunctionExprPtr methodExpr) 
     : name(move(name)), methodExpr(move(methodExpr)) {}
 
+ConstructorMember::ConstructorMember(FunctionExprPtr initFuncExpr) 
+    : initFuncExpr(move(initFuncExpr)) {}  
+
 Aggregate::Aggregate (
     AggregateKind kind,
     std::string name,
     std::vector<FieldMember> fieldMembers, 
-    std::vector<MethodMember> methodMembers
-) : kind(kind), name(move(name)), fieldMembers(move(fieldMembers)), methodMembers(move(methodMembers)) {}
+    std::vector<MethodMember> methodMembers,
+    std::vector<ConstructorMember> constructorMembers
+    //FunctionExprPtr fieldInitFunc
+) : 
+kind(kind),
+name(move(name)),
+fieldMembers(move(fieldMembers)),
+methodMembers(move(methodMembers)),
+constructorMembers(move(constructorMembers)) {}
+//fieldInitFunc(move(fieldInitFunc)) {}
 
 TypeAlias::TypeAlias(std::string name, TypeNodePtr type) : name(move(name)), annotatedType(move(annotatedType)) {}
 

@@ -135,14 +135,19 @@ struct MethodInfo {
 struct InstanceType : Type {
     std::unordered_map<std::string, SymbolPtr> fieldMap;
     std::unordered_map<std::string, SymbolPtr> methodMap;
+    std::vector<SymbolPtr> constructorVec;
 
     InstanceType() : Type(TypeKind::INSTANCE) {}
 
     InstanceType(
         std::unordered_map<std::string, SymbolPtr> fieldMap,
-        std::unordered_map<std::string, SymbolPtr> methodMap
-    ) 
-        : Type(TypeKind::INSTANCE), fieldMap(move(fieldMap)), methodMap(move(methodMap)) {}
+        std::unordered_map<std::string, SymbolPtr> methodMap,
+        std::vector<SymbolPtr> constructorVec
+    ) : 
+        Type(TypeKind::INSTANCE),
+        fieldMap(move(fieldMap)),
+        methodMap(move(methodMap)),
+        constructorVec(move(constructorVec)) {}
 };
 
 

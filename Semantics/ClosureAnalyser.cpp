@@ -1,5 +1,6 @@
 #include "ClosureAnalyser.hpp"
 #include "../Core/errorhandler.hpp"
+#include "../Utils/SymbolPrinter.hpp"
 
 ClosureAnalyser::ClosureAnalyser(FunctionExprPtr program)
     : program(program)
@@ -13,6 +14,9 @@ void ClosureAnalyser::analyse() {
 }
 
 static int resolveUpvalue(FunctionContext* fnCtx, SymbolPtr sym) {
+    if (!sym) {
+        throw KMYCompileError("Symbol not resolved? this is stupid.");
+    }
     // Returns the slot of upvalue where name belongs in fnCtx's context.
     // std::cout << "[DEBUG] Resolving upvalue for symbol: " << sym->name << std::endl;
 
@@ -78,11 +82,16 @@ static int resolveUpvalue(FunctionContext* fnCtx, SymbolPtr sym) {
 
 
 ResolvedVar ClosureAnalyser::resolveVariable(SymbolPtr sym) {
+    if (!sym) {
+        throw KMYCompileError("Symbol not resolved? this is stupid.");
+    }
+
     // 1. Local
     auto& localMap = currCtx->localMap;
     auto it = localMap.find(sym);
     if (it != localMap.end()) {
         // Found in local. Easy.
+        std::cout << "Easy!\n";
         return ResolvedVar {
             ResolvedVar::Kind::LOCAL,
             it->second,
@@ -105,6 +114,10 @@ ResolvedVar ClosureAnalyser::resolveVariable(SymbolPtr sym) {
 }
 
 int ClosureAnalyser::allocateLocal(SymbolPtr sym) {
+    if (!sym) {
+        throw KMYCompileError("Symbol not resolved? this is stupid.");
+    }
+
     int slot = currCtx->nextSlot++;
     currCtx->localMap[sym] = slot;
 
@@ -135,8 +148,20 @@ void ClosureAnalyser::visit(RecordLiteral& e) {
 }
 
 void ClosureAnalyser::visit(Variable& e) {
+    std::cout << "haha i got ya\n";
+    std::cout << "var node=" << &e << '\n';
+    std::cout << "symbol=" << e.symbol.get() << '\n';
+    std::cout << "resolved= " << e.resolved << "\n";
+    std::cout << "resolution=" << (int)e.resolution.kind << "\n";
+    std::cout << typeToString(e.type) << "\n";
+    std::cout << "name=" << e.name << "\n"; 
+
+    if (e.symbol)
+        std::cout << "symbol name=" << e.symbol->name << '\n';
+        
     if (!e.resolved) {
         e.resolved = true;
+        std::cout << "Lets resolve null\n";
         e.resolution = resolveVariable(e.symbol);
     }
 }
@@ -149,6 +174,7 @@ void ClosureAnalyser::visit(UnaryExpr& e) {
     e.operand->accept(*this);
 }
 void ClosureAnalyser::visit(Assignment& e) {
+    std::cout << "crash now.\n";
     e.left->accept(*this);
     e.right->accept(*this);
 }
@@ -157,10 +183,16 @@ void ClosureAnalyser::visit(Index& e) {
     e.index->accept(*this);
 }
 void ClosureAnalyser::visit(Call& e) {
+    std::cout << "Is call the culprit?\n";
     e.func->accept(*this);
 
-    for (auto& arg : e.args)
+    std::cout << "not the func\n";
+    for (auto& arg : e.args) {
+        std::cout << "then which arg?\n";
         arg->accept(*this);
+    }
+    
+    std::cout << "no\n";
 }
 void ClosureAnalyser::visit(Get& e) {
     e.obj->accept(*this);
@@ -176,6 +208,9 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
 
     // 2. Parameters
     for (auto& param : e.params) {
+        if (!param.symbol) {
+            throw KMYCompileError("Symbol not resolved in param? this is stupid.");
+        }
         allocateLocal(param.symbol);
     }
 
@@ -204,7 +239,9 @@ void ClosureAnalyser::visit(NewExpr& e) {
 
 // Statements
 void ClosureAnalyser::visit(Print& s) {
+    std::cout << "print? ru culprit\n";
     s.expr->accept(*this);
+    std::cout << "no haha\n";
 }
 void ClosureAnalyser::visit(If& s) {
     s.condition->accept(*this);
@@ -260,7 +297,7 @@ void ClosureAnalyser::visit(Aggregate& s) {
 
     int offset = 0;
     for (auto& field : s.fieldMembers) {
-        field.symbol->fieldOffset = offset++;
+        offset++;
         if (field.initialiser) {
             field.initialiser->accept(*this);
         }
@@ -268,6 +305,10 @@ void ClosureAnalyser::visit(Aggregate& s) {
 
     for (auto& method : s.methodMembers) {
         method.methodExpr->accept(*this);
+    }
+
+    for (auto& method : s.constructorMembers) {
+        method.initFuncExpr->accept(*this);
     }
 
     s.fieldCount = offset;

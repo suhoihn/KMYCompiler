@@ -244,9 +244,9 @@ StmtPtr Parser::parse_for() {
 
     if (match(TokenType::Semicolon)) {
         initialiser = nullptr;
-    } else if (check(TokenType::KeywordLet)) {
+    } else if (match(TokenType::KeywordLet)) {
         // Kinda cheating, but only allowing let statements.
-        initialiser = parse_statement(); // This consumes ';'
+        initialiser = parse_let(); // This consumes ';'
     } else {
         initialiser = std::make_shared<ExprStmt>(parse_expression());
         consumeSemicolon();
@@ -312,14 +312,68 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
     consume(TokenType::LeftBrace, "Expected '{'");
     std::vector<FieldMember> fieldMembers;
     std::vector<MethodMember> methodMembers;
+    std::vector<ConstructorMember> constructorMembers;
+
+    std::vector<StmtPtr> initStmts;
+
     while (!match(TokenType::RightBrace)) {
-        if (match(TokenType::KeywordLet)) {
+        if (match(TokenType::KeywordInit)) {
+            // Constructors
+            FunctionExprPtr constructorFunc = std::static_pointer_cast<FunctionExpr>(parse_functionExpr());
+            constructorMembers.push_back(
+                ConstructorMember(constructorFunc)
+            );
+
+        } else if (match(TokenType::KeywordLet)) {
             std::shared_ptr<Let> letStmt = std::static_pointer_cast<Let>(parse_let());
+            /*
+            Token name = consume(TokenType::Identifier, "Expected an identifier.");
+            
+            TypeNodePtr typeAnnotation = nullptr;
+            if (match(TokenType::Colon)) {
+                typeAnnotation = parse_type();
+            }
+            
+            ExprPtr initExpr = nullptr;
+            if (match(TokenType::Assign)) {
+                initExpr = parse_expression();
+            }
+
+            consumeSemicolon();
+            
+            if (initExpr) {
+                initStmts.push_back(std::make_shared<ExprStmt>(
+                    std::make_shared<Assignment>(
+                        AssignmentOp::Assign,
+                        std::make_shared<Get>(
+                            std::make_shared<ThisExpr>(),
+                            name.lexeme
+                        ),
+                        std::move(initExpr)
+                    )
+                ));
+            }
+            */
+
+            if (letStmt->expr) {
+                initStmts.push_back(std::make_shared<ExprStmt>(
+                    std::make_shared<Assignment>(
+                        AssignmentOp::Assign,
+                        std::make_shared<Get>(
+                            std::make_shared<ThisExpr>(),
+                            letStmt->name
+                        ),
+                        std::move(letStmt->expr)
+                    )
+                ));
+            }
+
             fieldMembers.push_back(
                 FieldMember(
-                    letStmt->annotatedType,
-                    move(letStmt->name),
+                    move(letStmt->annotatedType),
+                    letStmt->name,
                     move(letStmt->expr),
+                    // TODO: Unify parsing [modifiers] [name] ':' [type] '=' [expr] format.
                     letStmt->isMutable
                 )
             );
@@ -340,11 +394,22 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
 
     consumeSemicolon();
 
+    // We inject field initialisation statements in front of user-defined constructor body
+    for (auto& constrMem : constructorMembers) {
+        auto constrBody = std::static_pointer_cast<Block>(constrMem.initFuncExpr->body);
+        constrBody->statements.insert(
+            constrBody->statements.begin(),
+            initStmts.begin(),
+            initStmts.end()
+        );
+    }
+
     return std::make_shared<Aggregate>(
         kind,
         move(name.lexeme),
         move(fieldMembers),
-        move(methodMembers)
+        move(methodMembers),
+        move(constructorMembers)
     );
 }
 

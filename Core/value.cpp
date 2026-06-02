@@ -117,6 +117,9 @@ std::string Value::toString() const {
             return "Class";
         }
     }
+    if (std::holds_alternative<GarbageValue>(data)) {
+        return "GARBAGE_VALUE";
+    }
     return "unknown";
 }
 

@@ -254,6 +254,16 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
         member.methodExpr->accept(*this);
     }
 
+    // Constructors
+    int cnt = 0;
+    for (auto& member : s.constructorMembers) {
+        // Methods are not mutable.
+        SymbolPtr constrSym = declare("implicit_init" + std::to_string(cnt++), false);
+
+        member.symbol = constrSym;
+        member.initFuncExpr->accept(*this);
+    }
+
     s.scope = currScope;
 
     exitScope();

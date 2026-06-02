@@ -14,7 +14,6 @@ std::string SymbolPrinter::indent() {
     return std::string(depth * 2, ' ');
 }
 
-
 std::string typeToString(Type* type) {
     if (!type) return "UNASSIGNED";
 
@@ -210,6 +209,11 @@ void SymbolPrinter::visit(Aggregate& s) {
     // Methods
     for (auto& member : s.methodMembers) {
         member.methodExpr->accept(*this);
+    }
+
+    // Constructors
+    for (auto& member : s.constructorMembers) {
+        member.initFuncExpr->accept(*this);
     }
     depth--;
 

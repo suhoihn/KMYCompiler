@@ -23,3 +23,19 @@ let anotherSuho = suho;
 // Make GET_PROPERTY_DYNAMIC.
 suho.z.nigga = "i modified u";
 print(anotherSuho);
+
+// Closure capture test.
+
+fun main(): (int, int) -> int {
+    print("hi");
+    let x: int = 3;
+    let inner = fun(a:int , b:int): int { return a + b + x; };
+    return inner;
+}
+
+fun endPrinter(): void { print("bye"); }
+
+print("Do I even run");
+let add = main();
+print(add);
+print(add(1, 2));

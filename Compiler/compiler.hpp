@@ -71,6 +71,9 @@ private:
 
     // For aggregates
     bool compilingMethod = false;
+    bool isConstructor = false;
+    Aggregate* currAgg = nullptr; // HACK: rly feals like hack.
+    std::unordered_map<InstanceType*, int> fieldInitFuncProtoIdx;
 
     // Expressions
     void visit(Literal& e) override;

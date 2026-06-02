@@ -72,6 +72,7 @@ enum class TokenType {
     KeywordNew,
     KeywordTypealias,
     KeywordRecord,
+    KeywordInit,
 
     // Type keywords
     KeywordInt, // Not that this is different from just Int

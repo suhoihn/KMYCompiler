@@ -22,13 +22,16 @@ struct Symbol {
 
     Type* type = nullptr;
 
-    // Runtime storage info.
+    // Below are for debug. Each pass (or phase) has its own storage of the same info.
+
+    // Runtime storage info for locals and upvalues (if used)
     int slot = INVALID_SLOT;
     bool captured = false;
     int upvalueIndex = INVALID_SLOT;
 
     // Aggregate Info (if used)
     int fieldOffset = INVALID_SLOT;
+    int methodIdx = INVALID_SLOT; // For vtables too...?
 
     // Function Info (if used)
     int funcProtoIdx = INVALID_SLOT;
@@ -79,8 +82,10 @@ struct Scope {
 
 
 enum class Opcode {
-    PUSH_CONST,   // value
+    PUSH_UNINITIALISED,
+    PUSH_CONST,   // constant slot
     POP,
+    DUPLICATE, // Used only for constructors for now...
 
     // Arithmetic
     ADD,
@@ -140,6 +145,7 @@ enum class Opcode {
 
     // Annonymous records, nominal records, and classes
     MAKE_RECORD, // field count
+    INIT_RECORD, // fieldInit funcProto idx
     MAKE_INSTANCE, // aggregate id
     MAKE_INSTANCE_SHARED, // aggregate id
     GET_PROPERTY, // slot
@@ -154,6 +160,8 @@ enum class Opcode {
 
 // No runtime heap-allocated value. (For compiler's constantMap)
 // Bascially, PRIMITIVES.
+struct GarbageValue{};
+
 using ConstValue = std::variant<
     std::nullptr_t,
     int,

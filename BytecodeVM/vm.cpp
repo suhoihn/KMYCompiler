@@ -7,8 +7,10 @@
 // DEBUG
 static std::string opcodeToString(Opcode op) {
     switch (op) {
+        case Opcode::PUSH_UNINITIALISED: return "PUSH_UNINITIALISED";
         case Opcode::PUSH_CONST: return "PUSH_CONST";
         case Opcode::POP: return "POP";
+        case Opcode::DUPLICATE: return "DUPLICATE"; 
 
         case Opcode::ADD: return "ADD";
         case Opcode::SUB: return "SUB";
@@ -98,7 +100,7 @@ void VM::load(const std::vector<FunctionProto>& functionProtos) {
     });
     frames.back().base = stack.size();
     std::cout << "framesize: " << this->functionProtos.back().frameSize << std::endl;
-    stack.resize(stack.size() + this->functionProtos.back().frameSize); // or frameSize
+    stack.resize(stack.size() + this->functionProtos.back().frameSize, Value(GarbageValue{})); // or frameSize
 }
 
 Instruction VM::fetchInstr() {
@@ -176,7 +178,10 @@ UpvaluePtr VM::captureUpvalue(int stackSlot) {
 void VM::executeInstr(const Instruction& instr) {
     auto& frame = frames.back();
     switch (instr.opcode) {
-
+        case Opcode::PUSH_UNINITIALISED: {
+            push( GarbageValue{} );
+            break;
+        }
         case Opcode::PUSH_CONST: {
             push(
                 constValToVal(frame.chunk->constants[instr.operand])
@@ -186,6 +191,13 @@ void VM::executeInstr(const Instruction& instr) {
 
         case Opcode::POP: {
             pop();
+            break;
+        }
+
+        case Opcode::DUPLICATE: {
+            Value v = pop();
+            push(v);
+            push(v); // No clone. References are copied.
             break;
         }
 
@@ -292,6 +304,21 @@ void VM::executeInstr(const Instruction& instr) {
         }
 
         // ----- Functions -----
+        case Opcode::MAKE_FUNCTION: {
+            auto fnProto = this->functionProtos[instr.operand];
+
+            // This is guarenteed to have no upvalues.
+            auto function = std::make_shared<FunctionObj>(
+                std::vector<Parameter>{}, // not used in VM
+                fnProto.chunk,
+                fnProto.frameSize,
+                std::vector<UpvaluePtr>{}
+            );
+
+            push(Value(function));
+            break;
+        }
+
         case Opcode::MAKE_CLOSURE: {
             auto fnProto = this->functionProtos[instr.operand];
 
@@ -301,6 +328,9 @@ void VM::executeInstr(const Instruction& instr) {
                 auto& up = fnProto.upvalues[i];
                 int slot = up.index;
                 if (up.isLocal) {
+                    std::cout << "frame.base: " << frame.base << "\n";
+                    std::cout << "slot " << slot << "\n";
+
                     // From immediate parent,
                     // take x directly from parent stack frame
                     // Value* ptr = &stack[frame.base + slot];
@@ -365,7 +395,7 @@ void VM::executeInstr(const Instruction& instr) {
             frame.base = stack.size() - instr.operand; // arguments are already on stack
             frame.function = fn;
             
-            stack.resize(frame.base + frame.function->frameSize); // or frameSize
+            stack.resize(frame.base + frame.function->frameSize, Value(GarbageValue{})); // or frameSize
 
 
             frames.push_back(frame);
@@ -375,9 +405,9 @@ void VM::executeInstr(const Instruction& instr) {
 
         case Opcode::RETURN_VOID: {
             closeUpvalues(frame.base);
-            stack.resize(frame.base - 1);
+            stack.resize(frame.base - 1, Value(GarbageValue{}));
             frames.pop_back();
-            push(Value(nullptr)); // return void produces null value
+            push(Value(GarbageValue{})); // return void produces null value? (pop will be the next instr.)
             if (frames.empty()) {
                 running = false; // main function returned, stop execution
             }
@@ -387,7 +417,7 @@ void VM::executeInstr(const Instruction& instr) {
         case Opcode::RETURN_VALUE: {
             closeUpvalues(frame.base);
             Value retVal = pop();
-            stack.resize(frame.base - 1);
+            stack.resize(frame.base - 1, Value(GarbageValue{}));
             frames.pop_back();
             push(retVal);
             if (frames.empty()) {
@@ -501,6 +531,10 @@ void VM::executeInstr(const Instruction& instr) {
             recPtr->fields[instr.operand] = val;
             push(val);
             break;
+        }
+
+        case Opcode::INIT_RECORD: {
+            
         }
 
         // ----- IO -----

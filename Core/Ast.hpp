@@ -130,9 +130,10 @@ struct Get : ExprHelper<Get, ExprKind::Get> {
     std::string name; // TODO change all these string fields to TOKENS for debugging.
 
     int fieldIdx; // For codegen, set by Resolver. Only for fields.
+    int methodIdx; // For codegen and lowering, set by Resolver. Only for methods.
     
     // For lowering. Check if its a form of obj.f (obj is aggregate, f is method)
-    bool resolvedMethod;
+    bool resolvedMethod = false;
 
     virtual bool isLValue() const { return true; }
 
@@ -156,6 +157,7 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
     StmtPtr body;
     TypeNodePtr annotatedReturnType;
 
+    SymbolPtr symbol = nullptr;
     Scope* scope = nullptr;
     std::vector<UpvalueInfo> upvalues;
     int frameSize = 0;
@@ -166,9 +168,7 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
 
 using FunctionExprPtr = std::shared_ptr<FunctionExpr>;
 
-struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {
-    SymbolPtr symbol = nullptr;
-};
+struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {};
 
 struct NewExpr : ExprHelper<NewExpr, ExprKind::NewExpr> {
     std::string typeName;
@@ -176,7 +176,6 @@ struct NewExpr : ExprHelper<NewExpr, ExprKind::NewExpr> {
 
     NewExpr(std::string typeName, std::vector<ExprPtr> args);
 };
-
 
 // -----AST nodes for statements
 struct BaseStmt : public ASTNode {
@@ -228,6 +227,7 @@ struct Let : StmtHelper<Let> {
     std::string name;
     ExprPtr expr;
     bool isMutable;
+
     SymbolPtr symbol = nullptr;
 
     Let(TypeNodePtr annotatedType, const std::string& name, ExprPtr expr, bool isMutable);
@@ -246,7 +246,7 @@ struct Member {
 
 struct FieldMember : Member {
     std::string name;
-    ExprPtr initialiser; // Optional
+    ExprPtr initialiser; // Optional. but wont be used from now on (2026-06-62)
     bool isMutable;
     TypeNodePtr annotatedType;
 
@@ -260,6 +260,13 @@ struct MethodMember : Member {
     MethodMember(std::string name, FunctionExprPtr methodExpr);    
 };
 
+struct ConstructorMember : Member {
+    FunctionExprPtr initFuncExpr;
+
+    ConstructorMember(FunctionExprPtr initFuncExpr);    
+};
+
+
 // Same syntax and semantics for records and classes.
 enum class AggregateKind {
     RECORD,
@@ -271,9 +278,11 @@ struct Aggregate : StmtHelper<Aggregate> {
     
     std::string name;
     std::vector<FieldMember> fieldMembers; // fields 
-    std::vector<MethodMember> methodMembers; // methods (which are actually let stmts)
+    std::vector<MethodMember> methodMembers; // methods
+    std::vector<ConstructorMember> constructorMembers; // constructor functions
+    
+    // FunctionExprPtr fieldInitFunc; // field initialisers.
 
-    SymbolPtr symbol = nullptr;
     TypeSymbol* typeSymbol = nullptr;
 
     Scope* scope = nullptr;
@@ -282,7 +291,9 @@ struct Aggregate : StmtHelper<Aggregate> {
         AggregateKind kind,
         std::string name,
         std::vector<FieldMember> fieldMembers, 
-        std::vector<MethodMember> methodMembers
+        std::vector<MethodMember> methodMembers,
+        std::vector<ConstructorMember> constructorMembers
+        // FunctionExprPtr fieldInitFunc
     );
 };
 

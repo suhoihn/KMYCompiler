@@ -103,6 +103,7 @@ int main(int argc, char *argv[]) {
 
         std::cout << "[DEBUG]: Variable resolvance done. Ready to lower methods if one exists." << std::endl;
 
+        
         //3-2.5(?). Method lowering
         MethodLower lower(program);
         lower.lower();
@@ -111,7 +112,10 @@ int main(int argc, char *argv[]) {
             std::cout << "[DEBUG]: Symbols built:\n";
             SymbolPrinter symPrinter(program);
             symPrinter.print();
+            printAST(program);
         }
+        
+       
 
         std::cout << "[DEBUG]: Method lowering done. Ready to allocate local slots and analyse closures." << std::endl;
 
@@ -142,6 +146,12 @@ int main(int argc, char *argv[]) {
         // 4. Code gen (Stack VM)
         Compiler compiler(program);
         auto fnProtos = compiler.compile();
+
+        if (debugOutput) {
+            std::cout << "[DEBUG]: Symbols built:\n";
+            SymbolPrinter symPrinter(program);
+            symPrinter.print();
+        }
 
         std::cout << "[DEBUG]: Compilation done. Ready to run VM." << std::endl;
         int fnProtoId = 0;

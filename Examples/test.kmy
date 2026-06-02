@@ -1,28 +1,37 @@
-fun main() {
-    print("hi");
-    let x: int = 3;
-    let inner = fun(a:int , b:int): int { return a + b + x; };
-    return inner;
-}
-
-fun endPrinter(): void { print("bye"); }
-
-print("Do I even run");
-let add = main();
-print(add);
-print(add(1, 2));
-
+let const INVALID_AGE: int = -1;
 class X {
-    let x = 7;
-    fun giveMeFourtyTwo() {
-        return 42;
+    // FIX: without "any" fails.
+    let adder: any = fun (a: int, b:int): int { return a + b; };
+    let name: string;
+    let age: int = INVALID_AGE;
+    
+    // Must ignore the stuff annotated on init. makes no sense.
+    init(const name: string): void {
+        print("Starting X. (1)");
+        print("Hello " + name);
+        this.name = name;
     }
-    fun main() {
-        let y = this.giveMeFourtyTwo();
-        print(this.x + y);
+
+    init(name: string, age: int) {
+        print("Starting X. (2)");
+        print("Your age is ");
+        print(age);
+        this.name = name;
+        this.age = age;
+    }
+
+    fun adder_method(a: int, b:int): int { 
+        return a + b;
     }
 };
 
-let obj: X;
+let suho: X = new X("suho");
+//let kmy: X = new X("KMY", 1972);
 
-endPrinter();
+print(suho.name);
+
+print(suho.adder(10,20));
+print(suho.adder_method(10, 20));
+
+//print(kmy.name);
+//print(kmy.age);

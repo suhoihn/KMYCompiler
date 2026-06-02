@@ -43,18 +43,22 @@ void MethodLower::visit(Index& e) {
 void MethodLower::visit(Call& e) {
     // Lower children first
     e.func->accept(*this);
-    for (auto& arg : e.args)
-    arg->accept(*this);
+    for (auto& arg : e.args) {
+        arg->accept(*this);
+    }
     
     // Lowering obj.f(...) form to f(obj, ...)
+    // NOTE: f must be a method, not a function!
     if (e.func->kind == ExprKind::Get) {
         auto callee = std::static_pointer_cast<Get>(e.func);
         // change maybe. hard to track.
         if (callee->resolvedMethod) {
             // Instance object.
             auto obj = callee->obj;
-            e.args.insert(e.args.begin(), obj);
+            e.args.push_back(obj); // REALLY DONT KNOW WHY THIS WORKS LOL
+            //e.args.insert(e.args.begin(), obj);
         }
+        // HACK!!!!
     }
 }
 
@@ -122,17 +126,36 @@ void MethodLower::visit(Aggregate& s) {
     // Methods
     for (auto& member : s.methodMembers) {
         Parameter thisParam(nullptr, "this", false, false, false);
-        // Create "this" symbol
-        SymbolPtr thisSym = std::make_shared<Symbol>("implicit_this", false);
+        // Create "this" symbol (should be unique for each method)
+        SymbolPtr thisSym = std::make_shared<Symbol>("$implicit_this", false);
+        thisSym->type = s.typeSymbol->type;
+    
 
-        // Store in scope
-        s.scope->symbols["implicit_this"] = thisSym;
+        // Store in function's scope
+        member.methodExpr->scope->symbols["$implicit_this"] = thisSym;
 
         thisParam.symbol = thisSym;
 
         auto& paramVec = member.methodExpr->params;
         paramVec.insert(paramVec.begin(), thisParam);
         member.methodExpr->accept(*this);
+    }
+
+    // Constructors
+    for (auto& member : s.constructorMembers) {
+        Parameter thisParam(nullptr, "this", false, false, false);
+        // Create "this" symbol (should be unique for each method)
+        SymbolPtr thisSym = std::make_shared<Symbol>("$implicit_this", false);
+        thisSym->type = s.typeSymbol->type;
+
+        // Store in function's scope
+        member.initFuncExpr->scope->symbols["$implicit_this"] = thisSym;
+
+        thisParam.symbol = thisSym;
+
+        auto& paramVec = member.initFuncExpr->params;
+        paramVec.insert(paramVec.begin(), thisParam);
+        member.initFuncExpr->accept(*this);
     }
 }
 

@@ -1,17 +1,16 @@
 #include "Resolver.hpp"
 
 #include "../Core/errorhandler.hpp"
+#include "../Utils/SymbolPrinter.hpp"
 
 Resolver::Resolver(
     FunctionExprPtr program,
     Scope* _globalScope
-)
-    : program(program),
-      globalScope(_globalScope),
-      currScope(globalScope)
-{
-    //std::cout << currScope << std::endl;
-}
+) : 
+    program(program),
+    globalScope(_globalScope),
+    currScope(globalScope)
+{}
 
 void Resolver::resolve() {
     program->accept(*this);
@@ -20,10 +19,8 @@ void Resolver::resolve() {
 SymbolPtr Resolver::resolveSymbol(const std::string& name) {
     Scope* scope = currScope;
     std::cout << "[DEBUG] Resolving symbol: " << name << std::endl;
-    std::cout << scope << std::endl;
 
     while (scope) {
-        std::cout << scope << std::endl;
         auto it = scope->symbols.find(name);
 
         if (it != scope->symbols.end()) {
@@ -39,10 +36,8 @@ SymbolPtr Resolver::resolveSymbol(const std::string& name) {
 TypeSymbol* Resolver::resolveTypeSymbol(const std::string& name) {
     Scope* scope = currScope;
     std::cout << "[DEBUG] Resolving type symbol: " << name << std::endl;
-    std::cout << scope << std::endl;
 
     while (scope) {
-        std::cout << scope << std::endl;
         auto it = scope->types.find(name);
 
         if (it != scope->types.end()) {
@@ -103,7 +98,6 @@ Type* Resolver::typeSigToType(const TypeNodePtr& type) {
             for(auto& pair : named.paramTypePairs) {
                 fieldTypes[pair.first] = typeSigToType(pair.second);
                 layout[pair.first] = layout.size();
-                std::cout << layout.size() << std::endl;
             }
 
             return new StructualType(std::move(fieldTypes), std::move(layout));
@@ -181,7 +175,6 @@ void Resolver::visit(RecordLiteral& e) {
 
 void Resolver::visit(Variable& e) {
     SymbolPtr sym = resolveSymbol(e.name);
-    std::cout << "[DEBUG] Resolved symbol: " << sym << std::endl;
 
     if (!sym) {
         throw KMYCompileError(
@@ -189,8 +182,20 @@ void Resolver::visit(Variable& e) {
         );
     }
 
+    if (!assigning && sym->type == &Types::UNINITIALISED) {
+        throw KMYCompileError("Usage of uninitialised variable \"" + e.name + "\"");
+    }
+
     e.symbol = sym;
     e.type = sym->type;
+
+    std::cout << "Variable resolved in resolver!\n";
+    std::cout << "var node=" << &e << '\n';
+    std::cout << "symbol=" << e.symbol.get() << '\n';
+    std::cout << "resolved= " << e.resolved << "\n";
+    std::cout << "resolution=" << (int)e.resolution.kind << "\n";
+    std::cout << typeToString(e.type) << "\n";
+    std::cout << "name=" << e.name << "\n"; 
 }
 
 
@@ -322,7 +327,9 @@ static bool isAssignable(Type* from, Type* to) {
 }
 
 void Resolver::visit(Assignment& e) {
+    assigning = true;
     e.left->accept(*this);
+    assigning = false;
 
     Type* oldET = expectedType;
     expectedType = e.left->type;
@@ -365,19 +372,21 @@ void Resolver::visit(Call& e) {
         throw KMYCompileError("Uncallable object.");
     }
 
-    std::cout << "1!!\n";
     auto fnType = static_cast<FunctionType*>(e.func->type);
 
     e.type = fnType->returnType;
-    std::cout << "call return type " << e.type << "\n";
-    std::cout << "is it any? ----> " << (int)(e.type == &Types::ANY_TYPE) << "\n";
 
     // Call arity checks.
     // If function type doesnt convey param info, no checks are done.
     // Runtime checks will do that.
 
-    if (!fnType->infoExists)
+    if (!fnType->infoExists) {
+        for (size_t i = 0; i < e.args.size(); ++i) {
+            e.args[i]->accept(*this);
+        }
+
         return;
+    }
 
     int requiredCnt = 0;
     bool isVariadic = false;
@@ -392,7 +401,6 @@ void Resolver::visit(Call& e) {
         }
     }
 
-    std::cout << "2!!\n";
     // Min check
     if (e.args.size() < static_cast<size_t>(requiredCnt)) {
         throw KMYCompileError("Not enough arguments provided.");
@@ -458,10 +466,14 @@ void Resolver::visit(Get& e) {
             if (it != aggType->methodMap.end()) {
                 auto memberSym = it->second;
                 e.type = memberSym->type;
-                // e.resolvedMethod = true; // Used later for lowering
+                // Used later for lowering
+                e.resolvedMethod = true;
+                e.methodIdx = memberSym->methodIdx;
                 return;
             } 
         }
+
+        // No constructor traverse.
 
         throw KMYCompileError("Property not found: " + e.name);
     }
@@ -475,11 +487,6 @@ void Resolver::visit(FunctionExpr& e) {
     Scope* old = currScope;
 
     currScope = e.scope; // scope created in Pass 1
-
-    // Debug.
-    for (const auto& [name, sym] : currScope->symbols) {
-        std::cout << "  " << name << " (mutable: " << sym->isMutable << ")\n";
-    }
    
     std::vector<Type*> paramTypes;
     std::vector<ParamTypeInfo> info;
@@ -512,10 +519,6 @@ void Resolver::visit(FunctionExpr& e) {
 
     currScope = old;
 
-    if (e.annotatedReturnType) {
-        std::cout << "this guy has return sig" << std::endl;
-    }
-
     e.type = new FunctionType(
         std::move(paramTypes),
         std::move(info),
@@ -528,8 +531,6 @@ void Resolver::visit(ThisExpr& e) {
         throw KMYCompileError("\"this\" used outside of method... :(");
     }
 
-    // TODO: symbol created? what? idt i need symbol here just types?
-    e.symbol = currentThis;
     e.type = currentThis->type;
 }
 
@@ -572,10 +573,6 @@ void Resolver::visit(Block& s) {
     Scope* old = currScope;
 
     currScope = s.scope; // assigned in Pass 1
-    std::cout << "block scope: " << currScope << std::endl;
-    for (const auto& [name, sym] : currScope->symbols) {
-        std::cout << "  " << name << " (mutable: " << sym->isMutable << ")\n";
-    }
 
     for (auto& stmt : s.statements)
         stmt->accept(*this);
@@ -594,6 +591,38 @@ void Resolver::visit(Continue&) {
         throw KMYCompileError("Invalid continue position.");
     }
 }
+
+void handleAnnotatedAndInferred(SymbolPtr sym, Type* annotated, Type* inferred) {
+    std::cout << "annotated: " << typeToString(annotated)<< std::endl;
+    std::cout << "inferred: " << typeToString(inferred) << std::endl;
+    std::cout << "sym:" << sym << std::endl;
+    
+
+    // CASE 1: annotated type exists
+    if (annotated) {
+        if (inferred) {
+            if (!isAssignable(inferred, annotated)) {
+                throw KMYCompileError("Type mismatch in initializer.");
+            }
+            sym->type = inferred;
+            return;
+        }
+
+        // You lose parameter defaults or vararg info.
+        sym->type = annotated;
+    }
+
+    // CASE 2: no annotation → infer
+    else {
+        if (!inferred) {
+            sym->type = &Types::UNINITIALISED;
+            // throw KMYCompileError("Cannot infer type of uninitialised variable.");
+        }
+
+        sym->type = inferred;
+    }
+}
+
 void Resolver::visit(Let& s) {
     Type* annotated = nullptr;
 
@@ -601,7 +630,7 @@ void Resolver::visit(Let& s) {
         annotated = typeSigToType(s.annotatedType);
 
         if (annotated == &Types::VOID_TYPE) {
-            // TODO: if strict mode, u ignore this. 
+            // TODO: if not strict mode, u ignore this. 
             throw KMYCompileError("Variable cannot be of type void.");
         }
     }
@@ -611,36 +640,15 @@ void Resolver::visit(Let& s) {
     if (s.expr) {
         s.expr->accept(*this);
         inferred = s.expr->type;
-        std::cout << "I have expr.\n";
     }
 
-    std::cout << s.expr << std::endl;
-    std::cout << annotated << std::endl;
-    std::cout << inferred << std::endl;
-
-    // CASE 1: annotated type exists
-    if (annotated) {
-        if (inferred) {
-            if (!isAssignable(inferred, annotated)) {
-                throw KMYCompileError("Type mismatch in initializer.");
-            }
-            s.symbol->type = inferred;
-            return;
-        }
-
-        // You lose parameter defaults or vararg info.
-        s.symbol->type = annotated;
+    if (!s.symbol) {
+        throw KMYCompileError("How is this not allocated? missed a let?");
     }
 
-    // CASE 2: no annotation → infer
-    else {
-        if (!inferred) {
-            throw KMYCompileError("Cannot infer type of uninitialised variable.");
-        }
-
-        s.symbol->type = inferred;
-    }
+    handleAnnotatedAndInferred(s.symbol, annotated, inferred);
 }
+
 void Resolver::visit(Return& s) {
     if (currScope->depth <= 0) {
         // Not in a function
@@ -655,43 +663,66 @@ void Resolver::visit(Aggregate& s) {
     Scope* old = currScope;
     auto oldAgg = currentAggregate;
 
-
     currScope = s.scope;
 
     // Critical: make class type right after. Initially its inner types are empty.
     InstanceType* aggType = new InstanceType();
 
+    if (!s.typeSymbol) {
+        throw KMYCompileError("? agg type symbol where");
+    }
+
     s.typeSymbol->type = aggType;
     currentAggregate = aggType;
 
+    int offset = 0;
     for (auto& field : s.fieldMembers) {
-        Type* fieldType;
+        Type* inferred = nullptr;
 
-        if (field.annotatedType) {
-            // Explicit annotation
-            fieldType = typeSigToType(field.annotatedType);
-        }
-        else if (field.initialiser) {
-            // Infer from initialiser
+        //std::cout << "1\n";
+        
+        if (field.initialiser) {
             field.initialiser->accept(*this);
-            fieldType = field.initialiser->type;
-        } else {
-            fieldType = &Types::ANY_TYPE;
-            // OR throw error...?
         }
-        field.symbol->type = fieldType;
+        //std::cout << "2\n";
+
+        if (!field.symbol) {
+            throw KMYCompileError("How is field symbol undef");
+        }
+
+        //std::cout << "3\n";
+
+        handleAnnotatedAndInferred(
+            field.symbol,
+            field.annotatedType ? typeSigToType(field.annotatedType) : nullptr,
+            inferred
+        );
+        //std::cout << "4\n";
+    
+        field.symbol->fieldOffset = offset++;
         aggType->fieldMap[field.name] = field.symbol;
     }
+
+    std::cout << "Resolver: field np\n";
 
     auto oldThis = currentThis;
     // TODO: needed?
     currentThis = std::make_shared<Symbol>("this", false);
     currentThis->type = currentAggregate;
 
+    int methodIdx = 0;
     for (auto& member : s.methodMembers) {
         member.methodExpr->accept(*this);
         member.symbol->type = member.methodExpr->type; 
+        member.symbol->methodIdx = methodIdx++;
         aggType->methodMap[member.name] = member.symbol;
+    }
+
+    for (auto& member : s.constructorMembers) {
+        member.initFuncExpr->accept(*this);
+        // Constructor has no type...
+        member.symbol->type = member.initFuncExpr->type;
+        aggType->constructorVec.push_back(member.symbol);
     }
 
     currentThis = oldThis;
