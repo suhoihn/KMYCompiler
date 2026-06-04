@@ -157,6 +157,24 @@ void MethodLower::visit(Aggregate& s) {
         paramVec.insert(paramVec.begin(), thisParam);
         member.initFuncExpr->accept(*this);
     }
+
+    // Field initialiser
+    {
+        Parameter thisParam(nullptr, "this", false, false, false);
+        
+        // Create "this" symbol (should be unique for each method)
+        SymbolPtr thisSym = std::make_shared<Symbol>("$implicit_this", false);
+        thisSym->type = s.typeSymbol->type;
+
+        // Needed?
+        s.fieldInitFunc->scope->symbols["$implicit_this"] = thisSym;
+
+        thisParam.symbol = thisSym;
+
+        auto& paramVec =  s.fieldInitFunc->params;
+        paramVec.insert(paramVec.begin(), thisParam);
+        s.fieldInitFunc->accept(*this);
+    }
 }
 
 void MethodLower::visit(TypeAlias& s) {}

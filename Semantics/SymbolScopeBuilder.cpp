@@ -5,6 +5,13 @@
 #include "../Core/Ast.hpp"
 #include <unordered_set>
 
+/*
+Value isAlpha(int argc, Value* args);
+static std::unordered_map<std::string, NativeFnPtr> nativeFunctions {
+    {"isAlpha", &isAlpha}    
+};
+*/
+
 SymbolScopeBuilder::SymbolScopeBuilder(
     FunctionExprPtr program
 ) : program(program)
@@ -263,6 +270,9 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
         member.symbol = constrSym;
         member.initFuncExpr->accept(*this);
     }
+
+    // Field init func
+    s.fieldInitFunc->accept(*this);
 
     s.scope = currScope;
 

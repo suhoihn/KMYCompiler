@@ -157,6 +157,9 @@ int main(int argc, char *argv[]) {
         int fnProtoId = 0;
         for (auto& fnProto : fnProtos) {
             std::cout << "Function proto " << fnProtoId << ":\n";
+            std::cout << "Upvalue cnt " << fnProto.upValueCnt << "\n";
+            std::cout << "Upvalue vec size " << fnProto.upvalues.size() << "\n";
+
             std::cout << chunkToString(fnProto.chunk) << std::endl;
             fnProtoId++;
         }

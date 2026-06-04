@@ -101,8 +101,9 @@ ResolvedVar ClosureAnalyser::resolveVariable(SymbolPtr sym) {
     // 2. Upvalue
     int up = resolveUpvalue(currCtx, sym);
     if (up != -1) {
-        sym->captured = true;
-        sym->upvalueIndex = up;
+        // TODO: Multiple captures break.
+        std::cout << "Captured upvalue! " << sym->name << "\n";
+        std::cout << "Upvalue slot: " << up << "\n";
 
         return ResolvedVar {
             ResolvedVar::Kind::UPVALUE,
@@ -310,6 +311,8 @@ void ClosureAnalyser::visit(Aggregate& s) {
     for (auto& method : s.constructorMembers) {
         method.initFuncExpr->accept(*this);
     }
+
+    s.fieldInitFunc->accept(*this);
 
     s.fieldCount = offset;
     std::cout << "member check done" << std::endl;

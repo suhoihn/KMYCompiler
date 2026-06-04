@@ -72,7 +72,7 @@ std::string Value::toString() const {
         return std::get<bool>(data) ? "true" : "false";
     }
     if (std::holds_alternative<std::string>(data)) {
-        return std::get<std::string>(data);
+        return "\"" + std::get<std::string>(data) + "\"";
     }
     if (std::holds_alternative<RecordPtr>(data)) {
         const RecordPtr& rec = std::get<RecordPtr>(data);
@@ -110,15 +110,18 @@ std::string Value::toString() const {
         if (checkObjType(*this, ObjKind::Function)) {
             return "FunctionRef";
         }
-        if (checkObjType(*this, ObjKind::NativeFn)) {
+        if (checkObjType(*this, ObjKind::NativeFunction)) {
             return "NativeFunction";
         }
+        
+        /*
         if (checkObjType(*this, ObjKind::Class)) {
             return "Class";
         }
+        */
     }
     if (std::holds_alternative<GarbageValue>(data)) {
-        return "GARBAGE_VALUE";
+        return "<GARBAGE>";
     }
     return "unknown";
 }

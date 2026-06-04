@@ -314,6 +314,7 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
     std::vector<MethodMember> methodMembers;
     std::vector<ConstructorMember> constructorMembers;
 
+    // NOTICE: the expressions will be shared among all constructors.
     std::vector<StmtPtr> initStmts;
 
     while (!match(TokenType::RightBrace)) {
@@ -394,6 +395,8 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
 
     consumeSemicolon();
 
+    /*
+    // SHARED AST ISSUE
     // We inject field initialisation statements in front of user-defined constructor body
     for (auto& constrMem : constructorMembers) {
         auto constrBody = std::static_pointer_cast<Block>(constrMem.initFuncExpr->body);
@@ -403,13 +406,21 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
             initStmts.end()
         );
     }
+    */
 
+    auto fieldInitFunc = std::make_shared<FunctionExpr>(
+        std::vector<Parameter> {},
+        std::make_shared<Block>(std::move(initStmts)),
+        nullptr
+    );
+    
     return std::make_shared<Aggregate>(
         kind,
         move(name.lexeme),
         move(fieldMembers),
         move(methodMembers),
-        move(constructorMembers)
+        move(constructorMembers),
+        move(fieldInitFunc)
     );
 }
 

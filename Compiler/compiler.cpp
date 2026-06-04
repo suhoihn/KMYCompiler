@@ -161,25 +161,30 @@ void Compiler::visit(UnaryExpr& e) {
     emit( unaryOpToOpcode(e.op) );
 }
 
-
+void Compiler::handleAssignment(AssignmentOp op, ExprPtr left, ExprPtr right) {
+    // compound assignment
+    // Puts the RHS or (LHS op RHS) to the stack according to assignment op.
+    if (op != AssignmentOp::Assign) {
+        // emit load_local / load_upvalue etc. according to its resolved type.
+        left->accept(*this);
+        right->accept(*this);
+        emit(binaryOpToOpcode(compoundToBinaryOp(op)));
+    } else {
+        right->accept(*this);
+    }
+}
 void Compiler::visit(Assignment& e) {
-    // 1. Evaluate RHS ONCE
-    e.right->accept(*this);
-    
+
     // Case 1: variable assignment
     assert(e.left->isLValue());
 
     if (e.left->kind == ExprKind::Variable) {
+        // Stack: [...] [ value ]
+        
         auto var = std::static_pointer_cast<Variable>(e.left);
-
         assert(var->symbol->isMutable);
-
-        // compound assignment
-        if (e.op != AssignmentOp::Assign) {
-            // emit load_local / load_upvalue etc. according to its resolved type.
-            var->accept(*this);
-            emit(binaryOpToOpcode(compoundToBinaryOp(e.op)));
-        }
+        
+        handleAssignment(e.op, e.left, e.right);
 
         // TODO. STORE_LOCAL or STORE_UPVALUE?
         switch(var->resolution.kind) {
@@ -201,9 +206,13 @@ void Compiler::visit(Assignment& e) {
     // Case 2: array index assignment
     if (e.left->kind == ExprKind::Index) {
         auto index = std::static_pointer_cast<Index>(e.left);
+        
         // stack: [ ... value, array, index ]
+        handleAssignment(e.op, e.left, e.right);
+
         index->obj->accept(*this);
         index->index->accept(*this);
+
         emit(Opcode::SET_INDEX);
         return;
     }
@@ -212,6 +221,9 @@ void Compiler::visit(Assignment& e) {
     if (e.left->kind == ExprKind::Get) {
         auto get = std::static_pointer_cast<Get>(e.left);
         // stack: [ ... value, object ]
+
+        handleAssignment(e.op, e.left, e.right);
+
         get->obj->accept(*this);
         emit(Opcode::SET_PROPERTY, get->fieldIdx);
         return;
@@ -315,8 +327,8 @@ void Compiler::visit(FunctionExpr& e) {
         // Top level function. Emit HALT.
         emit(Opcode::HALT);
     } else if (isConstructor) {
-        
         // Constructor returns "this". (because of "new")
+        // TODO: Forbid any random returns in constructors
         emit(Opcode::LOAD_LOCAL, 0);
         emit(Opcode::RETURN_VALUE);
     } else {
@@ -343,6 +355,7 @@ void Compiler::visit(FunctionExpr& e) {
         }
         // Not a top level function.
         // 8. Capture variables
+        /*
         std::cout << "Capture" << std::endl;
         for (auto up : e.upvalues) {
             std::cout << up.index << std::endl;
@@ -357,9 +370,8 @@ void Compiler::visit(FunctionExpr& e) {
             }
         }
         std::cout << "Capture done" << std::endl;
-        
-
         std::cout << "Delete temp" << std::endl;
+        */
     }
     delete temp;
     std::cout << "function compiled" << std::endl;
@@ -390,21 +402,43 @@ void Compiler::visit(NewExpr& e) {
         if (constrFuncType->paramTypes.size() == argCnt) {
             // HACK
             // TODO: argCnt needs update
+
+
             // Calling the user constructor
             // Inside, the field init func will run first.
             emit(Opcode::MAKE_CLOSURE, constructor->funcProtoIdx);
             
             // Basically allocating memory.
-            for (size_t i = 0; i < aggType->fieldMap.size(); ++i) {
-                // field init
-                emit(Opcode::PUSH_UNINITIALISED);
-            }
+            // field init
+            emit(Opcode::PUSH_UNINITIALISED, aggType->fieldMap.size());
             emit(Opcode::MAKE_RECORD, aggType->fieldMap.size());
             
+            emit(Opcode::DUPLICATE);
+
+            emit(Opcode::MAKE_CLOSURE, fieldInitFuncProtoIdx[aggType]);
+            
+            // stack: [...] [userConstructor] [emptyRec] [emptyRec] [fieldInitFunc]
+            
+            emit(Opcode::SWAP);
+            
+            // stack: [...] [userConstructor] [emptyRec] [fieldInitFunc] [emptyRec]
+            
+            emit(Opcode::CALL, 1);
+            
+            // stack: [...] [userConstructor] [emptyRec] [GARBAGE]
+            
+            emit(Opcode::POP); // This is essential. RETURN_VOID pushes garbage.
+            
+            // stack: [...] [userConstructor] [emptyRec]
+
             for(auto it = e.args.begin(); it != e.args.end(); ++it) {
                 (*it)->accept(*this);
             }
+
+            // stack: [...] [userConstructor] [emptyRec] [args...]
             emit(Opcode::CALL, argCnt + 1);
+
+            // stack: [...]
             return;
         }
     }
@@ -579,6 +613,8 @@ void Compiler::visit(Aggregate& s) {
     // aggInfo.fieldSize = s.fieldCount;
 
     compilingMethod = true;
+    auto oldAggType = currAggType;
+    currAggType = static_cast<InstanceType*>(s.typeSymbol->type);
     for (auto& method : s.methodMembers) {
         method.methodExpr->accept(*this);
         method.symbol->funcProtoIdx = method.methodExpr->fnProtoIdx;
@@ -586,6 +622,11 @@ void Compiler::visit(Aggregate& s) {
         //aggInfo.methodInfos.push_back({ method.name, funcProtoCnt });
 
     }
+
+    // This MUST be traversed first (since constructor uses its funcProtoIdx)
+    s.fieldInitFunc->accept(*this);
+    fieldInitFuncProtoIdx[static_cast<InstanceType*>(s.typeSymbol->type)] 
+        = s.fieldInitFunc->fnProtoIdx;
 
     isConstructor = true;
     for (auto& constructor : s.constructorMembers) {
@@ -598,6 +639,7 @@ void Compiler::visit(Aggregate& s) {
 
 
     compilingMethod = false;
+    currAggType = oldAggType;
 }
 
 void Compiler::visit(TypeAlias& s) {}

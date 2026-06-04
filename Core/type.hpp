@@ -77,7 +77,8 @@ enum class TypeKind {
 
 struct Type {
     const TypeKind kind;
-
+    virtual ~Type() = default;
+    
     Type(TypeKind kind) : kind(kind) {}
 };
 

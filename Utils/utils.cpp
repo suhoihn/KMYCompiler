@@ -9,9 +9,9 @@
 #include "../Core/AstBaseForward.hpp"
 #include "../Core/Ast.hpp"
 
-using namespace std; // TODO. please no.
+using std::cout, std::endl;
 
-void log(const string& msg) {
+void log(const std::string& msg) {
     cout << "[LOG] " << msg << endl;
 }
 
@@ -116,7 +116,7 @@ static const std::unordered_map<TokenType, std::string> tokenTypeNames = {
 };
 
 // Symbol / literal representation
-static const unordered_map<TokenType, string> tokenTypeSymbols = {
+static const std::unordered_map<TokenType, std::string> tokenTypeSymbols = {
     // Arithmetic Operators
     {TokenType::Plus, "+"},
     {TokenType::Minus, "-"},
@@ -174,7 +174,7 @@ static const unordered_map<TokenType, string> tokenTypeSymbols = {
     {TokenType::Arrow, "->"}
 };
 
-void printTokens(const vector<Token>& tokens) {
+void printTokens(const std::vector<Token>& tokens) {
     for (const auto& token : tokens) {
         if (!tokenTypeNames.count(token.type)) {
             throw std::runtime_error("Unknown token type to print. Maybe u forgot to add in the map.");
@@ -188,7 +188,7 @@ void printTokens(const vector<Token>& tokens) {
 static void printStmt(const StmtPtr stmt, int depth);
 
 static void printExpr(const ExprPtr expr, int depth = 0) {
-    auto indent = string(depth * 2, ' ');
+    auto indent = std::string(depth * 2, ' ');
     auto* raw = expr.get();
 
     if (auto* l = dynamic_cast<const Literal*>(raw)) {
@@ -307,7 +307,7 @@ static void printExpr(const ExprPtr expr, int depth = 0) {
 }
 
 static void printStmt(const StmtPtr stmt, int depth = 0) {
-    auto indent = string(depth * 2, ' ');
+    auto indent = std::string(depth * 2, ' ');
     auto* raw = stmt.get();
 
     if (auto* print = dynamic_cast<Print*>(raw)) {
@@ -409,7 +409,7 @@ void printAST(const ExprPtr expr) {
     printExpr(expr);
 }
 
-void printAST(const vector<StmtPtr>& stmts) {
+void printAST(const std::vector<StmtPtr>& stmts) {
     for (const auto& stmt : stmts) {
         printStmt(stmt);
     }

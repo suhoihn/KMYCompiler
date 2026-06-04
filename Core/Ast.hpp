@@ -36,6 +36,7 @@ struct BaseExpr : public ASTNode {
     
     virtual bool isLValue() const { return false; }
     virtual void accept(Visitor& v) = 0;
+    // virtual ExprPtr clone() const = 0;
 };
 
 // Double dispatch for visitors.
@@ -61,13 +62,16 @@ struct Literal : ExprHelper<Literal, ExprKind::Literal> {
     Literal(bool b);
     Literal(const std::string& s);
     Literal(std::nullptr_t);
+
+    // ExprPtr clone() const override;
 };
 
 struct ArrayLiteral : ExprHelper<ArrayLiteral, ExprKind::ArrayLiteral> {
     std::vector<ExprPtr> elements;
 
-    // Take by value since unique_ptr is not copiable.
     ArrayLiteral(std::vector<ExprPtr> elements);
+
+    // ExprPtr clone() const override;
 };
 
 struct RecordLiteral : ExprHelper<RecordLiteral, ExprKind::RecordLiteral> {
@@ -75,6 +79,7 @@ struct RecordLiteral : ExprHelper<RecordLiteral, ExprKind::RecordLiteral> {
     std::unordered_map<std::string, int> layout; // field name to index mapping for codegen
 
     RecordLiteral(std::vector<std::pair<std::string, ExprPtr>> fields);
+    // ExprPtr clone() const override;
 };
 
 struct Variable : ExprHelper<Variable, ExprKind::Variable> { 
@@ -89,6 +94,8 @@ struct Variable : ExprHelper<Variable, ExprKind::Variable> {
     virtual bool isLValue() const { return true; }
     
     Variable(const std::string& name);
+
+    // ExprPtr clone() const override;
 };
 
 struct UnaryExpr : ExprHelper<UnaryExpr, ExprKind::UnaryExpr>{
@@ -96,6 +103,8 @@ struct UnaryExpr : ExprHelper<UnaryExpr, ExprKind::UnaryExpr>{
     ExprPtr operand;   
 
     UnaryExpr(UnaryOp op, ExprPtr operand);
+
+    // ExprPtr clone() const override;
 };
 
 struct BinaryExpr : ExprHelper<BinaryExpr, ExprKind::BinaryExpr> {
@@ -104,6 +113,8 @@ struct BinaryExpr : ExprHelper<BinaryExpr, ExprKind::BinaryExpr> {
     ExprPtr right;
 
     BinaryExpr(BinaryOp op, ExprPtr left, ExprPtr right);
+
+    // ExprPtr clone() const override;
 };
 
 // Format: obj '[' index ']'
@@ -114,6 +125,8 @@ struct Index : ExprHelper<Index, ExprKind::Index> {
     virtual bool isLValue() const { return true; }
 
     Index(ExprPtr obj, ExprPtr index);
+
+    // ExprPtr clone() const override;
 };
 
 // Format: func '(' args ')'
@@ -122,6 +135,8 @@ struct Call : ExprHelper<Call, ExprKind::Call> {
     std::vector<ExprPtr> args; 
 
     Call(ExprPtr func, std::vector<ExprPtr> args);
+
+    // ExprPtr clone() const override;
 };
 
 // Format: obj '.' name
@@ -138,6 +153,8 @@ struct Get : ExprHelper<Get, ExprKind::Get> {
     virtual bool isLValue() const { return true; }
 
     Get(ExprPtr obj, const std::string& name);
+
+    // ExprPtr clone() const override;
 };
 
 // Surprisingly, assignment can be an expression.
@@ -147,6 +164,8 @@ struct Assignment : ExprHelper<Assignment, ExprKind::Assignment> {
     ExprPtr right;
 
     Assignment(AssignmentOp op, ExprPtr left, ExprPtr right);
+
+    // ExprPtr clone() const override;
 };
 
 // Parameter struct is in ASTBaseForward.hpp
@@ -164,23 +183,31 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
     int fnProtoIdx = INVALID_SLOT;
 
     FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType);
+
+    // ExprPtr clone() const override;
 };
 
 using FunctionExprPtr = std::shared_ptr<FunctionExpr>;
 
-struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {};
+struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {
+    // ExprPtr clone() const override;
+};
 
 struct NewExpr : ExprHelper<NewExpr, ExprKind::NewExpr> {
     std::string typeName;
     std::vector<ExprPtr> args;
 
     NewExpr(std::string typeName, std::vector<ExprPtr> args);
+
+    // ExprPtr clone() const override;
 };
 
 // -----AST nodes for statements
 struct BaseStmt : public ASTNode {
     virtual ~BaseStmt() = default;
     virtual void accept(Visitor& v) = 0;
+
+    // virtual StmtPtr clone() const = 0;
 };
 
 template <typename Derived>
@@ -194,6 +221,8 @@ struct Print : StmtHelper<Print> {
     ExprPtr expr; 
 
     Print(ExprPtr expr);
+
+    // StmtPtr clone() const override;
 };
 
 struct If : StmtHelper<If> {
@@ -202,6 +231,8 @@ struct If : StmtHelper<If> {
     StmtPtr elsebranch; // Optional else branch
 
     If(ExprPtr condition, StmtPtr thenbranch, StmtPtr elsebranch);
+
+    // StmtPtr clone() const override;
 };
 
 struct While : StmtHelper<While> {
@@ -209,10 +240,16 @@ struct While : StmtHelper<While> {
     StmtPtr body;
 
     While(ExprPtr condition, StmtPtr body);
+
+    // StmtPtr clone() const override;
 };
 
-struct Break : StmtHelper<Break> {};
-struct Continue : StmtHelper<Continue> {};
+struct Break : StmtHelper<Break> {
+    // StmtPtr clone() const override;
+};
+struct Continue : StmtHelper<Continue> {
+    // StmtPtr clone() const override;
+};
 
 struct Block : StmtHelper<Block> {
     std::vector<StmtPtr> statements;
@@ -220,6 +257,8 @@ struct Block : StmtHelper<Block> {
     Scope* scope = nullptr;
 
     Block(std::vector<StmtPtr> statements);
+
+    // StmtPtr clone() const override;
 };
 
 struct Let : StmtHelper<Let> {
@@ -231,12 +270,14 @@ struct Let : StmtHelper<Let> {
     SymbolPtr symbol = nullptr;
 
     Let(TypeNodePtr annotatedType, const std::string& name, ExprPtr expr, bool isMutable);
+    // StmtPtr clone() const override;
 };
 
 struct Return : StmtHelper<Return> {
     ExprPtr expr; // Optional.
     
     Return(ExprPtr expr);
+    // StmtPtr clone() const override; 
 };
 
 struct Member {
@@ -281,7 +322,7 @@ struct Aggregate : StmtHelper<Aggregate> {
     std::vector<MethodMember> methodMembers; // methods
     std::vector<ConstructorMember> constructorMembers; // constructor functions
     
-    // FunctionExprPtr fieldInitFunc; // field initialisers.
+    FunctionExprPtr fieldInitFunc; // field initialisers.
 
     TypeSymbol* typeSymbol = nullptr;
 
@@ -292,8 +333,8 @@ struct Aggregate : StmtHelper<Aggregate> {
         std::string name,
         std::vector<FieldMember> fieldMembers, 
         std::vector<MethodMember> methodMembers,
-        std::vector<ConstructorMember> constructorMembers
-        // FunctionExprPtr fieldInitFunc
+        std::vector<ConstructorMember> constructorMembers,
+        FunctionExprPtr fieldInitFunc
     );
 };
 
@@ -308,6 +349,7 @@ struct TypeAlias : StmtHelper<TypeAlias> {
 struct ExprStmt : StmtHelper<ExprStmt> {
     ExprPtr expr;
     ExprStmt(ExprPtr expr);
+    // StmtPtr clone() const override;
 };
 
 // -----AST nodes for declarations

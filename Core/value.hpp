@@ -34,14 +34,14 @@ struct Value_n {
 enum class ObjKind {
     Array,
     Function,
-    NativeFn,
+    NativeFunction,
     //BoundFn,
     Record,
-    Class,
-    Instance
+    //Class, // Classes (or record definitions) are not runtime values anymore.
+    Instance // TODO: used?
 };
 
-// This represents HEAP ALLOCATED VALUES (not {}; they are records.)
+// This represents HEAP ALLOCATED VALUES (class instances, arrays, functions etc.)
 struct Object {
     ObjKind kind;
     Object(ObjKind kind) : kind(kind) {}
@@ -58,8 +58,9 @@ using ValueType = std::variant<
     double,
     bool,
     std::string,
-    RecordPtr, // Internally, records are passed by references. Only on usages they are copied.
-    ObjectPtr, // Heap allocated values
+    // ArrayPtr, // Really later.
+    RecordPtr, // Internally, aggregates are passed by references. Only on usages they are copied.
+    ObjectPtr, // Heap allocated values (including functions, lists, etc.)
     GarbageValue
 >;
 
@@ -73,7 +74,7 @@ struct Value {
     Value(double v) : data(v) {}
     Value(bool b) : data(b) {}
     Value(const std::string& s) : data(s) {}
-    Value(RecordPtr r) : data(std::move(r)) {}
+    Value(const RecordPtr& r) : data(r) {}
     Value(const ObjectPtr& o) : data(o) {}
     Value(GarbageValue g) : data(g) {}
 
@@ -132,36 +133,75 @@ struct Upvalue {
 
 using UpvaluePtr = std::shared_ptr<Upvalue>;
 
+enum class FunctionKind {
+    User,
+    Native
+};
+
 struct FunctionObj : Object {
-    std::vector<Parameter> params;
-    StmtPtr body; // For interpreter.
-    Chunk chunk; // For compiler.
-    int frameSize = 0; // For compiler. Equals to max slot index used + 1.
+    FunctionKind kind;
+
+    // For user-defined functions/closures
+    FunctionProto* proto = nullptr;
     
     // For closures
     std::vector<UpvaluePtr> upvalues; 
-
+    
+    // For native functions
+    int arity = 0;
+    NativeFnPtr nativeFn = nullptr;
+    
+    /*
+    // Legacy; for interpreters.
+    std::vector<Parameter> params;
+    StmtPtr body; // For interpreter.
     FunctionObj (
         const std::vector<Parameter>& params,
         StmtPtr body
-    ) : Object(ObjKind::Function), params(move(params)), body(move(body)) {}
+    ) : 
+    kind(FunctionKind::User), 
+    Object(ObjKind::Function), 
+    params(move(params)), 
+    body(move(body)) {}
+    */
 
     FunctionObj (
-        const std::vector<Parameter>& params,
-        Chunk chunk,
-        int frameSize,
+        int arity,
+        NativeFnPtr nativeFn
+    ) : 
+    kind(FunctionKind::Native), 
+    Object(ObjKind::Function), 
+    arity(arity), 
+    nativeFn(nativeFn) {}
+
+
+    FunctionObj (
+        FunctionProto* proto,
         std::vector<UpvaluePtr> upvalues
-    ) : Object(ObjKind::Function), params(move(params)), chunk(chunk), frameSize(frameSize), upvalues(move(upvalues)) {}
+    ) : 
+    kind(FunctionKind::User),
+    Object(ObjKind::Function),
+    proto(proto),
+    upvalues(move(upvalues)) {}
 };
 
+/*
+// Legacy. For interpreters. Unused after moving to bytecode VM.
 struct NativeFnObj : Object {
-    std::function<Value(const std::vector<Value>&)> func;
 
-    NativeFnObj(std::function<Value(const std::vector<Value>&)> f)
-        : Object(ObjKind::NativeFn),
-          func(std::move(f)) {}
+    // Legacy; for interpreters.
+    // std::function<Value(const std::vector<Value>&)> func;
+
+    int arity = -1;
+    NativeFnPtr func;
+    NativeFnObj(int arity, NativeFnPtr f) : 
+        arity(arity),
+        Object(ObjKind::NativeFunction),
+        func(f) {}
 };
+*/
 
+// Unused...?
 struct InstanceObj : Object {
     std::unordered_map<std::string, Value> fields;
     ClassPtr cls = nullptr;
@@ -174,6 +214,7 @@ struct InstanceObj : Object {
     ) : Object(ObjKind::Instance), fields(std::move(fields)), cls(std::move(cls)) {}
 };
 
+/*
 // NOTE: This is unused after moving to bytecode VM.
 struct ClassObj : Object {
     // Used for instantiating objects.
@@ -198,14 +239,13 @@ struct ClassObj : Object {
         methods(std::move(methods)),  
         superclass(std::move(superclass)) {}
 };
-
+*/
 
 inline Value constValToVal(const ConstValue& v) {
     return std::visit([](auto&& arg) -> Value {
         return Value(arg);
     }, v);
 }
-
 
 Value applyBinary(BinaryOp op, const Value& left, const Value& right);
 

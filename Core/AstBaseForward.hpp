@@ -26,8 +26,10 @@ struct Symbol {
 
     // Runtime storage info for locals and upvalues (if used)
     int slot = INVALID_SLOT;
-    bool captured = false;
-    int upvalueIndex = INVALID_SLOT;
+
+    // THOSE INFO SHOULD GO IN FN SPECIFIC CONTEXTS
+    // bool captured = false;
+    // int upvalueIndex = INVALID_SLOT;
 
     // Aggregate Info (if used)
     int fieldOffset = INVALID_SLOT;
@@ -72,7 +74,7 @@ struct Scope {
     Scope* parent = nullptr;
     std::unordered_map<std::string, SymbolPtr> symbols; // Symbols in this scope.
     std::unordered_map<std::string, TypeSymbol*> types;
-    int depth = 0;
+    int depth = 0; // TODO: unused?
 
     Scope() = default;
 
@@ -86,6 +88,7 @@ enum class Opcode {
     PUSH_CONST,   // constant slot
     POP,
     DUPLICATE, // Used only for constructors for now...
+    SWAP,
 
     // Arithmetic
     ADD,
@@ -161,6 +164,9 @@ enum class Opcode {
 // No runtime heap-allocated value. (For compiler's constantMap)
 // Bascially, PRIMITIVES.
 struct GarbageValue{};
+
+struct Value;
+using NativeFnPtr = Value(*)(int argc, Value* args);
 
 using ConstValue = std::variant<
     std::nullptr_t,

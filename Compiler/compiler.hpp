@@ -41,9 +41,8 @@ public:
 private:
     const FunctionExprPtr program; // AST (read-only)
 
-    // ResolvedVar Compiler::resolveVariable(const std::string& name);
-   
     void emit(Opcode op, int operand);
+    void handleAssignment(AssignmentOp op, ExprPtr left, ExprPtr right);
     
     // Tracking current function context.
     CodegenFnCtx* currCtx;
@@ -72,7 +71,7 @@ private:
     // For aggregates
     bool compilingMethod = false;
     bool isConstructor = false;
-    Aggregate* currAgg = nullptr; // HACK: rly feals like hack.
+    InstanceType* currAggType = nullptr; // HACK: rly feals like hack.
     std::unordered_map<InstanceType*, int> fieldInitFuncProtoIdx;
 
     // Expressions

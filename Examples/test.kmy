@@ -1,9 +1,18 @@
 let const INVALID_AGE: int = -1;
 class X {
     // FIX: without "any" fails.
-    let adder: any = fun (a: int, b:int): int { return a + b; };
+    let adder: (int, int) -> int = fun (a: int, b:int): int { return a + b; };
     let name: string;
     let age: int = INVALID_AGE;
+    // let fail: int = fourtyTwo();
+    // let myFT: int = this.fourtyTwo() + 69;
+
+    // TODO: this fails?
+    //let rec: {dinner:string, time:int} = { dinner: "pizza", time: 30 };
+
+    fun fourtyTwo(): int {
+        return 42;
+    }
     
     // Must ignore the stuff annotated on init. makes no sense.
     init(const name: string): void {
@@ -21,17 +30,33 @@ class X {
     }
 
     fun adder_method(a: int, b:int): int { 
-        return a + b;
+          print(this);
+          return a + b;
     }
 };
 
+fun print42() { print(42); }
+print42();
+
 let suho: X = new X("suho");
-//let kmy: X = new X("KMY", 1972);
+let kmy: X = new X("KMY", 1972);
 
-print(suho.name);
+print(suho);
+print(kmy.age);
+//kmy.rec.time = 60;
+print(kmy);
 
-print(suho.adder(10,20));
-print(suho.adder_method(10, 20));
+let f: (int, int) -> int = suho.adder;
+let res: int = 0;
+// TODO: x/= 2 order is like x = 2 / x; (WTF)
+for (let x: int = 1024; x >= 1; x = x / 2) {
+    res = f(res, x);
+}
+print(res);
+
+// TODO: unbound method impl
+//let error = suho.adder_method;
+//print(error(10,20));
 
 //print(kmy.name);
 //print(kmy.age);

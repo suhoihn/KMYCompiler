@@ -11,6 +11,7 @@ static std::string opcodeToString(Opcode op) {
         case Opcode::PUSH_CONST: return "PUSH_CONST";
         case Opcode::POP: return "POP";
         case Opcode::DUPLICATE: return "DUPLICATE"; 
+        case Opcode::SWAP: return "SWAP"; 
 
         case Opcode::ADD: return "ADD";
         case Opcode::SUB: return "SUB";
@@ -87,7 +88,7 @@ static std::string constValueToString(const ConstValue& v) {
     }, v);
 }
 
-void VM::load(const std::vector<FunctionProto>& functionProtos) {
+void VM::load(std::vector<FunctionProto> functionProtos) {
     this->functionProtos = std::move(functionProtos);
     stack.clear();
     frames.clear();
@@ -129,8 +130,8 @@ Value VM::pop() {
 // Every statement must leave NO value on the stack.
 
 /*
-| caller locals | caller temps | callee locals | callee temps |
-                              ^
+| caller locals | caller temps | function | callee locals | callee temps |
+                            ^
                          frame.base
 
 */
@@ -179,7 +180,9 @@ void VM::executeInstr(const Instruction& instr) {
     auto& frame = frames.back();
     switch (instr.opcode) {
         case Opcode::PUSH_UNINITIALISED: {
-            push( GarbageValue{} );
+            for (int i = 0; i < instr.operand; i++) {
+                push(Value(GarbageValue{}));
+            }
             break;
         }
         case Opcode::PUSH_CONST: {
@@ -198,6 +201,17 @@ void VM::executeInstr(const Instruction& instr) {
             Value v = pop();
             push(v);
             push(v); // No clone. References are copied.
+            break;
+        }
+
+        case Opcode::SWAP: {
+            // [...] [v1] [v2]
+            Value v2 = pop();
+            Value v1 = pop();
+
+            // [...] [v2] [v1]
+            push(v2);
+            push(v1);
             break;
         }
 
@@ -305,13 +319,11 @@ void VM::executeInstr(const Instruction& instr) {
 
         // ----- Functions -----
         case Opcode::MAKE_FUNCTION: {
-            auto fnProto = this->functionProtos[instr.operand];
+            auto& fnProto = this->functionProtos[instr.operand];
 
             // This is guarenteed to have no upvalues.
             auto function = std::make_shared<FunctionObj>(
-                std::vector<Parameter>{}, // not used in VM
-                fnProto.chunk,
-                fnProto.frameSize,
+                &fnProto,
                 std::vector<UpvaluePtr>{}
             );
 
@@ -320,7 +332,7 @@ void VM::executeInstr(const Instruction& instr) {
         }
 
         case Opcode::MAKE_CLOSURE: {
-            auto fnProto = this->functionProtos[instr.operand];
+            auto& fnProto = this->functionProtos[instr.operand];
 
             auto upvalues = std::vector<UpvaluePtr>(fnProto.upValueCnt);
 
@@ -351,9 +363,7 @@ void VM::executeInstr(const Instruction& instr) {
             }
 
             auto closure = std::make_shared<FunctionObj>(
-                std::vector<Parameter>{}, // not used in VM
-                fnProto.chunk,
-                fnProto.frameSize,
+                &fnProto,
                 std::move(upvalues)
             );
 
@@ -370,8 +380,8 @@ void VM::executeInstr(const Instruction& instr) {
 
         case Opcode::CALL: {
             // Stack
-            // [ ...other stuff ] [ callee function object ] [ arg1 ] ... [ argN ] [ local0 ] ...
-            //                                              ^ frame.base
+            // [ ...other stuff ] [ callee function object ] [ arg0 ] ... [ argN ] [ local(N+1) ]
+            //                                                  ^^ frame.base
 
             // 1. Get function from stack
             Value calleeVal = stack[stack.size() - instr.operand - 1];
@@ -389,16 +399,20 @@ void VM::executeInstr(const Instruction& instr) {
             auto fn = std::static_pointer_cast<FunctionObj>(obj);
 
             // 2. Create new call frame
-            CallFrame frame;
-            frame.chunk = &fn->chunk;
-            frame.ip = 0;
-            frame.base = stack.size() - instr.operand; // arguments are already on stack
-            frame.function = fn;
+            CallFrame newFrame;
+            newFrame.chunk = &(fn->proto->chunk);
+            newFrame.ip = 0;
+            newFrame.base = stack.size() - instr.operand; // arguments are already on stack
+            newFrame.function = fn;
             
-            stack.resize(frame.base + frame.function->frameSize, Value(GarbageValue{})); // or frameSize
+            std::cout << "New frame size: " << fn->proto->frameSize << std::endl;
+            std::cout << "New frame base: " << stack.size() - instr.operand << std::endl; 
+            stack.resize(newFrame.base + fn->proto->frameSize, Value(GarbageValue{})); // or frameSize
 
-
-            frames.push_back(frame);
+            std::cout << "Will run "  << newFrame.chunk << "\n";
+            
+            //chunkToString(fn->proto->chunk);
+            frames.push_back(newFrame);
 
             break;
         }
@@ -556,7 +570,7 @@ void VM::executeInstr(const Instruction& instr) {
     }
 }
 
-void VM::run(void) {
+void VM::run() {
     running = true;
     while (running) {
         //std::cout << "STACK SIZE: " << stack.size() << "\n";
@@ -565,14 +579,20 @@ void VM::run(void) {
         }
         std::cout << std::endl;
         
+        // std::cout << "IP: " << frames.back().ip <<  std::endl;
         Instruction instr = fetchInstr();
-        std::cout << "Executing: " << opcodeToString(instr.opcode) << " " << instr.operand << std::endl;
+        std::cout << "Executing: " << opcodeToString(instr.opcode);
+
+        if (instr.operand != INVALID_SLOT)
+            std::cout << " " << instr.operand;
+
+        std::cout << std::endl;
         executeInstr(instr);
     }
 }
 
 
-std::string chunkToString(const Chunk& chunk) {
+std::string chunkToString(const Chunk chunk) {
     std::string out;
 
     out += "=== CONSTANTS ===\n";
@@ -590,6 +610,7 @@ std::string chunkToString(const Chunk& chunk) {
 
         // Only print operand if meaningful
         if (ins.opcode == Opcode::PUSH_CONST ||
+            ins.opcode == Opcode::PUSH_UNINITIALISED || 
             ins.opcode == Opcode::LOAD_LOCAL ||
             ins.opcode == Opcode::LOAD_UPVALUE ||
             ins.opcode == Opcode::STORE_LOCAL ||

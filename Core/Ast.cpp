@@ -11,6 +11,7 @@ Literal::Literal(double d) : value(d) {}
 Literal::Literal(bool b) : value(b) {}
 Literal::Literal(const std::string& s) : value(s) {}
 Literal::Literal(std::nullptr_t) : value(nullptr) {}
+
 ArrayLiteral::ArrayLiteral(std::vector<ExprPtr> elements) : elements(move(elements)) {}
 RecordLiteral::RecordLiteral(std::vector<std::pair<std::string, ExprPtr>> fields) : fields(move(fields)) {}
 Variable::Variable(const std::string& name) : name(name) {}
@@ -51,15 +52,15 @@ Aggregate::Aggregate (
     std::string name,
     std::vector<FieldMember> fieldMembers, 
     std::vector<MethodMember> methodMembers,
-    std::vector<ConstructorMember> constructorMembers
-    //FunctionExprPtr fieldInitFunc
+    std::vector<ConstructorMember> constructorMembers,
+    FunctionExprPtr fieldInitFunc
 ) : 
 kind(kind),
 name(move(name)),
 fieldMembers(move(fieldMembers)),
 methodMembers(move(methodMembers)),
-constructorMembers(move(constructorMembers)) {}
-//fieldInitFunc(move(fieldInitFunc)) {}
+constructorMembers(move(constructorMembers)),
+fieldInitFunc(move(fieldInitFunc)) {}
 
 TypeAlias::TypeAlias(std::string name, TypeNodePtr type) : name(move(name)), annotatedType(move(annotatedType)) {}
 

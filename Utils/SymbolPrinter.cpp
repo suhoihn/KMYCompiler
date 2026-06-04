@@ -81,8 +81,8 @@ void SymbolPrinter::printSymbol(SymbolPtr sym) {
     << indent() << "mutable: " << std::string(sym->isMutable ? "true" : "false") << "\n"
     << indent() << "type: " << typeToString(sym->type) << "\n"
     << indent() << "local slot: " << (sym->slot == INVALID_SLOT ? std::string("UNASSIGNED") : std::to_string(sym->slot)) << "\n"
-    << indent() << "captured: " << std::string(sym->captured ? "true" : "false") << "\n"
-    << indent() << "upvalue slot: " << (sym->upvalueIndex == INVALID_SLOT ? std::string("UNASSIGNED") : std::to_string(sym->upvalueIndex)) << "\n"
+    //<< indent() << "captured: " << std::string(sym->captured ? "true" : "false") << "\n"
+    //<< indent() << "upvalue slot: " << (sym->upvalueIndex == INVALID_SLOT ? std::string("UNASSIGNED") : std::to_string(sym->upvalueIndex)) << "\n"
     << indent() << "field offset: " << (sym->fieldOffset == INVALID_SLOT ? std::string("UNASSIGNED") : std::to_string(sym->fieldOffset)) << "\n"
     << indent() << "func proto index: " << (sym->funcProtoIdx == INVALID_SLOT ? std::string("UNASSIGNED") : std::to_string(sym->funcProtoIdx)) << "\n"
     << "\n";

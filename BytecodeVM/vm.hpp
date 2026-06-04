@@ -61,7 +61,7 @@ struct CallFrame {
 
 class VM {
 public:
-    void load(const std::vector<FunctionProto>& functionProtos);
+    void load(std::vector<FunctionProto> functionProtos);
     void run(void);
 
     VM() = default;
@@ -85,4 +85,4 @@ private:
     Value pop();
 };
 
-std::string chunkToString(const Chunk& chunk);
+std::string chunkToString(const Chunk chunk);

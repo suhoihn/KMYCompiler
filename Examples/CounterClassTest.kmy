@@ -1,0 +1,33 @@
+class Counter {
+    let name: string;
+    let value: int;
+
+    init(name: string, start: int) {
+        print("Constructing " + name);
+        this.name = name;
+        this.value = start;
+    }
+
+    fun inc(delta: int): int {
+        this.value += delta;
+        return this.value;
+    }
+
+    fun get(): int {
+        return this.value;
+    }
+};
+
+let a = new Counter("A", 10);
+let b = new Counter("B", 100);
+
+print(a.get());
+print(b.get());
+
+print(a.inc(5));
+print(a.inc(20));
+
+print(b.inc(1));
+
+print(a.get());
+print(b.get());

@@ -323,7 +323,7 @@ static bool isAssignable(Type* from, Type* to) {
         return true; // int can be assigned to double.
     }
 
-    return from == to;
+    return true; //from == to;
 }
 
 void Resolver::visit(Assignment& e) {
@@ -478,6 +478,7 @@ void Resolver::visit(Get& e) {
         throw KMYCompileError("Property not found: " + e.name);
     }
 
+    throw KMYCompileError("Get from any");
     // Fallback
     e.type = &Types::ANY_TYPE;
     e.fieldIdx = 9999;
@@ -724,6 +725,9 @@ void Resolver::visit(Aggregate& s) {
         member.symbol->type = member.initFuncExpr->type;
         aggType->constructorVec.push_back(member.symbol);
     }
+
+    // Field initialiser
+    s.fieldInitFunc->accept(*this);
 
     currentThis = oldThis;
     currentAggregate = oldAgg;
