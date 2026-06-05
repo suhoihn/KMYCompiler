@@ -341,9 +341,9 @@ struct Aggregate : StmtHelper<Aggregate> {
 struct TypeAlias : StmtHelper<TypeAlias> {
     std::string name;
     TypeSymbol* typeSymbol = nullptr;
-    TypeNodePtr annotatedType;
+    TypeNodePtr aliasingType;
 
-    TypeAlias(std::string name, TypeNodePtr annotatedType);
+    TypeAlias(std::string name, TypeNodePtr aliasingType);
 };
 
 struct ExprStmt : StmtHelper<ExprStmt> {

@@ -176,6 +176,7 @@ UpvaluePtr VM::captureUpvalue(int stackSlot) {
     return uv;
 }
 
+
 void VM::executeInstr(const Instruction& instr) {
     auto& frame = frames.back();
     switch (instr.opcode) {

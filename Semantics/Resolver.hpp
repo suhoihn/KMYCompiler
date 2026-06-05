@@ -3,6 +3,7 @@
 #include <vector>
 #include "../Core/Ast.hpp"
 #include "SymbolScopeBuilder.hpp" // hack?
+#include "TypeInterner.hpp"
 
 // Pass 2: Name Resolution
 // Resolves identifier usages to their declared symbols using the scope tree built in Pass 1.
@@ -16,17 +17,20 @@ public:
     void resolve();
 
 private:
+    TypeInterner typeInterner;
     const FunctionExprPtr program;
     Scope* globalScope;
     Scope* currScope;
 
+    // Type related
     Type* expectedType = nullptr;
+    //std::unordered_map<TypeKey, Type*> typeCache;
 
     bool assigning = false;
 
     int loopDepth = 0;
 
-    Type* typeSigToType(const TypeNodePtr& type);
+    Type* typeSigToType(const TypeNodePtr type);
     TypeSymbol* resolveTypeSymbol(const std::string& name);
     SymbolPtr resolveSymbol(const std::string& name);
 

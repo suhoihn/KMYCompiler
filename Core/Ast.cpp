@@ -62,6 +62,6 @@ methodMembers(move(methodMembers)),
 constructorMembers(move(constructorMembers)),
 fieldInitFunc(move(fieldInitFunc)) {}
 
-TypeAlias::TypeAlias(std::string name, TypeNodePtr type) : name(move(name)), annotatedType(move(annotatedType)) {}
+TypeAlias::TypeAlias(std::string name, TypeNodePtr aliasingType) : name(move(name)), aliasingType(move(aliasingType)) {}
 
 ExprStmt::ExprStmt(ExprPtr expr) : expr(move(expr)) {}

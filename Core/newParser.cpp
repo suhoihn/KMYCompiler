@@ -428,11 +428,12 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
 typealias_stmt → "typealias" IDENTIFIER '=' type ';'
 */
 StmtPtr Parser::parse_typeAlias() {
-    consume(TokenType::Assign, "Expected '='");
-    
     Token name = consume(TokenType::Identifier, "Expected an identifier.");
 
+    consume(TokenType::Assign, "Expected '='");
+
     TypeNodePtr type = parse_type();
+    std::cout << type << "\n";
 
     consumeSemicolon();
 
@@ -884,7 +885,7 @@ TypeNodePtr Parser::parse_functionType() {
 }
 
 TypeNodePtr Parser::parse_type() {
-    TypeNodePtr result;
+    TypeNodePtr result = nullptr;
     if (check(TokenType::LeftParen)) {
         result = parse_functionType();
     } else if (check(TokenType::LeftBrace)) {
@@ -898,7 +899,8 @@ TypeNodePtr Parser::parse_type() {
         if (match(TokenType::RightBracket)) {
             // Static array, e.g., int[]
             result = std::make_shared<ArrayTypeNode>(result, -1, false, false);
-        } else if (match(TokenType::Ellipsis)) {
+        } else if (false) {
+            // TODO: Dynamic array will have diff expr...
             // Dynamic array, e.g., int[...]
             consume(TokenType::RightBracket, "Expected ']' after '...'");
             result = std::make_shared<ArrayTypeNode>(result, 0, true, true);

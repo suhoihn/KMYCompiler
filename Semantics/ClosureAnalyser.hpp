@@ -28,6 +28,8 @@ struct FunctionContext {
     std::vector<UpvalueInfo> upvalues;
 };
 
+// bool captured = false;
+    // int upvalueIndex = INVALID_SLOT;
 
 class ClosureAnalyser : public Visitor {
 public:

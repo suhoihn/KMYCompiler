@@ -11,8 +11,38 @@
 
 using std::cout, std::endl;
 
-void log(const std::string& msg) {
-    cout << "[LOG] " << msg << endl;
+
+
+constexpr const char* RESET  = "\033[0m";
+
+void printLog(LogLevel level, const std::string& msg) {
+    const char* color;
+    const char* prefix;
+
+    switch (level) {
+        case LogLevel::DEBUG: // Logs. Infos. Mostly "doing (smth)" GRAY
+            color = "\033[90m";
+            prefix = "[DEBUG]";
+            break;
+
+        case LogLevel::INFO: // Important step (Each compiler pass enter or exit). CYAN
+            color = "\033[36m";
+            prefix = "[INFO ]";
+            break;
+
+        case LogLevel::WARN: // No use rn. YELLOW
+            color = "\033[33m";
+            prefix = "[WARN ]";
+            break;
+
+        case LogLevel::ERROR: // No use. currently output is red.
+            color = "\033[31m";
+            prefix = "[ERROR]";
+            break;
+    }
+
+    std::cout << color << prefix << " "
+              << msg << RESET;
 }
 
 static const std::unordered_map<TokenType, std::string> tokenTypeNames = {

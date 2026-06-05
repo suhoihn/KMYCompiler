@@ -2,6 +2,7 @@
 
 #include "../Core/errorhandler.hpp"
 #include "../Utils/SymbolPrinter.hpp"
+#include "../Utils/utils.hpp"
 
 Resolver::Resolver(
     FunctionExprPtr program,
@@ -13,12 +14,14 @@ Resolver::Resolver(
 {}
 
 void Resolver::resolve() {
+    printLog(LogLevel::INFO, "Resolver pass started\n");
     program->accept(*this);
+    printLog(LogLevel::INFO, "Resolver pass ended.\n");
 }
 
 SymbolPtr Resolver::resolveSymbol(const std::string& name) {
     Scope* scope = currScope;
-    std::cout << "[DEBUG] Resolving symbol: " << name << std::endl;
+    printLog(LogLevel::DEBUG, "Resolving symbol: " + name + "\n");
 
     while (scope) {
         auto it = scope->symbols.find(name);
@@ -29,13 +32,13 @@ SymbolPtr Resolver::resolveSymbol(const std::string& name) {
 
         scope = scope->parent;
     }
-    std::cout << "[DEBUG] Symbol not found: " << name << std::endl;
+    printLog(LogLevel::DEBUG, "Symbol not found: " + name + "\n");
     return nullptr; // Undefined variable.
 }
 
 TypeSymbol* Resolver::resolveTypeSymbol(const std::string& name) {
     Scope* scope = currScope;
-    std::cout << "[DEBUG] Resolving type symbol: " << name << std::endl;
+    printLog(LogLevel::DEBUG, "Resolving type symbol: " + name + "\n");
 
     while (scope) {
         auto it = scope->types.find(name);
@@ -46,14 +49,21 @@ TypeSymbol* Resolver::resolveTypeSymbol(const std::string& name) {
 
         scope = scope->parent;
     }
-    std::cout << "[DEBUG] Type symbol not found: " << name << std::endl;
+
+    printLog(LogLevel::DEBUG, "Type symbol not found: " + name + "\n");
     return nullptr; // Undefined type name.
 }
 
-Type* Resolver::typeSigToType(const TypeNodePtr& type) {
+Type* Resolver::typeSigToType(const TypeNodePtr type) {
+    printLog(LogLevel::DEBUG, "Converting type annotation to Type*: (TODO...)\n" );
+    std::cout << type << "\n";
+    
+    if (!type) {
+        throw KMYCompileError("Missing type annotation.");
+    }
     switch (type->kind) {
         case TypeNodeKind::NAMED: {
-            const NamedTypeNode& named = static_cast<NamedTypeNode&>(*type);
+            const auto& named = static_cast<NamedTypeNode&>(*type);
             if (named.name == "int") {
                 return &Types::INT_TYPE;
             } else if (named.name == "double") {
@@ -77,36 +87,37 @@ Type* Resolver::typeSigToType(const TypeNodePtr& type) {
             }
         }
 
-        // TODO: interning (shared ptr for distinct types.)
+        case TypeNodeKind::ARRAY: {
+            const auto& arrayTypeNode = static_cast<ArrayTypeNode&>(*type);
+            Type* elementType = typeSigToType(arrayTypeNode.elementType);
+            return typeInterner.getArrayType(elementType);
+        }
+
         case TypeNodeKind::FUNCTION: {
-            const FunctionTypeNode& named = static_cast<FunctionTypeNode&>(*type);
+            const auto& funcTypeNode = static_cast<FunctionTypeNode&>(*type);
             std::vector<Type*> paramTypes;
-            for (const auto& param : named.params) {
+            for (const auto& param : funcTypeNode.params) {
                 paramTypes.push_back(typeSigToType(param));
             }
-            Type* returnType = typeSigToType(named.returnType);
-            // TODO: Raw. new. memory leek guaraneed.
-            // No param info.
-            return new FunctionType(paramTypes, returnType);
+            Type* returnType = typeSigToType(funcTypeNode.returnType);
+            // IMPORTANT NOTE: No param info is preserved.
+            return typeInterner.getFunctionType(std::move(paramTypes), returnType);
         }
 
         case TypeNodeKind::RECORD: {
-            const RecordTypeNode& named = static_cast<RecordTypeNode&>(*type);
+            const auto& recordTypeNode = static_cast<RecordTypeNode&>(*type);
             std::unordered_map<std::string, Type*> fieldTypes;
-            std::unordered_map<std::string, int> layout;
 
-            for(auto& pair : named.paramTypePairs) {
+            for(auto& pair : recordTypeNode.paramTypePairs) {
                 fieldTypes[pair.first] = typeSigToType(pair.second);
-                layout[pair.first] = layout.size();
             }
 
-            return new StructualType(std::move(fieldTypes), std::move(layout));
+            return typeInterner.getStructualType(std::move(fieldTypes));
         }
     }
 
     throw KMYCompileError("Severe: Unknown type node kind.");
 }
-
 
 void Resolver::visit(Literal& e) {
     e.type = std::visit([](auto&& value) -> Type* {
@@ -129,48 +140,71 @@ void Resolver::visit(Literal& e) {
 }   
 
 void Resolver::visit(ArrayLiteral& e) {
+    printLog(LogLevel::DEBUG, "Visiting array literal node\n");
+
     Type* baseType = &Types::ANY_TYPE;
+    bool elementExists = false;
     for (auto& elem : e.elements) {
         elem->accept(*this);
-        continue;
 
-        if (baseType) {
+        if (elementExists) {
             if (baseType != elem->type && elem->type != &Types::ANY_TYPE) {
-                // TODO
-                //throw KMYCompileError("Unmatched array element type.");
+                throw KMYCompileError(
+                    "Unmatched array element type (" 
+                    + typeToString(elem->type) 
+                    + ") from expected type (" 
+                    + typeToString(baseType) + ")."
+                );
             }
-            // TODO...
         } else {
             baseType = elem->type;
+            elementExists = true;
         }
-    }
-    // TODO: Disgusting memory leak.
-    // nullptr type for array means empty array.
-    if (e.elements.empty()) {
-        if (expectedType->kind != TypeKind::ARRAY) {
-            throw KMYCompileError("Expected array type!!!");
-        }
-        auto arrayType = static_cast<ArrayType*>(expectedType);
-        e.type = arrayType;
-        return;
     }
 
-    e.type = new ArrayType(baseType);
+    if (!elementExists) {
+        if (!expectedType) {
+            baseType = &Types::ANY_TYPE;
+           // throw KMYCompileError("Cannot infer type of empty array literal without expected type. This must be a compiler issue lol.");
+        } else {
+            if (expectedType->kind != TypeKind::ARRAY) {
+                throw KMYCompileError("Expected array type for array literal, got " + typeToString(expectedType));
+            }
+            auto arrayType = static_cast<ArrayType*>(expectedType);
+            e.type = arrayType;
+            return;
+        }
+    }
+
+    e.type = typeInterner.getArrayType(baseType);
 }
 
 void Resolver::visit(RecordLiteral& e) {
     std::unordered_map<std::string, Type*> fieldTypes;
 
-    for (auto& [fieldName, value] : e.fields) {
-        value->accept(*this);
-        fieldTypes[fieldName] = value->type;
+    bool expectedTypeExists = false;
+    StructualType* expected = nullptr;
+    if (expectedType && expectedType->kind == TypeKind::STRUCTUAL) {
+        expectedTypeExists = true;
+        expected = static_cast<StructualType*>(expectedType);
     }
+
+    Type* oldET = expectedType;
+
+    for (auto& [fieldName, value] : e.fields) {
+        if (expectedTypeExists) { expectedType = expected->fieldTypes[fieldName]; }
+        
+        value->accept(*this);
+        fieldTypes[fieldName] = value->type;   
+    }
+
+    expectedType = oldET;
 
     for (auto& [name, slot] : e.layout) {
         std::cout << "name: " << name << "slot: " << slot << std::endl;
     }
 
-    e.type = new StructualType(std::move(fieldTypes), std::move(e.layout));
+    e.type = typeInterner.getStructualType(std::move(fieldTypes));
 }
 
 void Resolver::visit(Variable& e) {
@@ -188,20 +222,17 @@ void Resolver::visit(Variable& e) {
 
     e.symbol = sym;
     e.type = sym->type;
-
-    std::cout << "Variable resolved in resolver!\n";
-    std::cout << "var node=" << &e << '\n';
-    std::cout << "symbol=" << e.symbol.get() << '\n';
-    std::cout << "resolved= " << e.resolved << "\n";
-    std::cout << "resolution=" << (int)e.resolution.kind << "\n";
-    std::cout << typeToString(e.type) << "\n";
-    std::cout << "name=" << e.name << "\n"; 
 }
 
 
 Type* testBinary(BinaryOp op, Type* leftType, Type* rightType) {
     switch (op) {
-        case BinaryOp::Plus:
+        case BinaryOp::Plus: {
+            if (leftType == &Types::STRING_TYPE && rightType == &Types::STRING_TYPE) {
+                return &Types::STRING_TYPE;
+            }
+            // Fallthrough to arithmetic cases.
+        }
         case BinaryOp::Minus:
         case BinaryOp::Star:
         case BinaryOp::Slash: {
@@ -214,17 +245,18 @@ Type* testBinary(BinaryOp op, Type* leftType, Type* rightType) {
             } else if (leftType == &Types::DOUBLE_TYPE && rightType == &Types::DOUBLE_TYPE) {
                 return &Types::DOUBLE_TYPE;
             }
+            throw KMYCompileError("Invalid operand types for binary operator.");
         }
 
 
 
         case BinaryOp::Percent: {
-            if (leftType == &Types::DOUBLE_TYPE) {
-                throw std::runtime_error("Divident cannot be double.");
+            if (leftType != &Types::INT_TYPE) {
+                throw KMYCompileError("Divident cannot be non-int.");
             }
 
-            if (rightType == &Types::DOUBLE_TYPE) {
-                throw std::runtime_error("Divisor cannot be double.");
+            if (rightType != &Types::INT_TYPE) {
+                throw KMYCompileError("Divisor cannot be non-int.");
             }
 
             // C-style: integer modulo only
@@ -233,35 +265,35 @@ Type* testBinary(BinaryOp op, Type* leftType, Type* rightType) {
         // TODO: Combine?
         case BinaryOp::LShift: {
             if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
-                throw std::runtime_error("Invalid operand.");
+                throw KMYCompileError("Invalid operand.");
             }
             return &Types::INT_TYPE;
         }
 
         case BinaryOp::RShift: {
             if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
-                throw std::runtime_error("Invalid operand.");
+                throw KMYCompileError("Invalid operand.");
             }
             return &Types::INT_TYPE;
         }
 
         case BinaryOp::BitAnd: {
             if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
-                throw std::runtime_error("Invalid operand.");
+                throw KMYCompileError("Invalid operand.");
             }
             return &Types::INT_TYPE;
         }
 
         case BinaryOp::BitOr: {
             if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
-                throw std::runtime_error("Invalid operand.");
+                throw KMYCompileError("Invalid operand.");
             }
             return &Types::INT_TYPE;
         }
 
         case BinaryOp::BitXor:{
             if (leftType == &Types::DOUBLE_TYPE || rightType == &Types::DOUBLE_TYPE) {
-                throw std::runtime_error("Invalid operand.");
+                throw KMYCompileError("Invalid operand.");
             }
             return &Types::INT_TYPE;
         }
@@ -288,12 +320,12 @@ Type* testBinary(BinaryOp op, Type* leftType, Type* rightType) {
         case BinaryOp::Less:
         case BinaryOp::LessEqual: {
             if (leftType != rightType) {
-                throw std::runtime_error("Cannot compare different types.");
+                throw KMYCompileError("Cannot compare different types.");
             }
             return &Types::BOOL_TYPE;
         }
         default:
-            throw std::runtime_error("Unsupported binary operator");
+            throw KMYCompileError("Unsupported binary operator");
     }
 }
 
@@ -323,7 +355,7 @@ static bool isAssignable(Type* from, Type* to) {
         return true; // int can be assigned to double.
     }
 
-    return true; //from == to;
+    return from == to;
 }
 
 void Resolver::visit(Assignment& e) {
@@ -342,7 +374,12 @@ void Resolver::visit(Assignment& e) {
 
     if (!isAssignable(e.right->type, e.left->type)) {
         // TODO: Covariant and contravariant type checking.
-        throw KMYCompileError("Type mismatch in assignment.");
+        throw KMYCompileError(
+            "Type mismatch in assignment from " 
+            + typeToString(e.right->type) 
+            + " to " 
+            + typeToString(e.left->type)
+        );
     }
 }
 
@@ -520,11 +557,15 @@ void Resolver::visit(FunctionExpr& e) {
 
     currScope = old;
 
-    e.type = new FunctionType(
+    // IMPORTANT NOTE: SEMANTIC INFO IS LOST WHEN ANNOTATED.
+    FunctionType* fnType = typeInterner.getFunctionType(
         std::move(paramTypes),
-        std::move(info),
         e.annotatedReturnType ? typeSigToType(e.annotatedReturnType) : &Types::ANY_TYPE
     );
+
+    fnType->info = std::move(info);
+    fnType->infoExists = true;
+    e.type = fnType;
 }
 
 void Resolver::visit(ThisExpr& e) {
@@ -597,13 +638,15 @@ void handleAnnotatedAndInferred(SymbolPtr sym, Type* annotated, Type* inferred) 
     std::cout << "annotated: " << typeToString(annotated)<< std::endl;
     std::cout << "inferred: " << typeToString(inferred) << std::endl;
     std::cout << "sym:" << sym << std::endl;
-    
+    printLog(LogLevel::DEBUG, "Handling annotated and inferred types\n");
 
     // CASE 1: annotated type exists
     if (annotated) {
         if (inferred) {
             if (!isAssignable(inferred, annotated)) {
-                throw KMYCompileError("Type mismatch in initializer.");
+                throw KMYCompileError(
+                    "Type mismatch in assignment from " + typeToString(inferred) + " to " + typeToString(annotated)
+                );
             }
             sym->type = inferred;
             return;
@@ -625,6 +668,8 @@ void handleAnnotatedAndInferred(SymbolPtr sym, Type* annotated, Type* inferred) 
 }
 
 void Resolver::visit(Let& s) {
+    printLog(LogLevel::DEBUG, "Visiting let node for " + s.name + "\n");
+
     Type* annotated = nullptr;
 
     if (s.annotatedType) {
@@ -638,10 +683,15 @@ void Resolver::visit(Let& s) {
 
     Type* inferred = nullptr;
 
+    Type* oldET = expectedType;
+    if (annotated) { expectedType = annotated; }
+
     if (s.expr) {
         s.expr->accept(*this);
         inferred = s.expr->type;
     }
+
+    if (annotated) { expectedType = oldET; }
 
     if (!s.symbol) {
         throw KMYCompileError("How is this not allocated? missed a let?");
@@ -735,7 +785,9 @@ void Resolver::visit(Aggregate& s) {
 }
 
 void Resolver::visit(TypeAlias& s) {
-    s.typeSymbol->type = typeSigToType(s.annotatedType);
+    printLog(LogLevel::DEBUG, "Visiting typealias node for " + s.name + "\n");
+
+    s.typeSymbol->type = typeSigToType(s.aliasingType);
 }
 
 void Resolver::visit(ExprStmt& s) {

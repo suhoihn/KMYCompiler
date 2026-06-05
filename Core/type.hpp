@@ -8,7 +8,7 @@ enum class TypeNodeKind {
     NAMED,
     FUNCTION,
     ARRAY,
-    RECORD
+    RECORD // Annonymous records ({x: int} forms). Will eventually be StructualType
 };
 
 struct TypeNode {
@@ -123,6 +123,7 @@ struct StructualType : Type {
 };
 
 // TODO: Use those instead of symbols later...
+// RLY TODO i hate parallel vectors like there(^^^^^^^^)
 struct FieldInfo {
     int offset;
     Type* type;
