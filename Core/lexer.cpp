@@ -1,4 +1,6 @@
 #include "lexer.hpp"
+
+#include <string>
 #include <unordered_map>
 
 Lexer::Lexer(const std::string& input) : source(input) {}
@@ -88,8 +90,6 @@ static std::unordered_map<std::string, TokenType> keywords = {
     {"bool", TokenType::KeywordBool},
     {"string", TokenType::KeywordString},
     {"void", TokenType::KeywordVoid},
-    {"array", TokenType::KeywordArray},
-    {"object", TokenType::KeywordObject},
     {"any", TokenType::KeywordAny},
 };
 
@@ -106,6 +106,9 @@ Token Lexer::read_identifier_or_keyword() {
     }
     return Token{type, lexeme, line, column, start, current};
 }
+
+
+constexpr int MAX_SYMBOL_LENGTH = 3;
 
 static std::unordered_map<std::string, TokenType> symbols = {
     {"+", TokenType::Plus},
@@ -164,7 +167,7 @@ Token Lexer::read_operator_or_symbol() {
     int start = current;
 
     // Prevents over-reading.
-    int maxLen = std::min(3, static_cast<int>(source.length() - current));
+    int maxLen = std::min(MAX_SYMBOL_LENGTH, static_cast<int>(source.length() - current));
 
     for (int len = maxLen; len >= 1; --len) {
         std::string candidate = source.substr(current, len);
@@ -212,20 +215,22 @@ std::vector<Token> Lexer::tokenise() {
 
 
         char c = peek();
-        // EXT 3.1: Comment handling
+        // Comment handling
         if (c == '/' && peekNext() == '/') {
-            // consume both slashes
+            // Consume both slashes
             advance();
             advance();
 
-            // skip until newline OR EOF
+            // Skip until newline OR EOF
             while (!is_at_end() && peek() != '\n') {
                 advance();
             }
 
-            // optionally consume newline too
+            // NOTE: newline is consumed here!
             if (peek() == '\n') {
                 advance();
+                ++line;
+                column = 1;
             }
 
             continue;
@@ -241,11 +246,10 @@ std::vector<Token> Lexer::tokenise() {
             tokens.push_back(read_identifier_or_keyword());
         } else {
             // Operators and symbols
-            // Note that lexer doesn't read array literals here!
+            // NOTE: Lexer doesn't read array literals here! (Just reads like '[' contents ']')
             tokens.push_back(read_operator_or_symbol());
         }
     }
     tokens.push_back(Token{TokenType::EndOfFile, "", line, column, current, current});
     return tokens;
 }
-

@@ -7,7 +7,6 @@
 #include "type.hpp"
 #include "operators.hpp"
 
-
 Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens) {}
 
 // program → statement* EOF
@@ -27,6 +26,12 @@ Token Parser::peek() const {
     return tokens[current];
 }
 
+bool Parser::is_at_end() const {
+    return peek().type == TokenType::EndOfFile;
+}
+
+// Unused (previous()).
+
 Token Parser::previous() const {
     if (current - 1 < 0) {
         return Token{TokenType::Unknown, "", peek().line, peek().column, peek().startIdx, peek().endIdx};
@@ -34,6 +39,7 @@ Token Parser::previous() const {
     return tokens[current - 1];
 }
 
+// Advances current and returns the previous token.
 Token Parser::advance() {
     if (!is_at_end()) {
         ++current;
@@ -41,8 +47,15 @@ Token Parser::advance() {
     return tokens[current - 1];
 }
 
+// Compares peek token's type and the given tokentype
+bool Parser::check(TokenType type) const {
+    if (is_at_end()) return false;
+    return peek().type == type;
+}
+
+// Returns whether the peek token's type is the given tokentype.
+// IMPORTANT: match consumes the token if it matches!
 bool Parser::match(TokenType type) {
-    // IMPORTANT: match consumes the token if it matches!
     if (check(type)) {
         advance();
         return true;
@@ -50,24 +63,19 @@ bool Parser::match(TokenType type) {
     return false;
 }
 
-bool Parser::check(TokenType type) const {
-    if (is_at_end()) return false;
-    return peek().type == type;
-}
-
-bool Parser::is_at_end() const {
-    return peek().type == TokenType::EndOfFile;
-}
-
+// Consumes the peek token if it matches the given type. 
+// If matched, Returns the consumed token.
+// Otherwise, throws given error message.
 Token Parser::consume(TokenType token, const std::string& errMsg) {
     if (!check(token)) {
-        throw KMYParseError(errMsg);
+        Token top = previous();
+        throw KMYParseError(errMsg, top.line, top.startIdx, top.endIdx);
     }
     return advance();
 }
 
 void Parser::consumeSemicolon() {
-    consume(TokenType::Semicolon, "Expected ';' after statement.");
+    consume(TokenType::Semicolon, "Expected ';' after statement");
 }
 
 // block → '{' statement* '}'
@@ -115,23 +123,23 @@ StmtPtr Parser::parse_statement() {
         return parse_block();
 
     } else if (match(TokenType::KeywordPrint)) {
-        consume(TokenType::LeftParen, "Expected '(' after print statement.");
+        consume(TokenType::LeftParen, "Expected '(' after print statement");
         ExprPtr expr = parse_expression();
-        consume(TokenType::RightParen, "Expected ')' after expression.");
+        consume(TokenType::RightParen, "Expected ')' after expression");
         consumeSemicolon();
 
         return std::make_shared<Print>(move(expr));
 
     } else if (match(TokenType::KeywordIf)) {
-        consume(TokenType::LeftParen, "Expected '(' after if statement.");
+        consume(TokenType::LeftParen, "Expected '(' after if statement");
         ExprPtr condition = parse_expression();
-        consume(TokenType::RightParen, "Expected ')' after condition expression.");
+        consume(TokenType::RightParen, "Expected ')' after condition expression");
 
         StmtPtr thenbranch = parse_block();
         StmtPtr elsebranch = nullptr;
         
         if (match(TokenType::KeywordElse)) {
-            elsebranch = parse_statement();
+            elsebranch = parse_block();
         }
 
         return std::make_shared<If>(
@@ -141,9 +149,9 @@ StmtPtr Parser::parse_statement() {
         );
 
     } else if (match(TokenType::KeywordWhile)) {
-        consume(TokenType::LeftParen, "Expected '(' after while statement.");
+        consume(TokenType::LeftParen, "Expected '(' after while statement");
         ExprPtr condition = parse_expression();
-        consume(TokenType::RightParen, "Expected ')' after condition expression.");
+        consume(TokenType::RightParen, "Expected ')' after condition expression");
         StmtPtr body = parse_block();
 
         return std::make_shared<While>(
@@ -189,11 +197,11 @@ StmtPtr Parser::parse_statement() {
 }
 
 StmtPtr Parser::parse_let() {
-    // consume(TokenType::KeywordLet, "Expected Let keyword. If this error is thrown in normal var decl, contact KMY.");
+    // consume(TokenType::KeywordLet, "Expected Let keyword. If this error is thrown in normal var decl, contact KMY");
 
     bool isMutable = !match(TokenType::KeywordConst);
 
-    Token varToken = consume(TokenType::Identifier, "Expected an identifier.");
+    Token varToken = consume(TokenType::Identifier, "Expected an identifier");
 
     TypeNodePtr type = nullptr;
     if (match(TokenType::Colon)) {
@@ -219,9 +227,9 @@ StmtPtr Parser::parse_let() {
 
 // functionDecl → "fun" IDENTIFIER (funtionExpr without initial "fun")
 StmtPtr Parser::parse_functionDecl() {
-    // consume(TokenType::KeywordFun, "Expected fun keyword. If this error is thrown in normal func decl, contact KMY.");
+    // consume(TokenType::KeywordFun, "Expected fun keyword. If this error is thrown in normal func decl, contact KMY");
 
-    Token name = consume(TokenType::Identifier, "Expected an identifier.");
+    Token name = consume(TokenType::Identifier, "Expected an identifier");
 
     ExprPtr fnExpr = parse_functionExpr();
 
@@ -236,7 +244,7 @@ StmtPtr Parser::parse_functionDecl() {
 
 // for_stmt → "for" '(' initialiser? ';' condition? ';' increment? ')' block
 StmtPtr Parser::parse_for() {
-    consume(TokenType::LeftParen, "Expected '(' at the start of a for loop.");
+    consume(TokenType::LeftParen, "Expected '(' at the start of a for loop");
 
     StmtPtr initialiser = nullptr;
     ExprPtr condition = nullptr;
@@ -263,7 +271,7 @@ StmtPtr Parser::parse_for() {
         increment = parse_expression();
     }
     
-    consume(TokenType::RightParen, "Expected ')' at the end of a for loop.");
+    consume(TokenType::RightParen, "Expected ')' at the end of a for loop");
 
     StmtPtr body = parse_block();
 
@@ -304,12 +312,12 @@ record_stmt → "record" IDENTIFIER '{' aggregate_member* '}' ';'
 aggregate_member → functionDecl | let_stmt (TODO: change to fieldDecl. its actually not letstmt.)
 */
 StmtPtr Parser::parse_aggregate(AggregateKind kind) {
-    //consume(TokenType::KeywordClass, "Expected class keyword.");
+    //consume(TokenType::KeywordClass, "Expected class keyword");
 
-    consume(TokenType::Identifier, "Expected an identifier.");
-    Token name = previous(); // Gets the previous identifier token.
+    Token name = consume(TokenType::Identifier, "Expected an identifier");
 
     consume(TokenType::LeftBrace, "Expected '{'");
+
     std::vector<FieldMember> fieldMembers;
     std::vector<MethodMember> methodMembers;
     std::vector<ConstructorMember> constructorMembers;
@@ -328,7 +336,7 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
         } else if (match(TokenType::KeywordLet)) {
             std::shared_ptr<Let> letStmt = std::static_pointer_cast<Let>(parse_let());
             /*
-            Token name = consume(TokenType::Identifier, "Expected an identifier.");
+            Token name = consume(TokenType::Identifier, "Expected an identifier");
             
             TypeNodePtr typeAnnotation = nullptr;
             if (match(TokenType::Colon)) {
@@ -389,7 +397,12 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
                 )
             );
         } else {
-            throw KMYParseError("Illegal statement detected.");
+            throw KMYParseError(
+                "Only field declarations (let) and method declarations (fun) are allowed in aggregates",
+                peek().line, // This isnt previous().
+                peek().startIdx,
+                peek().endIdx
+            );
         }
     }
 
@@ -428,7 +441,7 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
 typealias_stmt → "typealias" IDENTIFIER '=' type ';'
 */
 StmtPtr Parser::parse_typeAlias() {
-    Token name = consume(TokenType::Identifier, "Expected an identifier.");
+    Token name = consume(TokenType::Identifier, "Expected an identifier");
 
     consume(TokenType::Assign, "Expected '='");
 
@@ -770,7 +783,7 @@ ExprPtr Parser::parse_prefix() {
                 } while(match(TokenType::Comma));
             }
             
-            consume(TokenType::RightBracket, "Expected ']' after array literal.");
+            consume(TokenType::RightBracket, "Expected ']' after array literal");
 
             return std::make_shared<ArrayLiteral>( move(elements) );
         }
@@ -799,7 +812,7 @@ ExprPtr Parser::parse_prefix() {
         }
 
         default:
-            throw KMYParseError("Unexpected token in expression");
+            throw KMYParseError("Unexpected token in expression", tok.line, tok.startIdx, tok.endIdx);
     }
 }
 
@@ -817,7 +830,7 @@ typePairs → typePair (',' typePair)*
 typePair → IDENTIFIER ':' type
 */
 
-static TypeNodePtr parseTypeToken(Token t) {
+TypeNodePtr Parser::parseTypeToken(Token t) {
     switch (t.type) {
         case TokenType::KeywordInt:
             return std::make_shared<NamedTypeNode>("int");
@@ -837,8 +850,12 @@ static TypeNodePtr parseTypeToken(Token t) {
         case TokenType::KeywordVoid:
             return std::make_shared<NamedTypeNode>("void");
 
-        default:
+        case TokenType::Identifier:
             return std::make_shared<NamedTypeNode>(t.lexeme);
+        
+        default: 
+            // TODO: previous() here gets the invalid token, not ':'
+            throw KMYParseError("Expected identifier or type keyword after ':'", previous().line, previous().startIdx, previous().endIdx);
     }
 }
 
@@ -849,7 +866,7 @@ TypeNodePtr Parser::parse_recordType() {
 
     if (!check(TokenType::RightBrace)) {
         do {
-            Token name = consume(TokenType::Identifier, "Expected an identifier.");
+            Token name = consume(TokenType::Identifier, "Expected an identifier");
             
             consume(TokenType::Colon, "Expected ':'");
 
@@ -891,8 +908,9 @@ TypeNodePtr Parser::parse_type() {
     } else if (check(TokenType::LeftBrace)) {
         result = parse_recordType();
     } else {
-        Token typeToken = advance();
+        Token typeToken = peek();
         result = parseTypeToken(typeToken);
+        advance(); // It is like this due to proper usage of previous() in parseTypeToken() error
     }
 
     while (match(TokenType::LeftBracket)) {
@@ -906,11 +924,16 @@ TypeNodePtr Parser::parse_type() {
             result = std::make_shared<ArrayTypeNode>(result, 0, true, true);
         } else if (check(TokenType::Int)) {
             // Bounded array, e.g., int[5]
-            Token sizeToken = consume(TokenType::Int, "Expected integer for array size.");
-            consume(TokenType::RightBracket, "Expected ']' after array size.");
+            Token sizeToken = consume(TokenType::Int, "Expected integer for array size");
+            consume(TokenType::RightBracket, "Expected ']' after array size");
             result = std::make_shared<ArrayTypeNode>(result, std::stoi(sizeToken.lexeme), true, false);
         } else {
-            throw KMYParseError("Invalid array type syntax. Expected ']', '...' or an integer.");
+            throw KMYParseError(
+                "Invalid array type syntax. Expected ']' or an integer",
+                previous().line,
+                previous().startIdx, 
+                previous().endIdx
+            );
         }
     }
 
@@ -925,7 +948,7 @@ param  → "const"? ( ( IDENTIFIER (':' type)? ('=' expression)? ) | "..." IDENT
 fnExpr is more like a lambda function!
 */
 ExprPtr Parser::parse_functionExpr() {
-    consume(TokenType::LeftParen, "Expected '(' after function declaration.");
+    consume(TokenType::LeftParen, "Expected '(' after function declaration");
 
     std::vector<Parameter> params;
     bool defaultSeen = false;
@@ -934,10 +957,15 @@ ExprPtr Parser::parse_functionExpr() {
             bool isMutable = !match(TokenType::KeywordConst);
             if (match(TokenType::Ellipsis)) {
 
-                Token name = consume(TokenType::Identifier, "Expected an identifier.");
+                Token name = consume(TokenType::Identifier, "Expected an identifier");
 
                 if (!check(TokenType::RightParen)) {
-                    throw KMYParseError("Variadic parameter should come at the end of the parameter list. Didn't see ')'");
+                    throw KMYParseError(
+                        "Variadic parameter should come at the end of the parameter list. Didn't see ')'",
+                        previous().line,
+                        previous().startIdx,
+                        previous().endIdx
+                    );
                 }
 
                 TypeNodePtr varargType = match(TokenType::Colon) ? parse_type() : nullptr;
@@ -948,7 +976,7 @@ ExprPtr Parser::parse_functionExpr() {
                 break;
             }
 
-            Token name = consume(TokenType::Identifier, "Expected an identifier.");
+            Token name = consume(TokenType::Identifier, "Expected an identifier");
             
             TypeNodePtr paramType = match(TokenType::Colon) ? parse_type() : nullptr;
             
@@ -958,7 +986,12 @@ ExprPtr Parser::parse_functionExpr() {
                 defaultSeen = true;
                 defaultValue = parse_expression();
             } else if (defaultSeen) {
-                throw KMYParseError("Non-default parameter detected after a default parameter.");
+                throw KMYParseError(
+                    "Non-default parameter detected after a default parameter",
+                    previous().line,
+                    previous().startIdx,
+                    previous().endIdx
+                );
             }
             
             params.push_back(
@@ -967,7 +1000,7 @@ ExprPtr Parser::parse_functionExpr() {
         } while (match(TokenType::Comma));
     }
 
-    consume(TokenType::RightParen, "Expected ')' after function parameters.");
+    consume(TokenType::RightParen, "Expected ')' after function parameters");
     
     TypeNodePtr returnType = match(TokenType::Colon) ? parse_type() : nullptr;
 
@@ -996,18 +1029,16 @@ ExprPtr Parser::parse_recordExpr() {
     }
 
     do {
-        Token name = consume(TokenType::Identifier, "Expected an identifier.");
-        if (!match(TokenType::Colon)) {
-            throw KMYParseError("Expected ':'");
-        }
+        Token name = consume(TokenType::Identifier, "Expected an identifier");
+        
+        consume(TokenType::Colon, "Expected ':'");
+        
         ExprPtr expr = parse_expression();
         fields.push_back({name.lexeme, expr});
 
     } while (match(TokenType::Comma));
     
-    if (!match(TokenType::RightBrace)) {
-        throw KMYParseError("Expected '}' after record declaration.");
-    }
+    consume(TokenType::RightBrace, "Expected '}' after record declaration");
 
     return std::make_shared<RecordLiteral>(
         std::move(fields)
@@ -1020,10 +1051,9 @@ newExpr → "new" IDENTIFIER '(' args? ')'
 args    → expression ("," expression)*
 */
 ExprPtr Parser::parse_newExpr() {
-    consume(TokenType::Identifier, "Expected an identifier.");
-    Token name = previous();
+    Token name = consume(TokenType::Identifier, "Expected an identifier");
 
-    consume(TokenType::LeftParen, "Expected '(' after class name.");
+    consume(TokenType::LeftParen, "Expected '(' after class/record name");
     std::vector<ExprPtr> args;
 
     if (!check(TokenType::RightParen)) {
@@ -1032,7 +1062,7 @@ ExprPtr Parser::parse_newExpr() {
         } while (match(TokenType::Comma));
     }
     
-    consume(TokenType::RightParen, "Expected ')' after class constructor args.");
+    consume(TokenType::RightParen, "Expected ')' after class constructor args");
 
     return std::make_shared<NewExpr>(
         name.lexeme,

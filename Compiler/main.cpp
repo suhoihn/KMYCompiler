@@ -15,6 +15,74 @@
 // #include "../Semantics/typechecker.hpp" // Planned pass 5
 #include "compiler.hpp" // Code gen in pass 6
 #include <cstring>
+#include <sstream>
+
+static void printDiagnostic(
+    const KMYParseError& e,
+    const std::string& source
+) {
+    const std::string RED = "\033[31m";
+    const std::string RESET = "\033[0m";
+    const std::string BOLD = "\033[1m";
+
+    // -----------------------------
+    // Find line text
+    // -----------------------------
+    std::istringstream ss(source);
+    std::string lineStr;
+
+    for (int i = 1; i <= e.line(); ++i) {
+        if (!std::getline(ss, lineStr))
+            return;
+    }
+
+    // -----------------------------
+    // FIXED COLUMN CALCULATION
+    // -----------------------------
+    // DO NOT use e.start() directly as column.
+    // Convert global offset -> line-local offset.
+
+    int globalPos = e.start();
+    int lineStart = globalPos;
+
+    for (int i = globalPos; i >= 0; --i) {
+        if (source[i] == '\n') {
+            lineStart = i + 1;
+            break;
+        }
+    }
+
+    int column = globalPos - lineStart;
+
+    // safety clamp
+    column = std::max(0, column);
+
+    int length = std::max(1, e.end() - e.start());
+
+    std::cerr << RED
+              << "Parse error: "
+              << e.what()
+              << " at line "
+              << e.line()
+              << ", column "
+              << column + 1 // For display, column doesn't start at 0.
+              << RESET
+              << "\n";
+
+    // -----------------------------
+    // Print source line
+    // -----------------------------
+    std::cerr << RED << lineStr << RESET << "\n";
+
+    // -----------------------------
+    // Print underline
+    // -----------------------------
+    std::cerr << std::string(column, ' ')
+              << BOLD << RED
+              << std::string(length, '^')
+              << RESET
+              << "\n";
+}
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -174,7 +242,7 @@ int main(int argc, char *argv[]) {
         return 0;
 
     } catch (const KMYParseError& e) {
-        std::cerr << "Parse error: " << e.what() << std::endl;
+        printDiagnostic(e, source);
         return 1;
     } catch (const KMYCompileError& e) {
         std::cerr << "Compile error: " << e.what() << std::endl;

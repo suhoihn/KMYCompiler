@@ -58,6 +58,7 @@ private:
     ExprPtr parse_newExpr();
     ExprPtr parse_prefix();
 
+    TypeNodePtr parseTypeToken(Token t);
     TypeNodePtr parse_type();
     TypeNodePtr parse_functionType();
     TypeNodePtr parse_arraySuffix();

@@ -80,8 +80,6 @@ enum class TokenType {
     KeywordBool,
     KeywordString,
     KeywordVoid,
-    KeywordArray,  // ?
-    KeywordObject, // ?
     KeywordAny,
 
     // Symbols
@@ -104,12 +102,12 @@ enum class TokenType {
     Unknown
 };
 
-// EXT 3.4: Token struct includes start and end indexes.
+// Token struct includes start and end indexes.
 struct Token {
     TokenType type;
     std::string lexeme;
     int line;
-    int column;
+    int column; // Unused. Same purpose as startIdx but left as compatability feature.
     int startIdx;
     int endIdx;
 };

@@ -11,8 +11,6 @@
 
 using std::cout, std::endl;
 
-
-
 constexpr const char* RESET  = "\033[0m";
 
 void printLog(LogLevel level, const std::string& msg) {
@@ -121,8 +119,6 @@ static const std::unordered_map<TokenType, std::string> tokenTypeNames = {
     {TokenType::KeywordBool, "KeywordBool"},
     {TokenType::KeywordString, "KeywordString"},
     {TokenType::KeywordVoid, "KeywordVoid"},
-    {TokenType::KeywordArray, "KeywordArray"},
-    {TokenType::KeywordObject, "KeywordObject"},
     {TokenType::KeywordAny, "KeywordAny"},
 
     // Symbols
