@@ -18,7 +18,10 @@ ArrayType* TypeInterner::getArrayType(Type* elementType) {
     return newArrType;
 }
 
-FunctionType* TypeInterner::getFunctionType(std::vector<Type*> paramTypes, Type* returnType) {
+FunctionType* TypeInterner::getFunctionType(
+    std::vector<Type*> paramTypes, 
+    Type* returnType
+) {
     FunctionKey fnKey{paramTypes, returnType};
 
     auto it = fnCache.find(fnKey);

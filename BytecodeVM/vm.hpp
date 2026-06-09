@@ -64,7 +64,7 @@ public:
     void load(std::vector<FunctionProto> functionProtos);
     void run(void);
 
-    VM() = default;
+    VM();
 private:
     bool running = false;
 
@@ -75,8 +75,12 @@ private:
    
     std::vector<UpvaluePtr> openUpvalues;
     std::unordered_map<int, UpvaluePtr> openUpvalueMap; // For quick lookup of open upvalues by their stack location.
+    
     void closeUpvalues(int base);
     UpvaluePtr captureUpvalue(int stackSlot);
+
+    // Native functions as values
+    std::vector<Value> nativeFunctions;
 
     // Execution
     Instruction fetchInstr(void);

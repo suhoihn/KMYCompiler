@@ -4,13 +4,7 @@
 #include "../Core/errorhandler.hpp"
 #include "../Core/Ast.hpp"
 #include <unordered_set>
-
-/*
-Value isAlpha(int argc, Value* args);
-static std::unordered_map<std::string, NativeFnPtr> nativeFunctions {
-    {"isAlpha", &isAlpha}    
-};
-*/
+#include "../Utils/NativeFunctionImpl.hpp"
 
 SymbolScopeBuilder::SymbolScopeBuilder(
     FunctionExprPtr program
@@ -19,6 +13,15 @@ SymbolScopeBuilder::SymbolScopeBuilder(
     // Global scope made
     globalScope = new Scope();
     currScope = globalScope;
+
+    // Build native functions HERE(?)
+    for (auto& [name, info] : nativeFnTypes) {
+        SymbolPtr sym = declare(name, false);
+
+        sym->type = info.type;
+        sym->nativeFnPtr = info.fn;
+        sym->globalSlot = info.globalSlot; // Hacky?
+    }
 }
 
 // Exports the scope tree.

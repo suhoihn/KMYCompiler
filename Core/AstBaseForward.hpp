@@ -14,6 +14,8 @@ using ExprPtr = std::shared_ptr<struct BaseExpr>;
 using StmtPtr = std::shared_ptr<struct BaseStmt>;
 
 constexpr int INVALID_SLOT = -1;
+struct Value;
+using NativeFnPtr = Value(*)(int argc, Value* args);
 
 // The semantic identity of a variable.
 struct Symbol {
@@ -37,6 +39,10 @@ struct Symbol {
 
     // Function Info (if used)
     int funcProtoIdx = INVALID_SLOT;
+
+    // Native function info (if used)
+    NativeFnPtr nativeFnPtr = nullptr;
+    int globalSlot = INVALID_SLOT;
 
     Symbol(const std::string& name, bool isMutable)
         : name(name), isMutable(isMutable) {}
@@ -164,9 +170,6 @@ enum class Opcode {
 // No runtime heap-allocated value. (For compiler's constantMap)
 // Bascially, PRIMITIVES.
 struct GarbageValue{};
-
-struct Value;
-using NativeFnPtr = Value(*)(int argc, Value* args);
 
 using ConstValue = std::variant<
     std::nullptr_t,

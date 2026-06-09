@@ -92,6 +92,7 @@ void Compiler::visit(Variable& e) {
             break;
 
         // TODO(): glboals actually DE.
+        // 
         case ResolvedVar::Kind::GLOBAL:
             emit(Opcode::LOAD_GLOBAL, e.resolution.index);
             break;

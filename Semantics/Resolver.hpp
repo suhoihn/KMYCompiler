@@ -17,7 +17,7 @@ public:
     void resolve();
 
 private:
-    TypeInterner typeInterner;
+    // TypeInterner typeInterner;
     const FunctionExprPtr program;
     Scope* globalScope;
     Scope* currScope;

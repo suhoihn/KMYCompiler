@@ -1,8 +1,26 @@
 #include "vm.hpp"
 
 #include <stdexcept>
-#include "../Core/value.hpp"
 #include <iostream>
+#include "../Core/value.hpp"
+#include "../Utils/NativeFunctionImpl.hpp"
+
+VM::VM() {
+    // Register all native functions.
+    // TODO: Kinda looks ugly.
+    int maxSlot = 0;
+    for (auto& [name, info] : nativeFnTypes) {
+        maxSlot = std::max(maxSlot, info.globalSlot);
+    }
+
+    nativeFunctions.resize(maxSlot + 1);
+
+    for (auto& [name, info] : nativeFnTypes) {
+        std::cout << "Address check for " + name + " in " << (void*)(info.fn) << " with slot " << info.globalSlot << "\n";
+        nativeFunctions[info.globalSlot] =
+            Value(std::make_shared<FunctionObj>(info.fn));
+    }
+}
 
 // DEBUG
 static std::string opcodeToString(Opcode op) {
@@ -42,6 +60,8 @@ static std::string opcodeToString(Opcode op) {
         case Opcode::LOAD_UPVALUE: return "LOAD_UPVALUE";
         case Opcode::STORE_LOCAL: return "STORE_LOCAL";
         case Opcode::STORE_UPVALUE: return "STORE_UPVALUE";
+        case Opcode::LOAD_GLOBAL: return "LOAD_GLOBAL";
+        case Opcode::STORE_GLOBAL: return "STORE_GLOBAL";
         case Opcode::CAPTURE_LOCAL: return "CAPTURE_LOCAL";
         case Opcode::CAPTURE_UPVALUE: return "CAPTURE_UPVALUE";
         case Opcode::CLOSE_UPVALUE: return "CLOSE_UPVALUE";
@@ -293,6 +313,15 @@ void VM::executeInstr(const Instruction& instr) {
             push(v);
             break;
         }
+
+        case Opcode::LOAD_GLOBAL: {
+            push(nativeFunctions[instr.operand]);
+            break;
+        }
+        case Opcode::STORE_GLOBAL: {
+            throw std::runtime_error("If this runs, that's a bug. global modification not implemented yet.");
+            break;
+        }
         
         case Opcode::CAPTURE_LOCAL: 
         case Opcode::CAPTURE_UPVALUE: {
@@ -399,22 +428,54 @@ void VM::executeInstr(const Instruction& instr) {
 
             auto fn = std::static_pointer_cast<FunctionObj>(obj);
 
-            // 2. Create new call frame
-            CallFrame newFrame;
-            newFrame.chunk = &(fn->proto->chunk);
-            newFrame.ip = 0;
-            newFrame.base = stack.size() - instr.operand; // arguments are already on stack
-            newFrame.function = fn;
-            
-            std::cout << "New frame size: " << fn->proto->frameSize << std::endl;
-            std::cout << "New frame base: " << stack.size() - instr.operand << std::endl; 
-            stack.resize(newFrame.base + fn->proto->frameSize, Value(GarbageValue{})); // or frameSize
+            if (fn->kind == FunctionKind::User) {
 
-            std::cout << "Will run "  << newFrame.chunk << "\n";
-            
-            //chunkToString(fn->proto->chunk);
-            frames.push_back(newFrame);
+                // 2. Create new call frame
+                CallFrame newFrame;
+                newFrame.chunk = &(fn->proto->chunk);
+                newFrame.ip = 0;
+                newFrame.base = stack.size() - instr.operand; // arguments are already on stack
+                newFrame.function = fn;
+                
+                std::cout << "New frame size: " << fn->proto->frameSize << std::endl;
+                std::cout << "New frame base: " << stack.size() - instr.operand << std::endl; 
+                stack.resize(newFrame.base + fn->proto->frameSize, Value(GarbageValue{})); // or frameSize
+    
+                std::cout << "Will run "  << newFrame.chunk << "\n";
+                
+                //chunkToString(fn->proto->chunk);
+                frames.push_back(newFrame);
+            } else if (fn->kind == FunctionKind::Native) {
+                // Native call. No virtual(?) frame created.
+                Value* args = new Value[instr.operand];
+                
+                std::cout << "operand: " << instr.operand << "\n";
+                std::cout << stack.size() << "\n";
+                for (int i = 0; i < instr.operand; i++) {
+                    std::cout << "stksize: " << stack.size() << " / i: " << i << "\n";
+                    args[i] = pop();
+                }
+                std::cout << stack.size() << "\n";
 
+                std::cout << "ARGS\n";
+                for (int i = 0; i < instr.operand; i++) {
+                    std::cout << args[i].toString() << "\n";
+                }
+                std::cout << "LESSGO\n";
+                std::cout << "func: " << (void*)(fn->nativeFn) << "\n";
+
+                // Clean func & args
+                //stack.resize(stack.size() - instr.operand - 1);
+                //std::cout << "resize ok\n";
+                pop();
+                
+                push(fn->nativeFn(instr.operand, args));
+                std::cout << "push ok\n";
+
+                delete[] args;
+                std::cout << "arg del ok?\n";
+            }
+            std::cout << "let's go home\n";
             break;
         }
 
@@ -614,8 +675,10 @@ std::string chunkToString(const Chunk chunk) {
             ins.opcode == Opcode::PUSH_UNINITIALISED || 
             ins.opcode == Opcode::LOAD_LOCAL ||
             ins.opcode == Opcode::LOAD_UPVALUE ||
+            ins.opcode == Opcode::LOAD_GLOBAL ||
             ins.opcode == Opcode::STORE_LOCAL ||
             ins.opcode == Opcode::STORE_UPVALUE ||
+            ins.opcode == Opcode::STORE_GLOBAL ||
             ins.opcode == Opcode::CAPTURE_LOCAL ||
             ins.opcode == Opcode::CAPTURE_UPVALUE ||
             ins.opcode == Opcode::CLOSE_UPVALUE ||

@@ -148,7 +148,6 @@ struct FunctionObj : Object {
     std::vector<UpvaluePtr> upvalues; 
     
     // For native functions
-    int arity = 0;
     NativeFnPtr nativeFn = nullptr;
     
     /*
@@ -166,12 +165,10 @@ struct FunctionObj : Object {
     */
 
     FunctionObj (
-        int arity,
         NativeFnPtr nativeFn
     ) : 
     kind(FunctionKind::Native), 
     Object(ObjKind::Function), 
-    arity(arity), 
     nativeFn(nativeFn) {}
 
 

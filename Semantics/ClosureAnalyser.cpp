@@ -158,10 +158,18 @@ void ClosureAnalyser::visit(Variable& e) {
 
     if (e.symbol)
         std::cout << "symbol name=" << e.symbol->name << '\n';
+
+    if (e.symbol->nativeFnPtr) {
+        std::cout << "Hi native!\n";
+        e.resolved = true;
+        // TODO: Really feels like a hack...
+        e.resolution = ResolvedVar{ResolvedVar::Kind::GLOBAL, e.symbol->globalSlot};
+        return;
+    }
         
     if (!e.resolved) {
         e.resolved = true;
-        std::cout << "Lets resolve null\n";
+        std::cout << "Lets resolve symbol\n";
         e.resolution = resolveVariable(e.symbol);
     }
 }

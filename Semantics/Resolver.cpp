@@ -90,7 +90,7 @@ Type* Resolver::typeSigToType(const TypeNodePtr type) {
         case TypeNodeKind::ARRAY: {
             const auto& arrayTypeNode = static_cast<ArrayTypeNode&>(*type);
             Type* elementType = typeSigToType(arrayTypeNode.elementType);
-            return typeInterner.getArrayType(elementType);
+            return TypeInterner::getArrayType(elementType);
         }
 
         case TypeNodeKind::FUNCTION: {
@@ -101,7 +101,7 @@ Type* Resolver::typeSigToType(const TypeNodePtr type) {
             }
             Type* returnType = typeSigToType(funcTypeNode.returnType);
             // IMPORTANT NOTE: No param info is preserved.
-            return typeInterner.getFunctionType(std::move(paramTypes), returnType);
+            return TypeInterner::getFunctionType(std::move(paramTypes), returnType);
         }
 
         case TypeNodeKind::RECORD: {
@@ -109,10 +109,15 @@ Type* Resolver::typeSigToType(const TypeNodePtr type) {
             std::unordered_map<std::string, Type*> fieldTypes;
 
             for(auto& pair : recordTypeNode.paramTypePairs) {
+                if (fieldTypes.count(pair.first)) {
+                    throw KMYCompileError(
+                        "Redeclaration of field name \"" + pair.first + "\" in type signature."
+                    );
+                }
                 fieldTypes[pair.first] = typeSigToType(pair.second);
             }
 
-            return typeInterner.getStructualType(std::move(fieldTypes));
+            return TypeInterner::getStructualType(std::move(fieldTypes));
         }
     }
 
@@ -176,7 +181,7 @@ void Resolver::visit(ArrayLiteral& e) {
         }
     }
 
-    e.type = typeInterner.getArrayType(baseType);
+    e.type = TypeInterner::getArrayType(baseType);
 }
 
 void Resolver::visit(RecordLiteral& e) {
@@ -204,7 +209,7 @@ void Resolver::visit(RecordLiteral& e) {
         std::cout << "name: " << name << "slot: " << slot << std::endl;
     }
 
-    e.type = typeInterner.getStructualType(std::move(fieldTypes));
+    e.type = TypeInterner::getStructualType(std::move(fieldTypes));
 }
 
 void Resolver::visit(Variable& e) {
@@ -558,7 +563,7 @@ void Resolver::visit(FunctionExpr& e) {
     currScope = old;
 
     // IMPORTANT NOTE: SEMANTIC INFO IS LOST WHEN ANNOTATED.
-    FunctionType* fnType = typeInterner.getFunctionType(
+    FunctionType* fnType = TypeInterner::getFunctionType(
         std::move(paramTypes),
         e.annotatedReturnType ? typeSigToType(e.annotatedReturnType) : &Types::ANY_TYPE
     );
@@ -648,8 +653,11 @@ void handleAnnotatedAndInferred(SymbolPtr sym, Type* annotated, Type* inferred) 
                     "Type mismatch in assignment from " + typeToString(inferred) + " to " + typeToString(annotated)
                 );
             }
-            sym->type = inferred;
-            return;
+            // Only functions have priority of inferred type over annotated type, since they may carry critical info like param defaults and variadicity that the annotated type doesn't convey.
+            if (annotated->kind == TypeKind::FUNCTION) {
+                sym->type = inferred;
+                return;
+            }
         }
 
         // You lose parameter defaults or vararg info.

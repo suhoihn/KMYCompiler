@@ -4,6 +4,10 @@
 #include "../Core/type.hpp"
 #include "../Core/value.hpp"
 
-std::unordered_map<std::string, FunctionType*> nativeFnTypes;
+struct NativeEntry {
+    FunctionType* type;
+    NativeFnPtr fn;
+    int globalSlot;
+};
 
-Value isAlpha(int argc, Value* args);
+extern std::unordered_map<std::string, NativeEntry> nativeFnTypes;

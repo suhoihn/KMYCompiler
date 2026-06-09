@@ -63,14 +63,14 @@ struct RecordKeyHash {
     }
 };
 
-class TypeInterner {
-private:
-    std::unordered_map<Type*, ArrayType*> arrayCache;
-    std::unordered_map<FunctionKey, FunctionType*, FunctionHash> fnCache;
-    std::unordered_map<RecordKey, StructualType*, RecordKeyHash> recordCache;
+namespace TypeInterner {
+//private:
+    inline std::unordered_map<Type*, ArrayType*> arrayCache;
+    inline std::unordered_map<FunctionKey, FunctionType*, FunctionHash> fnCache;
+    inline std::unordered_map<RecordKey, StructualType*, RecordKeyHash> recordCache;
     RecordKey makeKey(std::unordered_map<std::string, Type*> raw);
-public:
-    ArrayType* getArrayType(Type* elementType);
-    FunctionType* getFunctionType(std::vector<Type*> paramTypes, Type* returnType);
-    StructualType* getStructualType(std::unordered_map<std::string, Type*> raw);
+// public:
+    extern ArrayType* getArrayType(Type* elementType);
+    extern FunctionType* getFunctionType(std::vector<Type*> paramTypes, Type* returnType);
+    extern StructualType* getStructualType(std::unordered_map<std::string, Type*> raw);
 };

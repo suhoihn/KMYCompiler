@@ -1,0 +1,65 @@
+// ===== Native function tests =====
+
+let a = isAlpha("A");
+let b = isAlpha("1");
+
+print("isAlpha tests:");
+print(a);   // true
+print(b);   // false
+
+
+// ===== substring tests =====
+
+let s = "hello";
+
+let x = subString(s, 0, 2);
+let y = subString(s, 1, 3);
+
+print("substring tests:");
+print(x);   // "he"
+print(y);   // "ell"
+
+
+// ===== composition =====
+
+print("composition tests:");
+print(isAlpha(subString("abc123", 0, 1)));  // true
+print(isAlpha(subString("1abc", 0, 1)));    // false
+
+
+// ===== edge cases =====
+
+print("edge cases:");
+print(isAlpha(""));                 // false (or error depending on your design)
+// print(subString("hi", 10, 2));      // ""
+print(subString("hi", 0, 100));     // "hi"
+
+
+// ===== chaining =====
+
+print("chaining test:");
+let x2 = subString("abcdefghijklmnopqrstuvwxyz", 0, 5);
+let y2 = subString(x2, 1, 3);
+let z2 = isAlpha(y2);
+
+print(x2);  // abcde
+print(y2);  // bcd
+print(z2);  // true
+
+
+// ===== mixed stress =====
+
+print("stress:");
+let t = subString("Z9helloX", 1, 5);
+print(t);               // 9hell
+print(isAlpha(t));      // false
+
+
+// ===== function-as-value behavior test =====
+// (only if your language allows it)
+
+let f: (string) -> bool = isAlpha;
+print(f("Z"));          // true
+print(f("9"));          // false
+
+print(about());

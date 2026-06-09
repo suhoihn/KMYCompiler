@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 using SymbolPtr = std::shared_ptr<struct Symbol>;
 
@@ -93,17 +94,18 @@ struct ParamTypeInfo {
 struct FunctionType : Type {
     std::vector<Type*> paramTypes;
     Type* returnType;
+    bool isNative = false;
 
     std::vector<ParamTypeInfo> info;
     bool infoExists = false;
 
     // No parameter info exists.
-    FunctionType(std::vector<Type*> paramTypes, Type* returnType) 
-        : Type(TypeKind::FUNCTION), paramTypes(move(paramTypes)), returnType(returnType), infoExists(false) {}
+    FunctionType(std::vector<Type*> paramTypes, Type* returnType, bool isNative = false) 
+        : Type(TypeKind::FUNCTION), paramTypes(move(paramTypes)), returnType(returnType), isNative(isNative), infoExists(false) {}
  
     // Parameter info exists.
-    FunctionType(std::vector<Type*> paramTypes, std::vector<ParamTypeInfo> info, Type* returnType) 
-        : Type(TypeKind::FUNCTION), paramTypes(move(paramTypes)), info(move(info)), returnType(returnType), infoExists(true) {}
+    FunctionType(std::vector<Type*> paramTypes, std::vector<ParamTypeInfo> info, Type* returnType, bool isNative = false) 
+        : Type(TypeKind::FUNCTION), paramTypes(move(paramTypes)), info(move(info)), returnType(returnType), isNative(isNative), infoExists(true) {}
 };
 
 struct ArrayType : Type {
