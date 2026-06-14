@@ -81,6 +81,7 @@ private:
     StmtPtr parse_for();
     StmtPtr parse_aggregate(AggregateKind kind);
     StmtPtr parse_typeAlias();
+    StmtPtr parse_enum();
 
     const std::vector<Token> tokens;
     size_t current = 0;

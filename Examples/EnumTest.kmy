@@ -1,0 +1,85 @@
+// ===== ENUM DEFINITIONS =====
+
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+enum Direction {
+    NORTH,
+    SOUTH,
+    EAST,
+    WEST
+};
+
+// ===== VARIABLES (typed) =====
+
+let a: Color = Color::RED;
+let b: any = Color::GREEN;
+let c: Color = Color::BLUE;
+
+let d: Direction = Direction::NORTH;
+let e: Direction = Direction::WEST;
+
+// same-type assignment
+let f: Color = a;
+let g: Direction = d;
+
+// ===== EXPRESSIONS =====
+
+let x: Color = Color::RED;
+let y: Color = Color::GREEN;
+
+let z: Color = x;
+let w: Color = Color::BLUE;
+
+// numeric sanity check (should NOT treat enum as int unless you allow it)
+let i: int = 10;
+let j: int = i + 5;
+
+// ===== COMPARISONS =====
+
+let check1: bool = x == Color::RED;
+let check2: bool = y == Color::BLUE;
+let check3: bool = d == Direction::NORTH;
+
+// ===== IF STATEMENT =====
+let result: int;
+if (x == Color::RED) {
+    result = 1;
+} else {
+    result = 0;
+}
+// ===== WHILE LOOP =====
+
+let counter: int = 0;
+
+while (counter < 5) {
+    counter = counter + 1;
+}
+
+// ===== FUNCTION TEST =====
+
+fun testEnum(v: Color): int {
+    if (v == Color::GREEN) {
+        return 100;
+    } else {
+        return 200;
+    }
+}
+
+// ===== CALLS =====
+
+let r1: int = testEnum(Color::RED);
+let r2: int = testEnum(Color::BLUE);
+
+// ===== EDGE CASES =====
+
+// reassign enum
+let m: Color = Color::RED;
+m = Color::GREEN;
+
+// nested usage
+let n: Color = Color::RED;
+let p: Color = n;

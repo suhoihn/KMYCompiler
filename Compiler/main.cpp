@@ -17,13 +17,14 @@
 #include <cstring>
 #include <sstream>
 
+const std::string RED = "\033[31m";
+const std::string RESET = "\033[0m";
+const std::string BOLD = "\033[1m";
+
 static void printDiagnostic(
     const KMYParseError& e,
     const std::string& source
 ) {
-    const std::string RED = "\033[31m";
-    const std::string RESET = "\033[0m";
-    const std::string BOLD = "\033[1m";
 
     // -----------------------------
     // Find line text
@@ -245,10 +246,10 @@ int main(int argc, char *argv[]) {
         printDiagnostic(e, source);
         return 1;
     } catch (const KMYCompileError& e) {
-        std::cerr << "Compile error: " << e.what() << std::endl;
+        std::cerr << RED << "Compile error: " << e.what() << RESET << std::endl;
         return 1;
     } catch (const std::exception& e) {
-        std::cerr << "Runtime error: " << e.what() << std::endl;
+        std::cerr << RED << "Runtime error: " << e.what() << RESET << std::endl;
         return 1;
     }
 

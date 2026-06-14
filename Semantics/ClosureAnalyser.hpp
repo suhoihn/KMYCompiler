@@ -15,7 +15,7 @@ struct FunctionContext {
     FunctionContext* parent;
     
     std::vector<Local> locals;
-    std::unordered_map<SymbolPtr, int> localMap;
+    std::unordered_map<VarSymbol*, int> localMap;
     
     // Constants are accessed via chunk.constants
     // This is handled in codegen part.
@@ -24,7 +24,7 @@ struct FunctionContext {
     int scopeDepth = 0;
     int nextSlot = 0;
 
-    std::unordered_map<SymbolPtr, int> upvalueMap;
+    std::unordered_map<VarSymbol*, int> upvalueMap;
     std::vector<UpvalueInfo> upvalues;
 };
 
@@ -40,8 +40,8 @@ private:
     const FunctionExprPtr program;
     
     FunctionContext* currCtx;
-    ResolvedVar resolveVariable(SymbolPtr sym);
-    int allocateLocal(SymbolPtr sym);
+    ResolvedVar resolveVariable(VarSymbol* sym);
+    int allocateLocal(VarSymbol* sym);
 
     bool insideMethod = false;
     Aggregate* currentAggregate = nullptr;
@@ -57,6 +57,7 @@ private:
     void visit(Index& e) override;
     void visit(Call& e) override;
     void visit(Get& e) override;
+    void visit(ScopeAccessExpr& e) override;
     void visit(FunctionExpr& e) override;
     void visit(ThisExpr& e) override;
     void visit(NewExpr& e) override;
@@ -72,5 +73,6 @@ private:
     void visit(Return& s) override;
     void visit(Aggregate& s) override;
     void visit(TypeAlias& s) override;
+    void visit(Enum& s) override;
     void visit(ExprStmt& s) override;
 };

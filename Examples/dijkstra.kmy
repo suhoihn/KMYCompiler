@@ -1,7 +1,9 @@
 // Dijkstra using classes
 
 class PriorityQueue {
-    fun init() {
+    let values;
+    
+    init() {
         this.values = [];
     }
 
@@ -39,7 +41,7 @@ class Dijkstra {
     let graph;
     let nodes;
 
-    fun init(graph, nodes) {
+    init(graph, nodes) {
         this.graph = graph;
         this.nodes = nodes;
     }
@@ -50,7 +52,6 @@ class Dijkstra {
         let nodes = this.nodes;
 
         let pq = new PriorityQueue();
-        pq.init();
 
         // Initialize
         let i = 0;
@@ -135,8 +136,7 @@ let graph = {
 let nodes = ["A", "B", "C", "D", "E", "Z"];
 
 // Run algorithm
-let solver = new Dijkstra();
-solver.init(graph, nodes);
+let solver = new Dijkstra(graph, nodes);
 
 let result = solver.shortestPath("A");
 

@@ -25,6 +25,7 @@ private:
     void visit(Index& e) override;
     void visit(Call& e) override;
     void visit(Get& e) override;
+    void visit(ScopeAccessExpr& e) override;
     void visit(FunctionExpr& e) override;
     void visit(ThisExpr& e) override;
     void visit(NewExpr& e) override;
@@ -40,5 +41,6 @@ private:
     void visit(Return& s) override;
     void visit(Aggregate& s) override;
     void visit(TypeAlias& s) override;
+    void visit(Enum& s) override;
     void visit(ExprStmt& s) override;
 };

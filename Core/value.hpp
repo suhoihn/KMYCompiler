@@ -6,6 +6,7 @@
 #include <functional>
 #include "AstBaseForward.hpp"
 #include "../Core/operators.hpp"
+#include "CodegenInfo.hpp"
 
 // Pointers should be used to avoid circular dependencies...
 // Unused

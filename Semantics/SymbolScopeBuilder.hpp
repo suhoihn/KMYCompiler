@@ -1,7 +1,8 @@
 #pragma once
 
-#include <vector>
 #include "../Core/Ast.hpp"
+#include "../Core/Scope.hpp"
+#include "../Core/Symbol.hpp"
 
 // Pass 1: Scope & Symbol Construction
 // Builds scope hierarchy and registers all declarations (variables, functions, classes).
@@ -57,7 +58,7 @@ private:
     void enterScope();
     void exitScope();
 
-    SymbolPtr declare(const std::string& name, bool isMutable);
+    VarSymbol* declareVar(const std::string& name, bool isMutable);
     TypeSymbol* declareType(const std::string& name, bool isMutable);
 
     void visit(Literal& e) override;
@@ -70,6 +71,7 @@ private:
     void visit(Index& e) override;
     void visit(Call& e) override;
     void visit(Get& e) override;
+    void visit(ScopeAccessExpr& e) override;
     void visit(FunctionExpr& e) override;
     void visit(ThisExpr& e) override;
     void visit(NewExpr& e) override;
@@ -85,5 +87,6 @@ private:
     void visit(Return& s) override;
     void visit(Aggregate& s) override;
     void visit(TypeAlias& s) override;
+    void visit(Enum& s) override;
     void visit(ExprStmt& s) override;
 };

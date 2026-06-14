@@ -1,4 +1,6 @@
 #include "ClosureAnalyser.hpp"
+
+#include <iostream>
 #include "../Core/errorhandler.hpp"
 #include "../Utils/SymbolPrinter.hpp"
 
@@ -13,7 +15,7 @@ void ClosureAnalyser::analyse() {
     program->accept(*this);
 }
 
-static int resolveUpvalue(FunctionContext* fnCtx, SymbolPtr sym) {
+static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
     if (!sym) {
         throw KMYCompileError("Symbol not resolved? this is stupid.");
     }
@@ -81,7 +83,7 @@ static int resolveUpvalue(FunctionContext* fnCtx, SymbolPtr sym) {
 }
 
 
-ResolvedVar ClosureAnalyser::resolveVariable(SymbolPtr sym) {
+ResolvedVar ClosureAnalyser::resolveVariable(VarSymbol* sym) {
     if (!sym) {
         throw KMYCompileError("Symbol not resolved? this is stupid.");
     }
@@ -113,7 +115,7 @@ ResolvedVar ClosureAnalyser::resolveVariable(SymbolPtr sym) {
     throw KMYCompileError("Undefined variable.");
 }
 
-int ClosureAnalyser::allocateLocal(SymbolPtr sym) {
+int ClosureAnalyser::allocateLocal(VarSymbol* sym) {
     if (!sym) {
         throw KMYCompileError("Symbol not resolved? this is stupid.");
     }
@@ -150,7 +152,7 @@ void ClosureAnalyser::visit(RecordLiteral& e) {
 void ClosureAnalyser::visit(Variable& e) {
     std::cout << "haha i got ya\n";
     std::cout << "var node=" << &e << '\n';
-    std::cout << "symbol=" << e.symbol.get() << '\n';
+    std::cout << "symbol=" << e.symbol << '\n';
     std::cout << "resolved= " << e.resolved << "\n";
     std::cout << "resolution=" << (int)e.resolution.kind << "\n";
     std::cout << typeToString(e.type) << "\n";
@@ -205,6 +207,8 @@ void ClosureAnalyser::visit(Call& e) {
 void ClosureAnalyser::visit(Get& e) {
     e.obj->accept(*this);
 }
+
+void ClosureAnalyser::visit(ScopeAccessExpr& e) {}
 
 void ClosureAnalyser::visit(FunctionExpr& e) {
     std::cout << "Entering function: " << e.params.size() << " params\n";
@@ -326,6 +330,16 @@ void ClosureAnalyser::visit(Aggregate& s) {
 }
 
 void ClosureAnalyser::visit(TypeAlias& s) {}
+
+void ClosureAnalyser::visit(Enum& s) {
+    EnumType* enumType = static_cast<EnumType*>(s.typeSymbol->type);
+
+    int num = 0;
+    for (auto& str : s.variants) {
+        enumType->variantMap[str] = num;
+    }
+}
+
 void ClosureAnalyser::visit(ExprStmt& s) {
     s.expr->accept(*this);
 }

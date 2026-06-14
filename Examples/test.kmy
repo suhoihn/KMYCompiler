@@ -1,8 +1,10 @@
 let const INVALID_AGE: int = -1;
+
 class X {
     // FIX: without "any" fails.
     let adder: (int, int) -> int = fun (a: int, b:int): int { return a + b; };
     let name: string;
+    // FIX: const here doesnt work :(
     let age: int = INVALID_AGE;
     // let fail: int = fourtyTwo();
     // let myFT: int = this.fourtyTwo() + 69;
@@ -14,14 +16,14 @@ class X {
         return 42;
     }
     
-    // Must ignore the stuff annotated on init. makes no sense.
+    // TODO: Must ignore the stuff annotated on init. makes no sense.
     init(const name: string): void {
         print("Starting X. (1)");
         print("Hello " + name);
         this.name = name;
     }
 
-    init(name: string, age: int) {
+    init(const name: string, const age: int) {
         print("Starting X. (2)");
         print("Your age is ");
         print(age);
@@ -29,30 +31,28 @@ class X {
         this.age = age;
     }
 
-    fun adder_method(a: int, b:int): int { 
-          print(this);
-          return a + b;
+    fun adder_method(a: int, b: int): int { 
+        print(this);
+        return a + b;
     }
 };
 
-fun print42() { print(42); }
-print42();
-
 let suho: X = new X("suho");
 let kmy: X = new X("KMY", 1972);
+
+kmy.age += 1;
 
 print(suho);
 print(kmy.age);
 //kmy.rec.time = 60;
 print(kmy);
 
-let f: (int, int) -> int = suho.adder;
-let res: int = 0;
-// TODO: x/= 2 order is like x = 2 / x; (WTF)
-for (let x: int = 1024; x >= 1; x = x / 2) {
-    res = f(res, x);
-}
-print(res);
+// let f: (int, int) -> int = suho.adder;
+// let res: int = 0;
+// for (let x: int = 1024; x >= 1; x = x / 2) {
+//     res = f(res, x);
+// }
+// print(res);
 
 // TODO: unbound method impl
 //let error = suho.adder_method;

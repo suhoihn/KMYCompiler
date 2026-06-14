@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <exception>
 #include <cassert>
+#include <iostream>
 #include "../Core/Ast.hpp"
 #include "../BytecodeVM/vm.hpp"
 #include "../Core/errorhandler.hpp"
@@ -183,11 +184,13 @@ void Compiler::visit(Assignment& e) {
         // Stack: [...] [ value ]
         
         auto var = std::static_pointer_cast<Variable>(e.left);
-        assert(var->symbol->isMutable);
+        if (!var->symbol->isMutable) {
+            throw KMYCompileError("Assignment to a constant variable \"" + var->name + "\"");
+        }
+        //assert(var->symbol->isMutable);
         
         handleAssignment(e.op, e.left, e.right);
 
-        // TODO. STORE_LOCAL or STORE_UPVALUE?
         switch(var->resolution.kind) {
             case ResolvedVar::Kind::LOCAL:
                 emit(Opcode::STORE_LOCAL, var->resolution.index);
@@ -283,6 +286,13 @@ void Compiler::visit(Get& e) {
     e.obj->accept(*this);
 
     emit(Opcode::GET_PROPERTY, e.fieldIdx);
+}
+
+void Compiler::visit(ScopeAccessExpr& e) {
+    // TODO: Currently only enum...
+    int idx = addConstant(e.accessIdx);
+
+    emit(Opcode::PUSH_CONST, idx);
 }
 
 
@@ -559,7 +569,7 @@ void Compiler::visit(Continue& s) {
 }
 
 
-void Compiler::allocateLocal(SymbolPtr sym) {
+void Compiler::allocateLocal(VarSymbol* sym) {
     currCtx->locals.push_back(Local{
         sym,
         sym->slot,
@@ -644,6 +654,9 @@ void Compiler::visit(Aggregate& s) {
 }
 
 void Compiler::visit(TypeAlias& s) {}
+
+// Enum has nothing to visit...
+void Compiler::visit(Enum& s) {}
 
 void Compiler::visit(ExprStmt& s) { 
     s.expr->accept(*this);

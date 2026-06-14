@@ -1,5 +1,6 @@
 #include "newParser.hpp"
 
+#include <iostream>
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -139,7 +140,7 @@ StmtPtr Parser::parse_statement() {
         StmtPtr elsebranch = nullptr;
         
         if (match(TokenType::KeywordElse)) {
-            elsebranch = parse_block();
+            elsebranch = parse_statement(); // TODO: statement or block?
         }
 
         return std::make_shared<If>(
@@ -189,6 +190,8 @@ StmtPtr Parser::parse_statement() {
         return parse_aggregate(AggregateKind::RECORD);
     } else if (match(TokenType::KeywordTypealias)) {
         return parse_typeAlias();
+    } else if (match(TokenType::KeywordEnum)) {
+        return parse_enum();
     } else {
         ExprPtr expr = parse_expression();
         consumeSemicolon();
@@ -457,6 +460,30 @@ StmtPtr Parser::parse_typeAlias() {
 }
 
 
+/*
+enum_stmt → "enum" IDENTIFIER '{' enum_list? '}' ';'
+enum_list → IDENTIFIER (',' IDENTIFIER)*
+*/
+StmtPtr Parser::parse_enum() {
+    Token name = consume(TokenType::Identifier, "Expected an identifier for the enum's name");
+    
+    consume(TokenType::LeftBrace, "Expected '{' after enum keyword");
+
+    std::vector<std::string> variants;
+    if (!check(TokenType::RightBrace)) {
+        do {
+            Token var = consume(TokenType::Identifier, "Expected an identifier for the enum's variant");
+            variants.push_back(var.lexeme);
+        } while (match(TokenType::Comma));
+    }
+
+    consume(TokenType::RightBrace, "Expected '}' after enum definition");
+
+    consumeSemicolon();
+
+    return std::make_shared<Enum>(name.lexeme, std::move(variants));
+}
+
 // =============================
 // Helpers
 // =============================
@@ -682,6 +709,7 @@ ExprPtr Parser::parse_expression(int minBP) {
             continue;
         }
 
+        // Get
         if (op == TokenType::Dot) {
             Token name = consume(TokenType::Identifier, "Expected property name");
             left = std::make_shared<Get>(std::move(left), name.lexeme);
@@ -764,8 +792,21 @@ ExprPtr Parser::parse_prefix() {
         case TokenType::KeywordNull:
             return std::make_shared<Literal>(nullptr);
 
-        case TokenType::Identifier:
+        case TokenType::Identifier: {
+            // Check for IDENTIFIER "::" IDENTIFIER
+            if (match(TokenType::ColonColon)) {
+                std::vector<std::string> parts;
+                parts.push_back(tok.lexeme);
+                do {
+                    Token memberName = consume(TokenType::Identifier, "Expected an identifier after \"::\"");
+                    parts.push_back(memberName.lexeme);
+                } while(match(TokenType::ColonColon));
+                
+                return std::make_shared<ScopeAccessExpr>(std::move(parts));
+            }
+
             return std::make_shared<Variable>(tok.lexeme);
+        }
 
         // Grouping
         case TokenType::LeftParen: {

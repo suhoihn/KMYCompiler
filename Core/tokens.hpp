@@ -73,6 +73,7 @@ enum class TokenType {
     KeywordTypealias,
     KeywordRecord,
     KeywordInit,
+    KeywordEnum,
 
     // Type keywords
     KeywordInt, // Not that this is different from just Int
@@ -96,6 +97,7 @@ enum class TokenType {
     Colon,
     Ellipsis, // ...
     Arrow, // ->
+    ColonColon, // ::
 
     // Special
     EndOfFile,

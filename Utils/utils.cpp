@@ -112,6 +112,7 @@ static const std::unordered_map<TokenType, std::string> tokenTypeNames = {
     {TokenType::KeywordTypealias, "KeywordTypealias"},
     {TokenType::KeywordRecord, "KeywordRecord"},
     {TokenType::KeywordInit, "KeywordInit"},
+    {TokenType::KeywordEnum, "KeywordEnum"},
 
     // Type keywords
     {TokenType::KeywordInt, "KeywordInt"},
@@ -135,6 +136,7 @@ static const std::unordered_map<TokenType, std::string> tokenTypeNames = {
     {TokenType::Colon, "Colon"},
     {TokenType::Ellipsis, "Ellipsis"},
     {TokenType::Arrow, "Arrow"},
+    {TokenType::ColonColon, "ColonColon"},
     
     // Special
     {TokenType::EndOfFile, "EndOfFile"},
@@ -197,7 +199,8 @@ static const std::unordered_map<TokenType, std::string> tokenTypeSymbols = {
     {TokenType::Dot, "."},
     {TokenType::Colon, ":"},
     {TokenType::Ellipsis, "..."},
-    {TokenType::Arrow, "->"}
+    {TokenType::Arrow, "->"},
+    {TokenType::ColonColon, "::"}
 };
 
 void printTokens(const std::vector<Token>& tokens) {
@@ -302,6 +305,12 @@ static void printExpr(const ExprPtr expr, int depth = 0) {
         cout << indent << ")\n";
 
         cout << indent << "  Name: " << g->name << endl;
+        cout << indent << ")\n";
+    } else if (auto* g = dynamic_cast<const ScopeAccessExpr*>(raw)) {
+        cout << indent << "ScopeAccess(\n";
+        for (const auto& part : g->parts) {
+            cout << indent << "  " << part << endl;
+        }
         cout << indent << ")\n";
 
     // =========================
@@ -420,6 +429,17 @@ static void printStmt(const StmtPtr stmt, int depth = 0) {
             printExpr(mm.methodExpr, depth + 3);
             cout << indent << "    " << ")\n";
             cout << indent << "  " << ")";
+        }
+        cout << indent << "  )\n";
+        
+        cout << indent << ")\n";
+    } else if (auto* e = dynamic_cast<Enum*>(raw)) {
+        cout << indent << "Enum(\n";
+
+        cout << indent << "  Name: " << e->name << "\n";
+        cout << indent << "  Variants: (\n";
+        for (const auto& v : e->variants) {
+            cout << indent << "    " << v << "\n";
         }
         cout << indent << "  )\n";
         

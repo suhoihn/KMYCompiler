@@ -21,6 +21,7 @@ Assignment::Assignment(AssignmentOp op, ExprPtr left, ExprPtr right) : op(op), l
 Index::Index(ExprPtr obj, ExprPtr index) : obj(move(obj)), index(move(index)) {}
 Call::Call(ExprPtr func, std::vector<ExprPtr> args) : func(move(func)), args(move(args)) {}
 Get::Get(ExprPtr obj, const std::string& name) : obj(move(obj)), name(name) {}
+ScopeAccessExpr::ScopeAccessExpr(std::vector<std::string> parts): parts(parts) {}
 FunctionExpr::FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType) 
     : params(move(params)), body(move(body)), annotatedReturnType(std::move(annotatedReturnType)) {}
 // Nothing for ThisLiteral.
@@ -63,5 +64,7 @@ constructorMembers(move(constructorMembers)),
 fieldInitFunc(move(fieldInitFunc)) {}
 
 TypeAlias::TypeAlias(std::string name, TypeNodePtr aliasingType) : name(move(name)), aliasingType(move(aliasingType)) {}
+
+Enum::Enum(std::string name, std::vector<std::string> variants) : name(move(name)), variants(move(variants)) {}
 
 ExprStmt::ExprStmt(ExprPtr expr) : expr(move(expr)) {}

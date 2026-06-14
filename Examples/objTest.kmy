@@ -1,4 +1,5 @@
 // ===== BASIC OBJECT + METHOD =====
+// TODO
 let obj = {
     x: 10,
     getX: fun() {

@@ -84,6 +84,7 @@ static std::unordered_map<std::string, TokenType> keywords = {
     {"typealias", TokenType::KeywordTypealias},
     {"record", TokenType::KeywordRecord},
     {"init", TokenType::KeywordInit},
+    {"enum", TokenType::KeywordEnum},
 
     {"int", TokenType::KeywordInt},
     {"double", TokenType::KeywordDouble},
@@ -160,7 +161,8 @@ static std::unordered_map<std::string, TokenType> symbols = {
     {".", TokenType::Dot},
     {":", TokenType::Colon},
     {"...", TokenType::Ellipsis},
-    {"->", TokenType::Arrow}
+    {"->", TokenType::Arrow},
+    {"::", TokenType::ColonColon}
 };
 
 Token Lexer::read_operator_or_symbol() {

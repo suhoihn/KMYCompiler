@@ -2,7 +2,8 @@
 
 #include <vector>
 #include "../Core/Ast.hpp"
-#include "SymbolScopeBuilder.hpp" // hack?
+#include "../Core/Scope.hpp"
+#include "../Core/Symbol.hpp"
 #include "TypeInterner.hpp"
 
 // Pass 2: Name Resolution
@@ -32,10 +33,10 @@ private:
 
     Type* typeSigToType(const TypeNodePtr type);
     TypeSymbol* resolveTypeSymbol(const std::string& name);
-    SymbolPtr resolveSymbol(const std::string& name);
+    VarSymbol* resolveVarSymbol(const std::string& name);
 
     InstanceType* currentAggregate = nullptr;
-    SymbolPtr currentThis = nullptr; 
+    VarSymbol* currentThis = nullptr; 
 
     // Expressions
     void visit(Literal& e) override;
@@ -48,6 +49,7 @@ private:
     void visit(Index& e) override;
     void visit(Call& e) override;
     void visit(Get& e) override;
+    void visit(ScopeAccessExpr& e) override;
     void visit(FunctionExpr& e) override;
     void visit(ThisExpr& e) override;
     void visit(NewExpr& e) override;
@@ -63,5 +65,6 @@ private:
     void visit(Return& s) override;
     void visit(Aggregate& s) override;
     void visit(TypeAlias& s) override;
+    void visit(Enum& s) override;
     void visit(ExprStmt& s) override;
 };

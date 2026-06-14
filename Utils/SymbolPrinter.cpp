@@ -1,5 +1,6 @@
 #include "SymbolPrinter.hpp"
 
+#include <iostream>
 #include "../Core/Ast.hpp"
 
 SymbolPrinter::SymbolPrinter(
@@ -68,15 +69,18 @@ std::string typeToString(Type* type) {
 
         case TypeKind::INSTANCE:
             return "instance";
+        
+        case TypeKind::ENUM:
+            return "enum";
 
         default:
             return "SEVERE: UNCLASSIFIED TYPE";
     }
 }
 
-void SymbolPrinter::printSymbol(SymbolPtr sym) {
+void SymbolPrinter::printSymbol(VarSymbol* sym) {
     std::cout
-    << indent() << sym->name << "(" << sym.get() << ")\n"
+    << indent() << sym->name << "(" << sym << ")\n"
     << indent() << "----------\n"
     << indent() << "mutable: " << std::string(sym->isMutable ? "true" : "false") << "\n"
     << indent() << "type: " << typeToString(sym->type) << "\n"
@@ -122,6 +126,7 @@ void SymbolPrinter::visit(Call& e) {
 void SymbolPrinter::visit(Get& e) {
     e.obj->accept(*this);
 }
+void SymbolPrinter::visit(ScopeAccessExpr&) {}
 void SymbolPrinter::visit(ThisExpr&) {}
 void SymbolPrinter::visit(NewExpr& e) {
     for (auto& arg : e.args)
@@ -132,7 +137,7 @@ void SymbolPrinter::visit(FunctionExpr& e) {
     std::cout << indent() << "[Function (params)] (Scope: " << e.scope << ")\n";
     std::cout << indent() << "{\n";
     
-    for(auto& [_, sym]: e.scope->symbols) {
+    for(auto& [_, sym]: e.scope->values) {
         printSymbol(sym);
     }
 
@@ -151,7 +156,7 @@ void SymbolPrinter::visit(Block& s) {
     std::cout << indent() << "[Block (locals)] (Scope: " << s.scope << ")\n";
     std::cout << indent() << "{\n";
     
-    for(auto& [_, sym]: s.scope->symbols) {
+    for(auto& [_, sym]: s.scope->values) {
         printSymbol(sym);
     }
     
@@ -195,7 +200,7 @@ void SymbolPrinter::visit(Aggregate& s) {
     std::cout << indent() << "[Aggregate (members)] (Scope: " << s.scope << ")\n";
     std::cout << indent() << "{\n";
     
-    for(auto& [_, sym]: s.scope->symbols) {
+    for(auto& [_, sym]: s.scope->values) {
         printSymbol(sym);
     }
 
@@ -221,6 +226,10 @@ void SymbolPrinter::visit(Aggregate& s) {
 }
 
 void SymbolPrinter::visit(TypeAlias& s) {
+    // TODO?
+}
+
+void SymbolPrinter::visit(Enum& s) {
     // TODO?
 }
 

@@ -1,9 +1,9 @@
 #include "SymbolScopeBuilder.hpp"
 
 #include <vector>
+#include <unordered_set>
 #include "../Core/errorhandler.hpp"
 #include "../Core/Ast.hpp"
-#include <unordered_set>
 #include "../Utils/NativeFunctionImpl.hpp"
 
 SymbolScopeBuilder::SymbolScopeBuilder(
@@ -16,7 +16,7 @@ SymbolScopeBuilder::SymbolScopeBuilder(
 
     // Build native functions HERE(?)
     for (auto& [name, info] : nativeFnTypes) {
-        SymbolPtr sym = declare(name, false);
+        VarSymbol* sym = declareVar(name, false);
 
         sym->type = info.type;
         sym->nativeFnPtr = info.fn;
@@ -41,33 +41,34 @@ void SymbolScopeBuilder::exitScope() {
     currScope = currScope->parent;
 }
 
-SymbolPtr SymbolScopeBuilder::declare(const std::string& name, bool isMutable) {
+VarSymbol* SymbolScopeBuilder::declareVar(const std::string& name, bool isMutable) {
     // 1. Check current scope only (NOT parents)
-    if (currScope->symbols.find(name) != currScope->symbols.end()) {
-        return nullptr; // redeclaration in same scope.
+    if (currScope->values.find(name) != currScope->values.end()) {
+        // Redeclaration in same scope.
+        return nullptr; 
     }
 
     // 2. Create symbol
-    SymbolPtr sym = std::make_shared<Symbol>(
-        name,
-        isMutable
-    );
+    VarSymbol* sym = new VarSymbol(name, isMutable);
 
     // 3. Store in scope
-    currScope->symbols[name] = sym;
+    currScope->values[name] = sym;
 
     return sym;
 }
     
 TypeSymbol* SymbolScopeBuilder::declareType(const std::string& name, bool isMutable) {
-    // New types can only be declared via aggregate (class or record) or typealias.
+    // NOTE: New types can only be declared via aggregate (class or record) or typealias.
+    // TODO: Implement const types (need usage for isMutable.)
     
     // 1. Check current scope only (NOT parents)
     if (currScope->types.find(name) != currScope->types.end()) {
-        throw KMYCompileError("Redeclaration of the same type \"" + name + "\""); // redeclaration in same scope.
+        // Redeclaration in same scope.
+        return nullptr;
+        //throw KMYCompileError("Redeclaration of the same type \"" + name + "\""); 
     }
 
-    TypeSymbol* sym = new TypeSymbol {name, nullptr};
+    TypeSymbol* sym = new TypeSymbol(name, isMutable);
 
     // 2. Store in scope.
     currScope->types[name] = sym;
@@ -118,12 +119,14 @@ void SymbolScopeBuilder::visit(Call& e) {
 void SymbolScopeBuilder::visit(Get& e) {
     e.obj->accept(*this);
 }
+void SymbolScopeBuilder::visit(ScopeAccessExpr& e) {}
 void SymbolScopeBuilder::visit(ThisExpr&) {}
 void SymbolScopeBuilder::visit(NewExpr& e) {
     for (auto& arg : e.args)
         arg->accept(*this);
 }
 
+// Function expr (or decl) has a var symbol AND a scope.
 void SymbolScopeBuilder::visit(FunctionExpr& e) {
     bool isRoot = (&e == program.get());
 
@@ -133,7 +136,7 @@ void SymbolScopeBuilder::visit(FunctionExpr& e) {
     e.scope = currScope;
 
     for (auto& param : e.params) {
-        SymbolPtr sym = declare(param.name, param.isMutable);
+        VarSymbol* sym = declareVar(param.name, param.isMutable);
 
         if (!sym) {
             throw KMYCompileError(
@@ -154,6 +157,7 @@ void SymbolScopeBuilder::visit(FunctionExpr& e) {
 // Statements
 // ======================================================
 
+// Block has a scope.
 void SymbolScopeBuilder::visit(Block& s) {
     bool isRootBody = (&s == program->body.get());
 
@@ -172,7 +176,6 @@ void SymbolScopeBuilder::visit(Block& s) {
 void SymbolScopeBuilder::visit(Print& s) {
     s.expr->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(If& s) {
     s.condition->accept(*this);
 
@@ -181,12 +184,10 @@ void SymbolScopeBuilder::visit(If& s) {
     if (s.elsebranch)
         s.elsebranch->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(While& s) {
     s.condition->accept(*this);
     s.body->accept(*this);
 }
-
 void SymbolScopeBuilder::visit(Break&) {}
 void SymbolScopeBuilder::visit(Continue&) {}
 void SymbolScopeBuilder::visit(Return& s) {
@@ -194,8 +195,9 @@ void SymbolScopeBuilder::visit(Return& s) {
         s.expr->accept(*this);
 }
 
+// Let stmt has a var symbol.
 void SymbolScopeBuilder::visit(Let& s) {
-    SymbolPtr sym = declare(s.name, s.isMutable);
+    VarSymbol* sym = declareVar(s.name, s.isMutable);
 
     if (!sym) {
         throw KMYCompileError(
@@ -209,24 +211,25 @@ void SymbolScopeBuilder::visit(Let& s) {
         s.expr->accept(*this);
 }
 
+// Aggregate has a type symbol AND a scope.
+// Each field member also has a var symbol.
 void SymbolScopeBuilder::visit(Aggregate& s) {
     // Declare class in outer scope (maybe not.)
-    // SymbolPtr sym = declare(s.name, false);
+    // VarSymbol* sym = declareVar(s.name, false);
 
     // class is immutable type?
-    s.typeSymbol = declareType(s.name, false);
+    auto sym = declareType(s.name, false);
 
-    /*
     if (!sym) {
         throw KMYCompileError(
-            "Redeclaration of " + 
-            std::string(s.kind == AggregateKind::RECORD ? "record" : "class") +
-            " \"" + s.name + "\""
+            "Redeclaration of type \"" + 
+            // std::string(s.kind == AggregateKind::RECORD ? "record" : "class") +
+            s.name + "\""
         );
     }
 
-    s.symbol = sym;
-    */
+    s.typeSymbol = sym;
+    
 
     // Class scope
     enterScope();
@@ -235,7 +238,7 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
 
     // Fields
     for (auto& member : s.fieldMembers) {
-        SymbolPtr fieldSym = declare(member.name, member.isMutable);
+        VarSymbol* fieldSym = declareVar(member.name, member.isMutable);
 
         if (!fieldSym) {
             throw KMYCompileError(
@@ -252,7 +255,7 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
     // Methods
     for (auto& member : s.methodMembers) {
         // Methods are not mutable.
-        SymbolPtr methodSym = declare(member.name, false);
+        VarSymbol* methodSym = declareVar(member.name, false);
 
         if (!methodSym) {
             throw KMYCompileError(
@@ -268,7 +271,7 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
     int cnt = 0;
     for (auto& member : s.constructorMembers) {
         // Methods are not mutable.
-        SymbolPtr constrSym = declare("implicit_init" + std::to_string(cnt++), false);
+        VarSymbol* constrSym = declareVar("implicit_init" + std::to_string(cnt++), false);
 
         member.symbol = constrSym;
         member.initFuncExpr->accept(*this);
@@ -282,10 +285,18 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
     exitScope();
 }
 
+// Typealias has a type symbol.
 void SymbolScopeBuilder::visit(TypeAlias& s) {
-    // STUB
+    // Simply register a type symbol. (Its Type* is nullptr initially)
     s.typeSymbol = declareType(s.name, false);
 }
+
+// Enum has a type symbol. (Its member has NO symbols!)
+void SymbolScopeBuilder::visit(Enum& s) {
+    // Similar to classes. Enum builds a type
+    s.typeSymbol = declareType(s.name, false);
+}
+
 
 void SymbolScopeBuilder::visit(ExprStmt& s) {
     s.expr->accept(*this);

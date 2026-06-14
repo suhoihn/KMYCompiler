@@ -3,6 +3,7 @@
 #include <vector>
 #include "../Core/Ast.hpp"
 #include "../Core/value.hpp"
+#include "../Core/CodegenInfo.hpp"
 #include "../Core/visitor.hpp"
 #include "../BytecodeVM/vm.hpp"
 #include "../Semantics/Resolver.hpp"
@@ -56,7 +57,7 @@ private:
     std::unordered_map<std::string, int> globals;
 
     // For locals    
-    void allocateLocal(SymbolPtr sym);
+    void allocateLocal(VarSymbol* sym);
 
     // For constants
     int addConstant(const ConstValue& v);
@@ -85,6 +86,7 @@ private:
     void visit(Index& e) override;
     void visit(Call& e) override;
     void visit(Get& e) override;
+    void visit(ScopeAccessExpr& e) override;
     void visit(FunctionExpr& e) override;
     void visit(ThisExpr& e) override;
     void visit(NewExpr& e) override;
@@ -101,4 +103,5 @@ private:
     void visit(Aggregate& s) override;
     void visit(TypeAlias& s) override;
     void visit(ExprStmt& s) override;
+    void visit(Enum& s) override;
 };

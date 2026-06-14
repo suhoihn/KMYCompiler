@@ -65,7 +65,7 @@ void MethodLower::visit(Call& e) {
 void MethodLower::visit(Get& e) {
     e.obj->accept(*this);
 }
-
+void MethodLower::visit(ScopeAccessExpr& e) {}
 void MethodLower::visit(ThisExpr&) {}
 void MethodLower::visit(NewExpr& e) {
     for (auto& arg : e.args)
@@ -127,12 +127,12 @@ void MethodLower::visit(Aggregate& s) {
     for (auto& member : s.methodMembers) {
         Parameter thisParam(nullptr, "this", false, false, false);
         // Create "this" symbol (should be unique for each method)
-        SymbolPtr thisSym = std::make_shared<Symbol>("$implicit_this", false);
+        VarSymbol* thisSym = new VarSymbol("$implicit_this", false);
         thisSym->type = s.typeSymbol->type;
     
 
         // Store in function's scope
-        member.methodExpr->scope->symbols["$implicit_this"] = thisSym;
+        member.methodExpr->scope->values["$implicit_this"] = thisSym;
 
         thisParam.symbol = thisSym;
 
@@ -145,11 +145,11 @@ void MethodLower::visit(Aggregate& s) {
     for (auto& member : s.constructorMembers) {
         Parameter thisParam(nullptr, "this", false, false, false);
         // Create "this" symbol (should be unique for each method)
-        SymbolPtr thisSym = std::make_shared<Symbol>("$implicit_this", false);
+        VarSymbol* thisSym = new VarSymbol("$implicit_this", false);
         thisSym->type = s.typeSymbol->type;
 
         // Store in function's scope
-        member.initFuncExpr->scope->symbols["$implicit_this"] = thisSym;
+        member.initFuncExpr->scope->values["$implicit_this"] = thisSym;
 
         thisParam.symbol = thisSym;
 
@@ -163,11 +163,11 @@ void MethodLower::visit(Aggregate& s) {
         Parameter thisParam(nullptr, "this", false, false, false);
         
         // Create "this" symbol (should be unique for each method)
-        SymbolPtr thisSym = std::make_shared<Symbol>("$implicit_this", false);
+        VarSymbol* thisSym = new VarSymbol("$implicit_this", false);
         thisSym->type = s.typeSymbol->type;
 
         // Needed?
-        s.fieldInitFunc->scope->symbols["$implicit_this"] = thisSym;
+        s.fieldInitFunc->scope->values["$implicit_this"] = thisSym;
 
         thisParam.symbol = thisSym;
 
@@ -178,6 +178,7 @@ void MethodLower::visit(Aggregate& s) {
 }
 
 void MethodLower::visit(TypeAlias& s) {}
+void MethodLower::visit(Enum& s) {}
 void MethodLower::visit(ExprStmt& s) {
     s.expr->accept(*this);
 }

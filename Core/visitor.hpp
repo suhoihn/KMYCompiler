@@ -1,63 +1,38 @@
 #pragma once
 
-// Forward declarations of all AST node types
-struct Literal;
-struct ArrayLiteral;
-struct RecordLiteral;
-struct Variable;
-struct BinaryExpr;
-struct UnaryExpr;
-struct Assignment;
-struct Index;
-struct Call;
-struct Get;
-struct FunctionExpr;
-struct ThisExpr;
-struct NewExpr;
+// All AST nodes forward declared.
 
-// Statements
-struct Print;
-struct If;
-struct While;
-struct Block;
-struct Break;
-struct Continue;
-struct Let;
-struct Return;
-struct Aggregate;
-struct TypeAlias;
-struct ExprStmt;
-
-// Visitor interface
 class Visitor {
 public:
     // Expressions
-    virtual void visit(Literal& e) {}
-    virtual void visit(ArrayLiteral& e) {}
-    virtual void visit(RecordLiteral& e) {}
-    virtual void visit(Variable& e) {}
-    virtual void visit(BinaryExpr& e) {}
-    virtual void visit(UnaryExpr& e) {}
-    virtual void visit(Assignment& e) {}
-    virtual void visit(Index& e) {}
-    virtual void visit(Call& e) {}
-    virtual void visit(Get& e) {}
-    virtual void visit(FunctionExpr& e) {}
-    virtual void visit(ThisExpr& e) {}
-    virtual void visit(NewExpr& e) {}
+    virtual void visit(struct Literal& e) = 0;
+    virtual void visit(struct ArrayLiteral& e) = 0;
+    virtual void visit(struct RecordLiteral& e) = 0;
+    virtual void visit(struct Variable& e) = 0;
+    virtual void visit(struct BinaryExpr& e) = 0;
+    virtual void visit(struct UnaryExpr& e) = 0;
+    virtual void visit(struct Assignment& e) = 0;
+    virtual void visit(struct Index& e) = 0;
+    virtual void visit(struct Call& e) = 0;
+    virtual void visit(struct Get& e) = 0;
+    virtual void visit(struct ScopeAccessExpr& e) = 0;
+    virtual void visit(struct FunctionExpr& e) = 0;
+    virtual void visit(struct ThisExpr& e) = 0;
+    virtual void visit(struct NewExpr& e) = 0;
 
     // Statements
-    virtual void visit(Print& s) {}
-    virtual void visit(If& s) {}
-    virtual void visit(While& s) {}
-    virtual void visit(Block& s) {}
-    virtual void visit(Break& s) {}
-    virtual void visit(Continue& s) {}
-    virtual void visit(Let& s) {}
-    virtual void visit(Return& s) {}
-    virtual void visit(Aggregate& s) {}
-    virtual void visit(TypeAlias& s) {}
-    virtual void visit(ExprStmt& s) {}
+    virtual void visit(struct Print& s) = 0;
+    virtual void visit(struct If& s) = 0;
+    virtual void visit(struct While& s) = 0;
+    virtual void visit(struct Block& s) = 0;
+    virtual void visit(struct Break& s) = 0;
+    virtual void visit(struct Continue& s) = 0;
+    virtual void visit(struct Let& s) = 0;
+    virtual void visit(struct Return& s) = 0;
+    virtual void visit(struct Aggregate& s) = 0;
+    virtual void visit(struct TypeAlias& s) = 0;
+    virtual void visit(struct Enum& s) = 0;
+    virtual void visit(struct ExprStmt& s) = 0;
 
     virtual ~Visitor() = default;
 };

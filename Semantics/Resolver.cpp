@@ -1,5 +1,6 @@
 #include "Resolver.hpp"
 
+#include <iostream>
 #include "../Core/errorhandler.hpp"
 #include "../Utils/SymbolPrinter.hpp"
 #include "../Utils/utils.hpp"
@@ -19,20 +20,20 @@ void Resolver::resolve() {
     printLog(LogLevel::INFO, "Resolver pass ended.\n");
 }
 
-SymbolPtr Resolver::resolveSymbol(const std::string& name) {
+VarSymbol* Resolver::resolveVarSymbol(const std::string& name) {
     Scope* scope = currScope;
-    printLog(LogLevel::DEBUG, "Resolving symbol: " + name + "\n");
+    printLog(LogLevel::DEBUG, "Resolving var symbol: " + name + "\n");
 
     while (scope) {
-        auto it = scope->symbols.find(name);
+        auto it = scope->values.find(name);
 
-        if (it != scope->symbols.end()) {
+        if (it != scope->values.end()) {
             return it->second;
         }
 
         scope = scope->parent;
     }
-    printLog(LogLevel::DEBUG, "Symbol not found: " + name + "\n");
+    printLog(LogLevel::DEBUG, "Var symbol not found: " + name + "\n");
     return nullptr; // Undefined variable.
 }
 
@@ -213,7 +214,7 @@ void Resolver::visit(RecordLiteral& e) {
 }
 
 void Resolver::visit(Variable& e) {
-    SymbolPtr sym = resolveSymbol(e.name);
+    VarSymbol* sym = resolveVarSymbol(e.name);
 
     if (!sym) {
         throw KMYCompileError(
@@ -221,7 +222,7 @@ void Resolver::visit(Variable& e) {
         );
     }
 
-    if (!assigning && sym->type == &Types::UNINITIALISED) {
+    if (assigning && sym->type == &Types::UNINITIALISED) {
         throw KMYCompileError("Usage of uninitialised variable \"" + e.name + "\"");
     }
 
@@ -355,6 +356,11 @@ static bool isAssignable(Type* from, Type* to) {
     if (to == &Types::ANY_TYPE) {
         return true;
     }
+
+    // HACK?
+    if (from == &Types::ANY_TYPE) {
+        return true;
+    }
     
     if (from == &Types::INT_TYPE && to == &Types::DOUBLE_TYPE) {
         return true; // int can be assigned to double.
@@ -375,7 +381,7 @@ void Resolver::visit(Assignment& e) {
 
     expectedType = oldET;
 
-    std::cout << "In assign checking assignability of " << (int)(e.left->type->kind) << " and  " << (int)(e.right->type->kind) << "\n"; 
+    // std::cout << "In assign checking assignability of " << (int)(e.left->type->kind) << " and  " << (int)(e.right->type->kind) << "\n"; 
 
     if (!isAssignable(e.right->type, e.left->type)) {
         // TODO: Covariant and contravariant type checking.
@@ -457,12 +463,12 @@ void Resolver::visit(Call& e) {
         e.args[i]->accept(*this);
 
         if (i < totalParamCnt) {
-            if (e.args[i]->type != fnType->info[i].type) {
+            if (!isAssignable(e.args[i]->type, fnType->info[i].type)) {
                 throw KMYCompileError("Argument type mismatch.");
             }
         } else {
             // Variadic args.
-            if (e.args[i]->type != fnType->info.back().type) {
+            if (!isAssignable(e.args[i]->type, fnType->info.back().type)) {
                 throw KMYCompileError("Argument type mismatch.");
             }
         }
@@ -470,14 +476,16 @@ void Resolver::visit(Call& e) {
 }
 
 void Resolver::visit(Get& e) {
+    
     e.obj->accept(*this);
-    if (e.obj->type->kind != TypeKind::STRUCTUAL && e.obj->type->kind != TypeKind::INSTANCE && e.obj->type != &Types::ANY_TYPE) {
-        throw KMYCompileError("Only record or class instances can be accessed with dot operator.");
-    }
-
     std::cout << "In get, this guy's type kind in int: " << (int)(e.obj->type->kind) << "\n";
     
-    // HACK!!!
+    if (e.obj->type->kind != TypeKind::STRUCTUAL && e.obj->type->kind != TypeKind::INSTANCE && e.obj->type != &Types::ANY_TYPE) {
+        throw KMYCompileError(
+            "Only record, or class instances can be accessed with dot operator. (Use \"::\" for enum or static members)"
+        );
+    }
+
     if (e.obj->type->kind == TypeKind::STRUCTUAL) {
         StructualType* recordType = static_cast<StructualType*>(e.obj->type);
         auto it = recordType->fieldTypes.find(e.name);
@@ -525,6 +533,42 @@ void Resolver::visit(Get& e) {
     e.type = &Types::ANY_TYPE;
     e.fieldIdx = 9999;
 }
+
+void Resolver::visit(ScopeAccessExpr& e) {
+    if (e.parts.size() < 2)
+        throw KMYCompileError("Invalid scope access");
+
+    // Step 1: resolve first part as type
+    auto typeSym = resolveTypeSymbol(e.parts[0]);
+
+    if (!typeSym)
+        throw KMYCompileError("\"" + e.parts[0] + "\" is not a type symbol.");
+
+    // Step 2: walk intermediate parts (if any)
+    for (size_t i = 1; i < e.parts.size() - 1; ++i) {
+        // TODO: Currently, :: cannot be nested. so i skip for now lol.
+        throw KMYCompileError("Nested :: not supported yet.");
+    }
+
+    // Step 3: handle FINAL part separately
+    const std::string& last = e.parts.back();
+
+    if (typeSym->type->kind == TypeKind::ENUM) {
+        auto enumType = static_cast<EnumType*>(typeSym->type);
+
+        auto it = enumType->variantMap.find(last);
+        if (it == enumType->variantMap.end()) {
+            throw KMYCompileError("Enum value not found: " + last);
+        }
+
+        e.type = enumType;              // enum type
+        e.accessIdx = it->second;       // enum variant index
+        return;
+    }
+
+    throw KMYCompileError("Only enums supported for :: right now");
+}
+
 
 void Resolver::visit(FunctionExpr& e) {
     Scope* old = currScope;
@@ -639,7 +683,7 @@ void Resolver::visit(Continue&) {
     }
 }
 
-void handleAnnotatedAndInferred(SymbolPtr sym, Type* annotated, Type* inferred) {
+void handleAnnotatedAndInferred(VarSymbol* sym, Type* annotated, Type* inferred) {
     std::cout << "annotated: " << typeToString(annotated)<< std::endl;
     std::cout << "inferred: " << typeToString(inferred) << std::endl;
     std::cout << "sym:" << sym << std::endl;
@@ -766,7 +810,7 @@ void Resolver::visit(Aggregate& s) {
 
     auto oldThis = currentThis;
     // TODO: needed?
-    currentThis = std::make_shared<Symbol>("this", false);
+    currentThis = new VarSymbol("this", false);
     currentThis->type = currentAggregate;
 
     int methodIdx = 0;
@@ -796,6 +840,22 @@ void Resolver::visit(TypeAlias& s) {
     printLog(LogLevel::DEBUG, "Visiting typealias node for " + s.name + "\n");
 
     s.typeSymbol->type = typeSigToType(s.aliasingType);
+}
+
+void Resolver::visit(Enum& s) {
+    printLog(LogLevel::DEBUG, "Visiting enum node for " + s.name + "\n");
+    
+    auto* enumType = new EnumType;
+    
+    // TODO: To type interner?
+    int offset = 0;
+    for (auto& str : s.variants) {
+        enumType->variantMap[str] = offset++;
+    }
+    
+    s.typeSymbol->type = enumType;
+    
+    printLog(LogLevel::DEBUG, "Enum offset is " + std::to_string(offset) + " for " + s.name + "\n");
 }
 
 void Resolver::visit(ExprStmt& s) {

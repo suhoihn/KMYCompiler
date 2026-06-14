@@ -74,6 +74,57 @@ Value about(int argc, Value* args) {
         "));
 }
 
+Value append(int argc, Value* args) {
+    if (argc != 2) {
+        throw std::runtime_error("append expects 2 arguments");
+    }
+    
+    if (!checkObjType(args[0], ObjKind::Array)) {
+        throw std::runtime_error("First argument of append expects array");
+    }
+
+    auto arr = std::static_pointer_cast<ArrayObj>(std::get<ObjectPtr>(args[0].data));
+
+    arr->array.push_back(args[1]);
+
+    // TODO: Return void?
+    return Value(GarbageValue{});
+}
+
+Value pop(int argc, Value* args) {
+    if (argc != 1) {
+        throw std::runtime_error("pop expects 1 argument");
+    }
+        if (!checkObjType(args[0], ObjKind::Array)) {
+        throw std::runtime_error("First argument of pop expects array");
+    }
+
+    auto arr = std::static_pointer_cast<ArrayObj>(std::get<ObjectPtr>(args[0].data));
+
+    Value popped = arr->array.back();
+    arr->array.pop_back();
+
+    return popped;
+}
+
+Value len(int argc, Value* args) {
+    if (argc != 1) {
+        throw std::runtime_error("len expects 1 argument");
+    }
+
+    if (checkObjType(args[0], ObjKind::Array)) {
+        auto arr = std::static_pointer_cast<ArrayObj>(std::get<ObjectPtr>(args[0].data));
+        return Value(static_cast<int>(arr->array.size()));
+    }
+
+    if (std::holds_alternative<std::string>(args[0].data)) {
+        const std::string& s = std::get<std::string>(args[0].data);
+        return Value(static_cast<int>(s.size()));
+    }
+
+    throw std::runtime_error("len expects array or string");
+}
+
 std::unordered_map<std::string, NativeEntry> nativeFnTypes = {
     {
         "isAlpha",
@@ -106,6 +157,39 @@ std::unordered_map<std::string, NativeEntry> nativeFnTypes = {
             ),
             &about,
             2
+        }
+    },
+    {
+        "append",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::ANY_TYPE, &Types::ANY_TYPE},
+                &Types::VOID_TYPE
+            ),
+            &append,
+            3
+        }
+    },
+    {
+        "pop",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::ANY_TYPE},
+                &Types::ANY_TYPE
+            ),
+            &pop,
+            4
+        }
+    },
+    {
+        "len",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::ANY_TYPE},
+                &Types::INT_TYPE
+            ),
+            &len,
+            5
         }
     }
 };

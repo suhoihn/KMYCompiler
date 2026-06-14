@@ -1,9 +1,13 @@
 #pragma once
+
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <string>
 
-using SymbolPtr = std::shared_ptr<struct Symbol>;
+// Forward decls
+struct VarSymbol;
+struct TypeSymbol;
 
 enum class TypeNodeKind {
     NAMED,
@@ -71,6 +75,7 @@ enum class TypeKind {
     INSTANCE, // record or class instances
     FUNCTION, // Just denotes that the type is a function. 
     VOID, // Denotes no type. Only used for functions.
+    ENUM,
     ANY,
     UNKNOWN,
     UNINITIALISED // TODO: not rly a type, should be separate bool flag?
@@ -137,16 +142,16 @@ struct MethodInfo {
 };
 
 struct InstanceType : Type {
-    std::unordered_map<std::string, SymbolPtr> fieldMap;
-    std::unordered_map<std::string, SymbolPtr> methodMap;
-    std::vector<SymbolPtr> constructorVec;
+    std::unordered_map<std::string, VarSymbol*> fieldMap;
+    std::unordered_map<std::string, VarSymbol*> methodMap;
+    std::vector<VarSymbol*> constructorVec;
 
     InstanceType() : Type(TypeKind::INSTANCE) {}
 
     InstanceType(
-        std::unordered_map<std::string, SymbolPtr> fieldMap,
-        std::unordered_map<std::string, SymbolPtr> methodMap,
-        std::vector<SymbolPtr> constructorVec
+        std::unordered_map<std::string, VarSymbol*> fieldMap,
+        std::unordered_map<std::string, VarSymbol*> methodMap,
+        std::vector<VarSymbol*> constructorVec
     ) : 
         Type(TypeKind::INSTANCE),
         fieldMap(move(fieldMap)),
@@ -154,6 +159,14 @@ struct InstanceType : Type {
         constructorVec(move(constructorVec)) {}
 };
 
+struct EnumType : Type {
+    std::unordered_map<std::string, int> variantMap;
+
+    EnumType() : Type(TypeKind::ENUM) {}
+
+    EnumType(std::unordered_map<std::string, int> variantMap) 
+        : Type(TypeKind::ENUM), variantMap(std::move(variantMap)) {}
+};
 
 namespace Types {
     inline Type INT_TYPE = { TypeKind::INT };

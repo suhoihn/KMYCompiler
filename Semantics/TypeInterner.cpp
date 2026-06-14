@@ -50,8 +50,7 @@ StructualType* TypeInterner::getStructualType(std::unordered_map<std::string, Ty
     int offset = 0;
     for (auto& [name, type] : raw) {
         newRecordType->fieldTypes[name] = type;
-        // TODO: This will be filled in later passes (namely closure analysis and slot allocation).
-        newRecordType->layout[name] = INVALID_SLOT;
+        newRecordType->layout[name] = offset++;
     }
     recordCache[recordKey] = newRecordType;
 

@@ -1,11 +1,14 @@
 #pragma once
+
 #include <string>
 #include <memory>
 #include <vector>
-#include <variant>
-#include <iostream>
 #include <unordered_map>
+
 #include "AstBaseForward.hpp"
+#include "Scope.hpp"
+#include "Symbol.hpp"
+#include "VariableStorage.hpp"
 #include "operators.hpp"
 #include "visitor.hpp"
 
@@ -19,6 +22,7 @@ enum class ExprKind {
     Index,
     Call,
     Get,
+    ScopeAccess,
     Assignment,
     FunctionExpr,
     ThisExpr,
@@ -54,7 +58,7 @@ struct ExprHelper : public BaseExpr {
 
 // Literals for int, double, bool, string, null
 struct Literal : ExprHelper<Literal, ExprKind::Literal> {
-    std::variant<int, double, bool, std::string, std::nullptr_t> value;
+    ConstValue value;
 
     Literal();
     Literal(int i);
@@ -88,7 +92,7 @@ struct Variable : ExprHelper<Variable, ExprKind::Variable> {
     bool resolved = false;
     ResolvedVar resolution;
 
-    SymbolPtr symbol = nullptr; // Semantic info. Initially empty.
+    VarSymbol* symbol = nullptr; // Semantic info. Initially empty.
 
     // Overriding this since variables are assignable.
     virtual bool isLValue() const { return true; }
@@ -139,6 +143,7 @@ struct Call : ExprHelper<Call, ExprKind::Call> {
     // ExprPtr clone() const override;
 };
 
+
 // Format: obj '.' name
 struct Get : ExprHelper<Get, ExprKind::Get> {
     ExprPtr obj;
@@ -157,6 +162,18 @@ struct Get : ExprHelper<Get, ExprKind::Get> {
     // ExprPtr clone() const override;
 };
 
+// Format: obj '::' name
+struct ScopeAccessExpr : ExprHelper<ScopeAccessExpr, ExprKind::ScopeAccess> {
+    std::vector<std::string> parts;
+    int accessIdx = INVALID_SLOT;
+
+    // TODO: later u need symbols stored here to access static fields...
+
+    ScopeAccessExpr(std::vector<std::string> parts);
+
+    // ExprPtr clone() const override;
+};
+
 // Surprisingly, assignment can be an expression.
 struct Assignment : ExprHelper<Assignment, ExprKind::Assignment> {
     AssignmentOp op; // e.g., +=, -=, etc.
@@ -169,6 +186,24 @@ struct Assignment : ExprHelper<Assignment, ExprKind::Assignment> {
 };
 
 // Parameter struct is in ASTBaseForward.hpp
+struct Parameter {
+    TypeNodePtr type;
+    std::string name;
+    bool isVariadic = false;
+    bool isMutable = true; // Mutable by default
+    bool defaultExists = false;
+    ExprPtr defaultValue;
+    VarSymbol* symbol = nullptr;
+
+    Parameter(TypeNodePtr type, std::string name, bool isVariadic, bool isMutable, bool defaultExists, ExprPtr defaultValue=nullptr)
+        : 
+        type(std::move(type)),
+        name(move(name)),
+        isVariadic(isVariadic),
+        isMutable(isMutable), 
+        defaultExists(defaultExists),
+        defaultValue(move(defaultValue)) {}
+};
 
 // Kinda like lambda fun
 struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
@@ -176,7 +211,7 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
     StmtPtr body;
     TypeNodePtr annotatedReturnType;
 
-    SymbolPtr symbol = nullptr;
+    VarSymbol* symbol = nullptr;
     Scope* scope = nullptr;
     std::vector<UpvalueInfo> upvalues;
     int frameSize = 0;
@@ -267,7 +302,7 @@ struct Let : StmtHelper<Let> {
     ExprPtr expr;
     bool isMutable;
 
-    SymbolPtr symbol = nullptr;
+    VarSymbol* symbol = nullptr;
 
     Let(TypeNodePtr annotatedType, const std::string& name, ExprPtr expr, bool isMutable);
     // StmtPtr clone() const override;
@@ -282,7 +317,7 @@ struct Return : StmtHelper<Return> {
 
 struct Member {
     virtual ~Member() = default;
-    SymbolPtr symbol = nullptr;
+    VarSymbol* symbol = nullptr;
 };
 
 struct FieldMember : Member {
@@ -344,6 +379,15 @@ struct TypeAlias : StmtHelper<TypeAlias> {
     TypeNodePtr aliasingType;
 
     TypeAlias(std::string name, TypeNodePtr aliasingType);
+};
+
+struct Enum : StmtHelper<Enum> {
+    std::string name;
+    std::vector<std::string> variants;
+    
+    TypeSymbol* typeSymbol = nullptr;
+
+    Enum(std::string name, std::vector<std::string> variants);
 };
 
 struct ExprStmt : StmtHelper<ExprStmt> {
