@@ -1,0 +1,14 @@
+class CLS{
+    let f: any = fun() { print(this); };
+    init() {}
+    //enum X {
+      //  a,b,c
+    //};
+  //  record innerRec {};
+  // static let x: int = 3;
+    
+};
+
+let const instance = new CLS();
+instance.f();
+//print(fun(a:int,b:int){return a+b;}(1,2));

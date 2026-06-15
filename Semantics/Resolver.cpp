@@ -319,12 +319,21 @@ Type* testBinary(BinaryOp op, Type* leftType, Type* rightType) {
         // ========================
 
         // Equality following modern language strictness.
-        case BinaryOp::EqualEqual:
-        case BinaryOp::NotEqual:
         case BinaryOp::Greater:
         case BinaryOp::GreaterEqual:
         case BinaryOp::Less:
         case BinaryOp::LessEqual: {
+            if (leftType != &Types::INT_TYPE && leftType != &Types::DOUBLE_TYPE) {
+                throw KMYCompileError("Numeric values can only be compared.");
+            }
+            if (rightType != &Types::INT_TYPE && rightType != &Types::DOUBLE_TYPE) {
+                throw KMYCompileError("Numeric values can only be compared.");
+            }
+            return &Types::BOOL_TYPE;
+        }
+
+        case BinaryOp::EqualEqual:
+        case BinaryOp::NotEqual: {
             if (leftType != rightType) {
                 throw KMYCompileError("Cannot compare different types.");
             }
@@ -579,15 +588,20 @@ void Resolver::visit(FunctionExpr& e) {
     std::vector<ParamTypeInfo> info;
 
     for (auto& param : e.params) {
-        if (!param.type) {
-            // No annotation means we don't know the type. Assume any.
-            // We delegate this in runtime.
-            param.symbol->type = &Types::ANY_TYPE;
-
-            // If strict mode:
-            // throw KMYCompileError("Parameter must have explicit type signature.");
-        } else {
-            param.symbol->type = typeSigToType(param.type);
+        if (!param.symbol->type) {
+            // This(^) check is present since param.symbol->type can be already defined
+            // in which case, it should not be overriden.
+            // Namely, implicit "this" parameter. 
+            if (!param.type) {
+                // No annotation means we don't know the type. Assume any.
+                // We delegate this in runtime.
+                param.symbol->type = &Types::ANY_TYPE;
+    
+                // If strict mode:
+                // throw KMYCompileError("Parameter must have explicit type signature.");
+            } else {
+                param.symbol->type = typeSigToType(param.type);
+            }
         }
 
         paramTypes.push_back(param.symbol->type);
@@ -621,7 +635,10 @@ void Resolver::visit(ThisExpr& e) {
     if (!currentThis) {
         throw KMYCompileError("\"this\" used outside of method... :(");
     }
+    std::cout << "Cthis is " << currentThis << std::endl;
+    std::cout << "which refers to " << static_cast<InstanceType*>(currentThis->type)->name<< std::endl;
 
+    e.symbol = currentThis;
     e.type = currentThis->type;
 }
 
@@ -770,6 +787,7 @@ void Resolver::visit(Aggregate& s) {
 
     // Critical: make class type right after. Initially its inner types are empty.
     InstanceType* aggType = new InstanceType();
+    aggType->name = s.name; // DEBUG
 
     if (!s.typeSymbol) {
         throw KMYCompileError("? agg type symbol where");
@@ -782,25 +800,16 @@ void Resolver::visit(Aggregate& s) {
     for (auto& field : s.fieldMembers) {
         Type* inferred = nullptr;
 
-        //std::cout << "1\n";
-        
         if (field.initialiser) {
+            std::cout << "currthis: " << currentThis << std::endl;
             field.initialiser->accept(*this);
         }
-        //std::cout << "2\n";
-
-        if (!field.symbol) {
-            throw KMYCompileError("How is field symbol undef");
-        }
-
-        //std::cout << "3\n";
 
         handleAnnotatedAndInferred(
             field.symbol,
             field.annotatedType ? typeSigToType(field.annotatedType) : nullptr,
             inferred
         );
-        //std::cout << "4\n";
     
         field.symbol->fieldOffset = offset++;
         aggType->fieldMap[field.name] = field.symbol;
@@ -808,28 +817,42 @@ void Resolver::visit(Aggregate& s) {
 
     std::cout << "Resolver: field np\n";
 
-    auto oldThis = currentThis;
-    // TODO: needed?
-    currentThis = new VarSymbol("this", false);
-    currentThis->type = currentAggregate;
-
+    
     int methodIdx = 0;
+    auto oldThis = currentThis; // Do i need this?
     for (auto& member : s.methodMembers) {
+        // HACK?: First parameter is ALWAYS implicit "this"
+        currentThis = member.methodExpr->params[0].symbol;
+        currentThis->type = currentAggregate;
+
         member.methodExpr->accept(*this);
+        
         member.symbol->type = member.methodExpr->type; 
         member.symbol->methodIdx = methodIdx++;
         aggType->methodMap[member.name] = member.symbol;
     }
 
+    std::cout << "Resolver: method np\n";
+
     for (auto& member : s.constructorMembers) {
+        currentThis = member.initFuncExpr->params[0].symbol;
+        currentThis->type = currentAggregate;
+
         member.initFuncExpr->accept(*this);
         // Constructor has no type...
         member.symbol->type = member.initFuncExpr->type;
         aggType->constructorVec.push_back(member.symbol);
     }
 
+    std::cout << "Resolver: ctor np\n";
+
+    std::cout << currentAggregate->name << "\n";
     // Field initialiser
+    currentThis = s.fieldInitFunc->params[0].symbol;
+    currentThis->type = currentAggregate;
     s.fieldInitFunc->accept(*this);
+
+    std::cout << "Resolver: field init func np\n";
 
     currentThis = oldThis;
     currentAggregate = oldAgg;

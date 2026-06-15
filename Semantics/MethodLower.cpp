@@ -125,56 +125,16 @@ void MethodLower::visit(Aggregate& s) {
 
     // Methods
     for (auto& member : s.methodMembers) {
-        Parameter thisParam(nullptr, "this", false, false, false);
-        // Create "this" symbol (should be unique for each method)
-        VarSymbol* thisSym = new VarSymbol("$implicit_this", false);
-        thisSym->type = s.typeSymbol->type;
-    
-
-        // Store in function's scope
-        member.methodExpr->scope->values["$implicit_this"] = thisSym;
-
-        thisParam.symbol = thisSym;
-
-        auto& paramVec = member.methodExpr->params;
-        paramVec.insert(paramVec.begin(), thisParam);
         member.methodExpr->accept(*this);
     }
 
     // Constructors
     for (auto& member : s.constructorMembers) {
-        Parameter thisParam(nullptr, "this", false, false, false);
-        // Create "this" symbol (should be unique for each method)
-        VarSymbol* thisSym = new VarSymbol("$implicit_this", false);
-        thisSym->type = s.typeSymbol->type;
-
-        // Store in function's scope
-        member.initFuncExpr->scope->values["$implicit_this"] = thisSym;
-
-        thisParam.symbol = thisSym;
-
-        auto& paramVec = member.initFuncExpr->params;
-        paramVec.insert(paramVec.begin(), thisParam);
         member.initFuncExpr->accept(*this);
     }
 
     // Field initialiser
-    {
-        Parameter thisParam(nullptr, "this", false, false, false);
-        
-        // Create "this" symbol (should be unique for each method)
-        VarSymbol* thisSym = new VarSymbol("$implicit_this", false);
-        thisSym->type = s.typeSymbol->type;
-
-        // Needed?
-        s.fieldInitFunc->scope->values["$implicit_this"] = thisSym;
-
-        thisParam.symbol = thisSym;
-
-        auto& paramVec =  s.fieldInitFunc->params;
-        paramVec.insert(paramVec.begin(), thisParam);
-        s.fieldInitFunc->accept(*this);
-    }
+    s.fieldInitFunc->accept(*this);
 }
 
 void MethodLower::visit(TypeAlias& s) {}

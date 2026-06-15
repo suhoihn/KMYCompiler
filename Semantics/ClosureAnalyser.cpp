@@ -3,6 +3,7 @@
 #include <iostream>
 #include "../Core/errorhandler.hpp"
 #include "../Utils/SymbolPrinter.hpp"
+#include "../Utils/utils.hpp"
 
 ClosureAnalyser::ClosureAnalyser(FunctionExprPtr program)
     : program(program)
@@ -20,7 +21,7 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
         throw KMYCompileError("Symbol not resolved? this is stupid.");
     }
     // Returns the slot of upvalue where name belongs in fnCtx's context.
-    // std::cout << "[DEBUG] Resolving upvalue for symbol: " << sym->name << std::endl;
+    std::cout << "[DEBUG] Resolving upvalue for symbol: " << sym->name << std::endl;
 
     auto parentCtx = fnCtx->parent;
     if (!parentCtx) {
@@ -28,22 +29,29 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
         return -1;
     }
 
+    std::cout << "In resolveupvalue part 1\n";
     // Check whether name is already resolved in current context.
     auto itMap = fnCtx->upvalueMap.find(sym);
     if (itMap != fnCtx->upvalueMap.end()) {
         return itMap->second;
     }
-    
+    std::cout << "In resolveupvalue part 2\n";
     // Firstly, is name in parent's local?
     auto it = parentCtx->localMap.find(sym);
     if (it != parentCtx->localMap.end()) {
+        std::cout << "In resolveupvalue part 2-1\n";
+        
         // Found in parent's local.
         // Slot of name in parent's locals.
         int parentLocalSlot = it->second;
 
+        std::cout << "In resolveupvalue part 2-2\n";
+
         // Update current fnCtx's upvalue map.
         int slot = fnCtx->upvalues.size();
         fnCtx->upvalueMap[sym] = slot;
+
+        std::cout << "In resolveupvalue part 2-3\n";
         
         // Also the upvalues vector.
         fnCtx->upvalues.push_back(
@@ -59,6 +67,7 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
         return slot;
     }
 
+    std::cout << "In resolveupvalue part 3\n";
     // Not found in parent's local.
     // Let's go up and add name in ancestor's upvalues vector.
     // Slot in parent's upvalue vector.
@@ -88,6 +97,7 @@ ResolvedVar ClosureAnalyser::resolveVariable(VarSymbol* sym) {
         throw KMYCompileError("Symbol not resolved? this is stupid.");
     }
 
+    std::cout << "In resolveVariable(), first search localMap\n";
     // 1. Local
     auto& localMap = currCtx->localMap;
     auto it = localMap.find(sym);
@@ -100,6 +110,7 @@ ResolvedVar ClosureAnalyser::resolveVariable(VarSymbol* sym) {
         };
     }
     
+    std::cout << "In resolveVariable(), next search upvalue\n";
     // 2. Upvalue
     int up = resolveUpvalue(currCtx, sym);
     if (up != -1) {
@@ -184,7 +195,7 @@ void ClosureAnalyser::visit(UnaryExpr& e) {
     e.operand->accept(*this);
 }
 void ClosureAnalyser::visit(Assignment& e) {
-    std::cout << "crash now.\n";
+    std::cout << "crash now. L: " << e.left << " R: " << e.right << "\n";
     e.left->accept(*this);
     e.right->accept(*this);
 }
@@ -242,7 +253,15 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
     delete fnCtx;
 }
 
-void ClosureAnalyser::visit(ThisExpr&) {}
+void ClosureAnalyser::visit(ThisExpr& e) {
+    // Note that "this" can be captured too!
+    printLog(LogLevel::DEBUG, "Visiting ThisExpr.");
+    if (!e.resolved) {
+        e.resolved = true;
+        e.resolution = resolveVariable(e.symbol);
+    }
+    printLog(LogLevel::DEBUG, "ThisExpr visit done.");
+}
 void ClosureAnalyser::visit(NewExpr& e) {
     for (auto& arg : e.args)
         arg->accept(*this);

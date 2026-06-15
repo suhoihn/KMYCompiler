@@ -145,6 +145,7 @@ struct InstanceType : Type {
     std::unordered_map<std::string, VarSymbol*> fieldMap;
     std::unordered_map<std::string, VarSymbol*> methodMap;
     std::vector<VarSymbol*> constructorVec;
+    std::string name = "<UNDEFINED>";
 
     InstanceType() : Type(TypeKind::INSTANCE) {}
 

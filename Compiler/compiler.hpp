@@ -43,6 +43,7 @@ private:
     const FunctionExprPtr program; // AST (read-only)
 
     void emit(Opcode op, int operand);
+    void emitResolutionResult(ResolvedVar res);
     void handleAssignment(AssignmentOp op, ExprPtr left, ExprPtr right);
     
     // Tracking current function context.

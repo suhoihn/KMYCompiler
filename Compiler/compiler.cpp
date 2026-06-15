@@ -175,6 +175,23 @@ void Compiler::handleAssignment(AssignmentOp op, ExprPtr left, ExprPtr right) {
         right->accept(*this);
     }
 }
+
+// TODO... used once and diff format in thisexpr
+void Compiler::emitResolutionResult(ResolvedVar res) {
+    switch(res.kind) {
+        case ResolvedVar::Kind::LOCAL:
+            emit(Opcode::STORE_LOCAL, res.index);
+            break;
+
+        case ResolvedVar::Kind::UPVALUE:
+            emit(Opcode::STORE_UPVALUE, res.index);
+            break;
+
+        case ResolvedVar::Kind::GLOBAL:
+            emit(Opcode::STORE_GLOBAL, res.index);
+            break;
+    }
+}
 void Compiler::visit(Assignment& e) {
 
     // Case 1: variable assignment
@@ -191,19 +208,7 @@ void Compiler::visit(Assignment& e) {
         
         handleAssignment(e.op, e.left, e.right);
 
-        switch(var->resolution.kind) {
-            case ResolvedVar::Kind::LOCAL:
-                emit(Opcode::STORE_LOCAL, var->resolution.index);
-                break;
-
-            case ResolvedVar::Kind::UPVALUE:
-                emit(Opcode::STORE_UPVALUE, var->resolution.index);
-                break;
-
-            case ResolvedVar::Kind::GLOBAL:
-                emit(Opcode::STORE_GLOBAL, var->resolution.index);
-                break;
-        }
+        emitResolutionResult(var->resolution);
         return;
     }
 
@@ -392,7 +397,23 @@ void Compiler::visit(FunctionExpr& e) {
 void Compiler::visit(ThisExpr& e) {
     // "this" is already guaranteed to be inside methods.
     // Thus always load the 0th slot.
-    emit(Opcode::LOAD_LOCAL, 0);
+    // ... ONLY WHEN THEY ARE LOCALS.
+    // They can be CAPTURED AS UPVALUES TOO.
+    
+    assert(e.resolved);
+    switch(e.resolution.kind) {
+        case ResolvedVar::Kind::LOCAL:
+            emit(Opcode::LOAD_LOCAL, e.resolution.index);
+            break;
+
+        case ResolvedVar::Kind::UPVALUE:
+            emit(Opcode::LOAD_UPVALUE, e.resolution.index);
+            break;
+
+        case ResolvedVar::Kind::GLOBAL:
+            emit(Opcode::LOAD_GLOBAL, e.resolution.index);
+            break;
+    }
 }
 
 void Compiler::visit(NewExpr& e) { 
@@ -409,8 +430,8 @@ void Compiler::visit(NewExpr& e) {
             throw KMYCompileError("Constuctor is not a function? This is weird.");
         }
         auto constrFuncType = static_cast<FunctionType*>(constructor->type);
-        // HACK HACK HACK
-        if (constrFuncType->paramTypes.size() == argCnt) {
+        // HACK HACK HACK: due to implicit this u need +1
+        if (constrFuncType->paramTypes.size() == argCnt + 1) {
             // HACK
             // TODO: argCnt needs update
 
@@ -436,17 +457,17 @@ void Compiler::visit(NewExpr& e) {
             
             emit(Opcode::CALL, 1);
             
-            // stack: [...] [userConstructor] [emptyRec] [GARBAGE]
+            // stack: [...] [userConstructor] [filledRec] [GARBAGE]
             
             emit(Opcode::POP); // This is essential. RETURN_VOID pushes garbage.
             
-            // stack: [...] [userConstructor] [emptyRec]
+            // stack: [...] [userConstructor] [filledRec]
 
             for(auto it = e.args.begin(); it != e.args.end(); ++it) {
                 (*it)->accept(*this);
             }
 
-            // stack: [...] [userConstructor] [emptyRec] [args...]
+            // stack: [...] [userConstructor] [filledRec] [args...]
             emit(Opcode::CALL, argCnt + 1);
 
             // stack: [...]

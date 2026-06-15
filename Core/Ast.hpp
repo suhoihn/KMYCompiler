@@ -225,6 +225,9 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
 using FunctionExprPtr = std::shared_ptr<FunctionExpr>;
 
 struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {
+    bool resolved = false;
+    ResolvedVar resolution; // WARNING: Will contain garbage when uninitialised!!!
+    VarSymbol* symbol = nullptr;
     // ExprPtr clone() const override;
 };
 
@@ -359,6 +362,7 @@ struct Aggregate : StmtHelper<Aggregate> {
     
     FunctionExprPtr fieldInitFunc; // field initialisers.
 
+    VarSymbol* thisSymbol = nullptr;
     TypeSymbol* typeSymbol = nullptr;
 
     Scope* scope = nullptr;

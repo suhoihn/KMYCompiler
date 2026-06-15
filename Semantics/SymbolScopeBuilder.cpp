@@ -239,19 +239,19 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
     // Fields
     for (auto& member : s.fieldMembers) {
         VarSymbol* fieldSym = declareVar(member.name, member.isMutable);
-
+        
         if (!fieldSym) {
             throw KMYCompileError(
                 "Redeclaration of field \"" + member.name + "\""
             );
         }
-
+        
         member.symbol = fieldSym;
-
+        
         if (member.initialiser)
-            member.initialiser->accept(*this);
+        member.initialiser->accept(*this);
     }
-
+    
     // Methods
     for (auto& member : s.methodMembers) {
         // Methods are not mutable.
@@ -263,7 +263,12 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
             );
         }
 
-        member.symbol = methodSym;
+        // Create "this" parameter (should be unique for each method)
+        Parameter thisParam(nullptr, "$implicit_this_param", false, false, false);
+
+        auto& paramVec = member.methodExpr->params;
+        paramVec.insert(paramVec.begin(), thisParam);
+
         member.methodExpr->accept(*this);
     }
 
@@ -274,11 +279,25 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
         VarSymbol* constrSym = declareVar("implicit_init" + std::to_string(cnt++), false);
 
         member.symbol = constrSym;
+
+        // Create "this" parameter (should be unique for each method)
+        Parameter thisParam(nullptr, "$implicit_this_param", false, false, false);
+
+        auto& paramVec = member.initFuncExpr->params;
+        paramVec.insert(paramVec.begin(), thisParam);
+
         member.initFuncExpr->accept(*this);
     }
 
     // Field init func
-    s.fieldInitFunc->accept(*this);
+    {
+        // Create "this" parameter (should be unique for each method)
+        Parameter thisParam(nullptr, "$implicit_this_param", false, false, false);
+    
+        auto& paramVec = s.fieldInitFunc->params;
+        s.fieldInitFunc->params.insert(paramVec.begin(), thisParam);
+        s.fieldInitFunc->accept(*this);
+    }
 
     s.scope = currScope;
 
@@ -295,6 +314,15 @@ void SymbolScopeBuilder::visit(TypeAlias& s) {
 void SymbolScopeBuilder::visit(Enum& s) {
     // Similar to classes. Enum builds a type
     s.typeSymbol = declareType(s.name, false);
+    
+    std::unordered_set<std::string> seen;
+    for (auto& str : s.variants) {
+        if (!seen.insert(str).second) {
+            throw KMYCompileError(
+                "Duplicate enum variant \"" + str + "\"."
+            );
+        }
+    }
 }
 
 
