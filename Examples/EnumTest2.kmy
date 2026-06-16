@@ -1,14 +1,49 @@
-class CLS{
-    let f: any = fun() { print(this); };
-    init() {}
+//class CLS{
+  //  let f: any = fun() { print(this); };
+   // init() {}
     //enum X {
       //  a,b,c
     //};
   //  record innerRec {};
   // static let x: int = 3;
     
+//};
+
+//let const instance = new CLS();
+//instance.f();
+
+class Main {
+    enum Gender {
+        MALE,
+        FEMALE,
+        NEUTRAL,
+        SLIGHTLY_MALE,
+        SLIGHTLY_FEMALE
+    };
+
+    enum Power {
+        MYULCHEE,
+        YAKGOL,
+        PYEONGBUM,
+        TUNTUN,
+        MACHO
+    };
+
+    let g: Main::Gender;
+    let p: Main::Power;
+
+    // Good note: Supports just Gender
+    init(const g: Gender, const p: Main::Power) {
+        this.g = g;
+        this.p = p;
+    }
 };
 
-let const instance = new CLS();
-instance.f();
+let i = new Main(Main::Gender::MALE, Main::Power::PYEONGBUM);
+print(i);
+
+enum X{a,b,c};
+
+print(Main::Power::MACHO);
+
 //print(fun(a:int,b:int){return a+b;}(1,2));

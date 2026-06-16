@@ -80,6 +80,7 @@ Type* Resolver::typeSigToType(const TypeNodePtr type) {
             } else if (named.name == "any") {
                 return &Types::ANY_TYPE;
             } else {
+                throw KMYCompileError("SERIOUS ISSUE: This should have been handled in scoped type node.");
                 auto sym = resolveTypeSymbol(named.name);
                 if (!sym) {
                     throw KMYCompileError("Unknown type name: " + named.name);
@@ -119,6 +120,46 @@ Type* Resolver::typeSigToType(const TypeNodePtr type) {
             }
 
             return TypeInterner::getStructualType(std::move(fieldTypes));
+        }
+        
+        case TypeNodeKind::SCOPED: {
+            const auto& scopedTypeNode = static_cast<ScopedTypeNode&>(*type);
+
+            const std::string& firstPart = scopedTypeNode.scopeParts[0];
+
+            TypeSymbol* typeSym = resolveTypeSymbol(firstPart);
+            if (!typeSym) {
+                throw KMYCompileError("Unknown type symbol \"" + firstPart + "\" in scoped type");
+            }
+
+            Type* currType = typeSym->type;
+
+            // start from SECOND element
+            for (size_t i = 1; i < scopedTypeNode.scopeParts.size(); i++) {
+                const std::string& currPart = scopedTypeNode.scopeParts[i];
+
+                if (currType->kind != TypeKind::INSTANCE) {
+                    throw KMYCompileError("Only aggregates support nested ::");
+                }
+
+                auto aggType = static_cast<InstanceType*>(currType);
+
+                std::cout << "enummap contains:\n";
+                for (auto& [f, _] : aggType->enumMap) {
+                    std::cout << f << "\n";
+                }
+
+                auto it = aggType->enumMap.find(currPart);
+                if (it == aggType->enumMap.end()) {
+                    throw KMYCompileError(
+                        "No type symbol \"" + currPart + "\" found in " + aggType->name
+                    );
+                }
+
+                currType = it->second->type;
+            }
+
+            return currType;
         }
     }
 
@@ -545,7 +586,7 @@ void Resolver::visit(Get& e) {
 
 void Resolver::visit(ScopeAccessExpr& e) {
     if (e.parts.size() < 2)
-        throw KMYCompileError("Invalid scope access");
+        throw KMYCompileError("Invalid scope access. This should not be even allowed here though...");
 
     // Step 1: resolve first part as type
     auto typeSym = resolveTypeSymbol(e.parts[0]);
@@ -555,16 +596,43 @@ void Resolver::visit(ScopeAccessExpr& e) {
 
     // Step 2: walk intermediate parts (if any)
     for (size_t i = 1; i < e.parts.size() - 1; ++i) {
-        // TODO: Currently, :: cannot be nested. so i skip for now lol.
-        throw KMYCompileError("Nested :: not supported yet.");
+        // TODO: Currently, :: can... now be nested!
+        // BUT ONLY AGGREGATES CAN HAVE THEM.
+        if (typeSym->type->kind == TypeKind::INSTANCE) {
+            auto aggType = static_cast<InstanceType*>(typeSym->type);
+            const std::string& currPart = e.parts[i];
+            
+            auto it = aggType->enumMap.find(currPart);
+            if (it != aggType->enumMap.end()) {
+                // You found it!
+                typeSym = it->second;
+            }
+        } else {
+            throw KMYCompileError("Only aggregates support nested ::");
+        }
     }
+
+    // AMBICIOUS TODO: IMPLEMENT "RUST" STYLE REFERENCE CHECKS! but optional for dev power
+    // Heres a short poem i wrote for no reason ON A COMPILER
+    
+    /*
+    hull
+    your effort has gone null
+    might be furious as a bull
+    want some tool?
+    to make the situation cool?
+    or a wool?
+    to learn what's bool? (WTF last line is ass)
+    */ 
 
     // Step 3: handle FINAL part separately
     const std::string& last = e.parts.back();
 
+    // TODO: Currently, the last MUST be an enum...
     if (typeSym->type->kind == TypeKind::ENUM) {
         auto enumType = static_cast<EnumType*>(typeSym->type);
 
+        std::cout << "Checking enum " << typeSym->name << "\n";
         auto it = enumType->variantMap.find(last);
         if (it == enumType->variantMap.end()) {
             throw KMYCompileError("Enum value not found: " + last);
@@ -575,7 +643,7 @@ void Resolver::visit(ScopeAccessExpr& e) {
         return;
     }
 
-    throw KMYCompileError("Only enums supported for :: right now");
+    throw KMYCompileError("Only enums supported for ends of :: right now");
 }
 
 
@@ -796,6 +864,20 @@ void Resolver::visit(Aggregate& s) {
     s.typeSymbol->type = aggType;
     currentAggregate = aggType;
 
+    // Enums should be done first.
+    // *****CRITICAL TODO: IN FACT, THESE SHOULD BE IN THE ORDER OF DECL!!!!!!!!!
+    // MAKE just member vector and kind to just dispatch.
+    // ALSO CONSIDER DOING VIRTUAL DISPATCH FOR ALL derived types instead of kind switches...
+    // if possible tho.
+    // 
+    for (auto& member : s.enumMembers) {
+        member.customEnum->accept(*this);
+
+        aggType->enumMap[member.customEnum->name] = member.customEnum->typeSymbol;
+    }
+    
+    std::cout << "Resolver: enum np\n";
+
     int offset = 0;
     for (auto& field : s.fieldMembers) {
         Type* inferred = nullptr;
@@ -845,6 +927,8 @@ void Resolver::visit(Aggregate& s) {
     }
 
     std::cout << "Resolver: ctor np\n";
+
+    
 
     std::cout << currentAggregate->name << "\n";
     // Field initialiser

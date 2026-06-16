@@ -5,6 +5,7 @@
 #include "../Core/errorhandler.hpp"
 #include "../Core/Ast.hpp"
 #include "../Utils/NativeFunctionImpl.hpp"
+#include "../Utils/utils.hpp"
 
 SymbolScopeBuilder::SymbolScopeBuilder(
     FunctionExprPtr program
@@ -60,7 +61,7 @@ VarSymbol* SymbolScopeBuilder::declareVar(const std::string& name, bool isMutabl
 TypeSymbol* SymbolScopeBuilder::declareType(const std::string& name, bool isMutable) {
     // NOTE: New types can only be declared via aggregate (class or record) or typealias.
     // TODO: Implement const types (need usage for isMutable.)
-    
+    printLog(LogLevel::DEBUG, "Declaring type symbol " + name + "\n");
     // 1. Check current scope only (NOT parents)
     if (currScope->types.find(name) != currScope->types.end()) {
         // Redeclaration in same scope.
@@ -275,7 +276,7 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
     // Constructors
     int cnt = 0;
     for (auto& member : s.constructorMembers) {
-        // Methods are not mutable.
+        // Constructors are not mutable.
         VarSymbol* constrSym = declareVar("implicit_init" + std::to_string(cnt++), false);
 
         member.symbol = constrSym;
@@ -287,6 +288,13 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
         paramVec.insert(paramVec.begin(), thisParam);
 
         member.initFuncExpr->accept(*this);
+    }
+
+    // Enums (TODO: support METHODS)
+    for (auto& member : s.enumMembers) {
+        // TODO: Combine symbol instead of VarSymbol?
+        // member.symbol is unused.
+        member.customEnum->accept(*this);
     }
 
     // Field init func

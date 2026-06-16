@@ -13,7 +13,8 @@ enum class TypeNodeKind {
     NAMED,
     FUNCTION,
     ARRAY,
-    RECORD // Annonymous records ({x: int} forms). Will eventually be StructualType
+    RECORD, // Annonymous records ({x: int} forms). Will eventually be StructualType
+    SCOPED // For types with a scope (e.g., Foo::Bar. Notice that this is different from enum access like Color::Black)
 };
 
 struct TypeNode {
@@ -63,6 +64,12 @@ struct ArrayTypeNode : TypeNode {
         : TypeNode(TypeNodeKind::ARRAY), elementType(std::move(elementType)), size(size), isSizeDetermined(isSizeDetermined), isDynamic(isDynamic) {}
 };
 
+struct ScopedTypeNode : TypeNode {
+    std::vector<std::string> scopeParts;
+
+    ScopedTypeNode(std::vector<std::string> scopeParts)
+        : TypeNode(TypeNodeKind::SCOPED), scopeParts(std::move(scopeParts)) {}
+};
 
 enum class TypeKind {
     INT,
@@ -145,19 +152,22 @@ struct InstanceType : Type {
     std::unordered_map<std::string, VarSymbol*> fieldMap;
     std::unordered_map<std::string, VarSymbol*> methodMap;
     std::vector<VarSymbol*> constructorVec;
-    std::string name = "<UNDEFINED>";
+    std::unordered_map<std::string, TypeSymbol*> enumMap;
+    std::string name = "<UNDEFINED>"; // Purely for debug. trust me.
 
     InstanceType() : Type(TypeKind::INSTANCE) {}
 
     InstanceType(
         std::unordered_map<std::string, VarSymbol*> fieldMap,
         std::unordered_map<std::string, VarSymbol*> methodMap,
-        std::vector<VarSymbol*> constructorVec
+        std::vector<VarSymbol*> constructorVec,
+        std::unordered_map<std::string, TypeSymbol*> enumMap
     ) : 
         Type(TypeKind::INSTANCE),
         fieldMap(move(fieldMap)),
         methodMap(move(methodMap)),
-        constructorVec(move(constructorVec)) {}
+        constructorVec(move(constructorVec)),
+        enumMap(move(enumMap)) {}
 };
 
 struct EnumType : Type {

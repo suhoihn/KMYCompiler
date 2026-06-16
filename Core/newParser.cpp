@@ -323,12 +323,13 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
 
     std::vector<FieldMember> fieldMembers;
     std::vector<MethodMember> methodMembers;
+    std::vector<EnumMember> enumMembers;
     std::vector<ConstructorMember> constructorMembers;
 
     // NOTICE: the expressions will be shared among all constructors.
     std::vector<StmtPtr> initStmts;
 
-    while (!match(TokenType::RightBrace)) {
+    while (!check(TokenType::RightBrace)) {
         if (match(TokenType::KeywordInit)) {
             // Constructors
             FunctionExprPtr constructorFunc = std::static_pointer_cast<FunctionExpr>(parse_functionExpr());
@@ -399,9 +400,17 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
                     std::static_pointer_cast<FunctionExpr>(move(letStmt->expr))
                 )
             );
+        } else if (match(TokenType::KeywordEnum)) {
+            std::cout << "Crash here 1\n";
+            auto enumMember = std::static_pointer_cast<Enum>(parse_enum());
+            std::cout << "Crash here 2\n";
+            enumMembers.push_back(
+                EnumMember( std::move(enumMember) )
+            );
+            std::cout << "Crash here 3\n";
         } else {
             throw KMYParseError(
-                "Only field declarations (let) and method declarations (fun) are allowed in aggregates",
+                "Only field declarations (let), method declarations (fun), and enum declarations (enum) are allowed in aggregates... FOR NOW!!!!",
                 peek().line, // This isnt previous().
                 peek().startIdx,
                 peek().endIdx
@@ -409,20 +418,8 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
         }
     }
 
+    consume(TokenType::RightBrace, "Expected '}' after aggregate body");
     consumeSemicolon();
-
-    /*
-    // SHARED AST ISSUE
-    // We inject field initialisation statements in front of user-defined constructor body
-    for (auto& constrMem : constructorMembers) {
-        auto constrBody = std::static_pointer_cast<Block>(constrMem.initFuncExpr->body);
-        constrBody->statements.insert(
-            constrBody->statements.begin(),
-            initStmts.begin(),
-            initStmts.end()
-        );
-    }
-    */
 
     auto fieldInitFunc = std::make_shared<FunctionExpr>(
         std::vector<Parameter> {},
@@ -436,6 +433,7 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
         move(fieldMembers),
         move(methodMembers),
         move(constructorMembers),
+        move(enumMembers),
         move(fieldInitFunc)
     );
 }
@@ -857,10 +855,9 @@ ExprPtr Parser::parse_prefix() {
     }
 }
 
-
 /*
-type        → ( basicType | functionType | recordType ) arraySuffix*
-basicType   → "int" | "string" | "bool" | "array" | "object" | "any" | "void"
+type        → ( basicType | functionType | recordType | scopedType ) arraySuffix*
+basicType   → "int" | "string" | "bool" | "any" | "void"
 
 functionType → '(' typeList? ')' "->" type
 typeList    → type (',' type)*
@@ -869,6 +866,8 @@ arraySuffix  → '[' ( integer | "..." )? ']'
 recordType → '{'  typePairs?  '}'
 typePairs → typePair (',' typePair)*
 typePair → IDENTIFIER ':' type
+
+scopedType → IDENTIFIER ("::" IDENTIFIER)* // This includes just named types.
 */
 
 TypeNodePtr Parser::parseTypeToken(Token t) {
@@ -890,9 +889,6 @@ TypeNodePtr Parser::parseTypeToken(Token t) {
 
         case TokenType::KeywordVoid:
             return std::make_shared<NamedTypeNode>("void");
-
-        case TokenType::Identifier:
-            return std::make_shared<NamedTypeNode>(t.lexeme);
         
         default: 
             // TODO: previous() here gets the invalid token, not ':'
@@ -942,12 +938,29 @@ TypeNodePtr Parser::parse_functionType() {
     );
 }
 
+// TODO: Need to type intern this one too
+TypeNodePtr Parser::parse_scopedType() {
+    // Check for IDENTIFIER "::" IDENTIFIER
+    Token first = consume(TokenType::Identifier, "Expected an identifier... but if this error is shown, smths wrong");
+    std::vector<std::string> parts = {first.lexeme};
+    if (match(TokenType::ColonColon)) {
+        do {
+            Token memberName = consume(TokenType::Identifier, "Expected an identifier after \"::\"");
+            parts.push_back(memberName.lexeme);
+        } while(match(TokenType::ColonColon));
+    }
+
+    return std::make_shared<ScopedTypeNode>(std::move(parts));
+}
+
 TypeNodePtr Parser::parse_type() {
     TypeNodePtr result = nullptr;
     if (check(TokenType::LeftParen)) {
         result = parse_functionType();
     } else if (check(TokenType::LeftBrace)) {
         result = parse_recordType();
+    } else if (check(TokenType::Identifier)) {
+        result = parse_scopedType();
     } else {
         Token typeToken = peek();
         result = parseTypeToken(typeToken);

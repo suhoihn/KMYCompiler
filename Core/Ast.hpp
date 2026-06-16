@@ -345,6 +345,14 @@ struct ConstructorMember : Member {
     ConstructorMember(FunctionExprPtr initFuncExpr);    
 };
 
+struct EnumMember : Member {
+    std::shared_ptr<Enum> customEnum;
+
+    //TypeSymbol* typeSymbol = nullptr;
+
+    EnumMember(std::shared_ptr<Enum> customEnum);
+};
+
 
 // Same syntax and semantics for records and classes.
 enum class AggregateKind {
@@ -359,6 +367,7 @@ struct Aggregate : StmtHelper<Aggregate> {
     std::vector<FieldMember> fieldMembers; // fields 
     std::vector<MethodMember> methodMembers; // methods
     std::vector<ConstructorMember> constructorMembers; // constructor functions
+    std::vector<EnumMember> enumMembers; // Enum definitions
     
     FunctionExprPtr fieldInitFunc; // field initialisers.
 
@@ -373,6 +382,7 @@ struct Aggregate : StmtHelper<Aggregate> {
         std::vector<FieldMember> fieldMembers, 
         std::vector<MethodMember> methodMembers,
         std::vector<ConstructorMember> constructorMembers,
+        std::vector<EnumMember> enumMembers,
         FunctionExprPtr fieldInitFunc
     );
 };

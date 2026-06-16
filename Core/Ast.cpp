@@ -48,12 +48,16 @@ MethodMember::MethodMember(std::string name, FunctionExprPtr methodExpr)
 ConstructorMember::ConstructorMember(FunctionExprPtr initFuncExpr) 
     : initFuncExpr(move(initFuncExpr)) {}  
 
+EnumMember::EnumMember(std::shared_ptr<Enum> customEnum) 
+    : customEnum(std::move(customEnum)) {}
+
 Aggregate::Aggregate (
     AggregateKind kind,
     std::string name,
     std::vector<FieldMember> fieldMembers, 
     std::vector<MethodMember> methodMembers,
     std::vector<ConstructorMember> constructorMembers,
+    std::vector<EnumMember> enumMembers,
     FunctionExprPtr fieldInitFunc
 ) : 
 kind(kind),
@@ -61,6 +65,7 @@ name(move(name)),
 fieldMembers(move(fieldMembers)),
 methodMembers(move(methodMembers)),
 constructorMembers(move(constructorMembers)),
+enumMembers(move(enumMembers)),
 fieldInitFunc(move(fieldInitFunc)) {}
 
 TypeAlias::TypeAlias(std::string name, TypeNodePtr aliasingType) : name(move(name)), aliasingType(move(aliasingType)) {}

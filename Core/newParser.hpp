@@ -63,6 +63,7 @@ private:
     TypeNodePtr parse_functionType();
     TypeNodePtr parse_arraySuffix();
     TypeNodePtr parse_recordType();
+    TypeNodePtr parse_scopedType();
     
     ExprPtr finishCall(ExprPtr callee);
 
