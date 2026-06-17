@@ -14,6 +14,7 @@
 #include "../Semantics/MethodLower.hpp" // Pass 4
 // #include "../Semantics/typechecker.hpp" // Planned pass 5
 #include "compiler.hpp" // Code gen in pass 6
+#include "../CodegenSSA/SSABuilder.hpp"
 #include <cstring>
 #include <sstream>
 
@@ -211,6 +212,16 @@ int main(int argc, char *argv[]) {
 
         
         std::cout << "[DEBUG]: Ready for code generation." << std::endl;
+
+        if (true) {
+            // 4-a. Code gen (SSA)
+            SSABuilder builder(program);
+            auto ssaCode = builder.compile();
+            for (const auto& instr : ssaCode) {
+                std::cout << instr << '\n';
+            }
+            return 0;
+        }
 
         // 4. Code gen (Stack VM)
         Compiler compiler(program);

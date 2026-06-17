@@ -99,6 +99,7 @@ struct Type {
 struct ParamTypeInfo {
     bool hasDefault;
     bool isVariadic;
+    bool implicitThis;
     Type* type;
 };
 

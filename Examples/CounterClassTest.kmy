@@ -18,8 +18,8 @@ class Counter {
     }
 };
 
-let a = new Counter("A", 10);
-let b = new Counter("B", 100);
+let a: Counter = new Counter("A", 10);
+let b: Counter = new Counter("B", 100);
 
 print(a.get());
 print(b.get());

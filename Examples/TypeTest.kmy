@@ -6,7 +6,7 @@ let xs: int[] = [1,2,3];
 print(xs[0]);
 
 // TODO: Prevent {x: int, x: string} type error in type annotation.
-typealias InIA = {x:int, x: int[]};
+typealias InIA = {x:int, y: int[]};
 typealias InIAs = InIA[];
 let p: InIA = {
     y: [1,2,3],

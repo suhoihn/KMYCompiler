@@ -192,6 +192,9 @@ struct Parameter {
     bool isVariadic = false;
     bool isMutable = true; // Mutable by default
     bool defaultExists = false;
+
+    bool implicitThis = false; // For methods and arg check
+    
     ExprPtr defaultValue;
     VarSymbol* symbol = nullptr;
 

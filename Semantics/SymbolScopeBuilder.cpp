@@ -6,6 +6,7 @@
 #include "../Core/Ast.hpp"
 #include "../Utils/NativeFunctionImpl.hpp"
 #include "../Utils/utils.hpp"
+#include <assert.h>
 
 SymbolScopeBuilder::SymbolScopeBuilder(
     FunctionExprPtr program
@@ -257,6 +258,7 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
     for (auto& member : s.methodMembers) {
         // Methods are not mutable.
         VarSymbol* methodSym = declareVar(member.name, false);
+        member.symbol = methodSym;
 
         if (!methodSym) {
             throw KMYCompileError(
@@ -266,8 +268,13 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
 
         // Create "this" parameter (should be unique for each method)
         Parameter thisParam(nullptr, "$implicit_this_param", false, false, false);
+        thisParam.implicitThis = true;
 
         auto& paramVec = member.methodExpr->params;
+        assert(
+            paramVec.empty() ||
+            paramVec.front().name != "$implicit_this_param"
+        );
         paramVec.insert(paramVec.begin(), thisParam);
 
         member.methodExpr->accept(*this);
@@ -283,8 +290,13 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
 
         // Create "this" parameter (should be unique for each method)
         Parameter thisParam(nullptr, "$implicit_this_param", false, false, false);
+        thisParam.implicitThis = true;
 
         auto& paramVec = member.initFuncExpr->params;
+        assert(
+            paramVec.empty() ||
+            paramVec.front().name != "$implicit_this_param"
+        );
         paramVec.insert(paramVec.begin(), thisParam);
 
         member.initFuncExpr->accept(*this);
@@ -301,7 +313,8 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
     {
         // Create "this" parameter (should be unique for each method)
         Parameter thisParam(nullptr, "$implicit_this_param", false, false, false);
-    
+        thisParam.implicitThis = true;
+        
         auto& paramVec = s.fieldInitFunc->params;
         s.fieldInitFunc->params.insert(paramVec.begin(), thisParam);
         s.fieldInitFunc->accept(*this);

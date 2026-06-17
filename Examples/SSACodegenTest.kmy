@@ -1,0 +1,14 @@
+let x = 5;
+let y = 10;
+
+let z = x + y;
+
+print(z);
+
+x = z * 2;
+
+print(x);
+
+y = x - 3;
+
+print(y);

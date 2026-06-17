@@ -55,6 +55,16 @@ TypeSymbol* Resolver::resolveTypeSymbol(const std::string& name) {
     return nullptr; // Undefined type name.
 }
 
+static std::unordered_map<std::string, Type*> primitiveToType = {
+    {"int", &Types::INT_TYPE},
+    {"double", &Types::DOUBLE_TYPE},
+    {"bool", &Types::BOOL_TYPE},
+    {"string", &Types::STRING_TYPE},
+    {"null", &Types::NULL_TYPE},
+    {"void", &Types::VOID_TYPE},
+    {"any", &Types::ANY_TYPE},
+};
+
 Type* Resolver::typeSigToType(const TypeNodePtr type) {
     printLog(LogLevel::DEBUG, "Converting type annotation to Type*: (TODO...)\n" );
     std::cout << type << "\n";
@@ -64,38 +74,27 @@ Type* Resolver::typeSigToType(const TypeNodePtr type) {
     }
     switch (type->kind) {
         case TypeNodeKind::NAMED: {
+            std::cout << "ur named\n";
             const auto& named = static_cast<NamedTypeNode&>(*type);
-            if (named.name == "int") {
-                return &Types::INT_TYPE;
-            } else if (named.name == "double") {
-                return &Types::DOUBLE_TYPE;
-            } else if (named.name == "bool") {
-                return &Types::BOOL_TYPE;
-            } else if (named.name == "string") {
-                return &Types::STRING_TYPE;
-            } else if (named.name == "null") {
-                return &Types::NULL_TYPE;
-            } else if (named.name == "void") {
-                return &Types::VOID_TYPE;
-            } else if (named.name == "any") {
-                return &Types::ANY_TYPE;
-            } else {
-                throw KMYCompileError("SERIOUS ISSUE: This should have been handled in scoped type node.");
-                auto sym = resolveTypeSymbol(named.name);
-                if (!sym) {
-                    throw KMYCompileError("Unknown type name: " + named.name);
-                }
-                return sym->type;
+
+            std::cout << "con succ\n";
+            auto it = primitiveToType.find(named.name);
+            if (it != primitiveToType.end()) {
+                std::cout << "found!\n";
+                return it->second;
             }
+            throw KMYCompileError("Serious error. primitive not handled?");
         }
 
         case TypeNodeKind::ARRAY: {
+            std::cout << "ur array\n";
             const auto& arrayTypeNode = static_cast<ArrayTypeNode&>(*type);
             Type* elementType = typeSigToType(arrayTypeNode.elementType);
             return TypeInterner::getArrayType(elementType);
         }
 
         case TypeNodeKind::FUNCTION: {
+            std::cout << "ur function\n";
             const auto& funcTypeNode = static_cast<FunctionTypeNode&>(*type);
             std::vector<Type*> paramTypes;
             for (const auto& param : funcTypeNode.params) {
@@ -107,6 +106,7 @@ Type* Resolver::typeSigToType(const TypeNodePtr type) {
         }
 
         case TypeNodeKind::RECORD: {
+            std::cout << "ur record\n";
             const auto& recordTypeNode = static_cast<RecordTypeNode&>(*type);
             std::unordered_map<std::string, Type*> fieldTypes;
 
@@ -123,10 +123,11 @@ Type* Resolver::typeSigToType(const TypeNodePtr type) {
         }
         
         case TypeNodeKind::SCOPED: {
+            std::cout << "ur scoped\n";
             const auto& scopedTypeNode = static_cast<ScopedTypeNode&>(*type);
 
             const std::string& firstPart = scopedTypeNode.scopeParts[0];
-
+            std::cout << firstPart << " is the firstpart.\n";
             TypeSymbol* typeSym = resolveTypeSymbol(firstPart);
             if (!typeSym) {
                 throw KMYCompileError("Unknown type symbol \"" + firstPart + "\" in scoped type");
@@ -490,9 +491,15 @@ void Resolver::visit(Call& e) {
     bool isVariadic = false;
     int totalParamCnt = fnType->info.size();
 
+    size_t paramStartIdx = 0;
     for (auto& info : fnType->info) {
-        if (!info.hasDefault) {
+        if (!info.hasDefault && !info.implicitThis) {
+            // Ignore implciit this as required cnt
+            // Also need to ignore the first arg type check below.
             requiredCnt++;
+        }
+        if (info.implicitThis) {
+            paramStartIdx++;
         }
         if (info.isVariadic) {
             isVariadic = true;
@@ -501,7 +508,7 @@ void Resolver::visit(Call& e) {
 
     // Min check
     if (e.args.size() < static_cast<size_t>(requiredCnt)) {
-        throw KMYCompileError("Not enough arguments provided.");
+        throw KMYCompileError("Not enough arguments provided. required " + std::to_string(requiredCnt) + ", got " + std::to_string(e.args.size()));
     }
 
     // Max check
@@ -509,15 +516,16 @@ void Resolver::visit(Call& e) {
         throw KMYCompileError("Too many arguments provided.");
     }
 
+    
     for (size_t i = 0; i < e.args.size(); ++i) {
         e.args[i]->accept(*this);
 
         if (i < totalParamCnt) {
-            if (!isAssignable(e.args[i]->type, fnType->info[i].type)) {
+            if (!isAssignable(e.args[i]->type, fnType->info[paramStartIdx++].type)) {
                 throw KMYCompileError("Argument type mismatch.");
             }
         } else {
-            // Variadic args.
+            // Variadic arg
             if (!isAssignable(e.args[i]->type, fnType->info.back().type)) {
                 throw KMYCompileError("Argument type mismatch.");
             }
@@ -668,7 +676,9 @@ void Resolver::visit(FunctionExpr& e) {
                 // If strict mode:
                 // throw KMYCompileError("Parameter must have explicit type signature.");
             } else {
+                std::cout << "param has annotation! but the symbol doesnt have it\n";
                 param.symbol->type = typeSigToType(param.type);
+                std::cout << "ok? so the error is after here?\n";
             }
         }
 
@@ -681,7 +691,7 @@ void Resolver::visit(FunctionExpr& e) {
             }
         }
 
-        info.push_back({param.defaultExists, param.isVariadic, param.symbol->type});
+        info.push_back({param.defaultExists, param.isVariadic, param.implicitThis, param.symbol->type});
     }
 
     e.body->accept(*this);
@@ -689,14 +699,17 @@ void Resolver::visit(FunctionExpr& e) {
     currScope = old;
 
     // IMPORTANT NOTE: SEMANTIC INFO IS LOST WHEN ANNOTATED.
+    std::cout << "function return type annotation check\n";
     FunctionType* fnType = TypeInterner::getFunctionType(
         std::move(paramTypes),
         e.annotatedReturnType ? typeSigToType(e.annotatedReturnType) : &Types::ANY_TYPE
     );
+    std::cout << "ok? so the error is NOT after here???????\n";
 
     fnType->info = std::move(info);
     fnType->infoExists = true;
     e.type = fnType;
+    std::cout << "function np\n";
 }
 
 void Resolver::visit(ThisExpr& e) {
@@ -798,9 +811,10 @@ void handleAnnotatedAndInferred(VarSymbol* sym, Type* annotated, Type* inferred)
         if (!inferred) {
             sym->type = &Types::UNINITIALISED;
             // throw KMYCompileError("Cannot infer type of uninitialised variable.");
+        } else {
+            sym->type = inferred;
         }
 
-        sym->type = inferred;
     }
 }
 
@@ -909,9 +923,13 @@ void Resolver::visit(Aggregate& s) {
 
         member.methodExpr->accept(*this);
         
+        std::cout << "fnexpr visit done in method\n";
         member.symbol->type = member.methodExpr->type; 
+        std::cout << "crash 1\n";
         member.symbol->methodIdx = methodIdx++;
+        std::cout << "crash 2\n";
         aggType->methodMap[member.name] = member.symbol;
+        std::cout << "???????\n";
     }
 
     std::cout << "Resolver: method np\n";
