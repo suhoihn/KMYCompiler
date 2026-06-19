@@ -14,7 +14,7 @@
 #include "../Semantics/MethodLower.hpp" // Pass 4
 // #include "../Semantics/typechecker.hpp" // Planned pass 5
 #include "compiler.hpp" // Code gen in pass 6
-#include "../CodegenSSA/SSABuilder.hpp"
+#include "../CodegenIR/IRBuilder.hpp"
 #include <cstring>
 #include <sstream>
 
@@ -97,6 +97,8 @@ int main(int argc, char *argv[]) {
     // Switches
     bool debugOutput = false;
     bool strictTypes = false;
+    bool isBuildingASM = false;
+    bool run = true;
 
     for (int i = 2; i < argc; i++) {
         char* str = argv[i];
@@ -113,6 +115,19 @@ int main(int argc, char *argv[]) {
             }
             strictTypes = true;
             std::cout << "[DEBUG]: Strict typing enabled." << std::endl;
+        } if (strcmp(str, "-asm") == 0) {
+            if (isBuildingASM) {
+                printLog(LogLevel::WARN, "Duplicate switch (-asm) detected.");
+            }
+            isBuildingASM = true;
+            std::cout << "[DEBUG]: Direct lowering enabled." << std::endl;
+        }
+        if (strcmp(str, "--no-run") == 0) {
+            if (!run) {
+                printLog(LogLevel::WARN, "Duplicate switch (--no-run) detected.");
+            }
+            run = false;
+            std::cout << "[DEBUG]: Will not execute." << std::endl;
         }
     }
 
@@ -213,12 +228,12 @@ int main(int argc, char *argv[]) {
         
         std::cout << "[DEBUG]: Ready for code generation." << std::endl;
 
-        if (true) {
-            // 4-a. Code gen (SSA)
-            SSABuilder builder(program);
-            auto ssaCode = builder.compile();
-            for (const auto& instr : ssaCode) {
-                std::cout << instr << '\n';
+        if (isBuildingASM) {
+            // 4-a. Code gen (CFG IR)
+            IRBuilder builder(program);
+            auto funcs = builder.compile();
+            for (const auto& func: funcs) {
+                std::cout << *func << "\n";
             }
             return 0;
         }
@@ -244,13 +259,15 @@ int main(int argc, char *argv[]) {
             fnProtoId++;
         }
 
-        // 4. run
-        VM vm;
-        vm.load(fnProtos);
-        vm.run();
-
-        std::cout << "[DEBUG]: VM halted." << std::endl;
-        //std::exit(0);
+        if (run) {
+            // 4. run
+            VM vm;
+            vm.load(fnProtos);
+            vm.run();
+    
+            std::cout << "[DEBUG]: VM halted." << std::endl;
+            //std::exit(0);
+        }
         return 0;
 
     } catch (const KMYParseError& e) {

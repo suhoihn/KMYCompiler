@@ -1,0 +1,114 @@
+// =====================================================
+// SIMPLE FUNCTION
+// =====================================================
+
+fun add(a: int, b: int): int {
+    return a + b;
+}
+
+print(add(1, 2)); // 3
+
+
+// =====================================================
+// FIRST-CLASS FUNCTION VALUE
+// =====================================================
+
+let f: (int, int) -> int = add;
+print(f(3, 4)); // 7
+
+
+// =====================================================
+// SIMPLE CLOSURE
+// =====================================================
+
+fun makePrinter(x: int): () -> void {
+    return fun(): void {
+        print(x);
+    };
+}
+
+let p: () -> void = makePrinter(42);
+p();
+
+
+// =====================================================
+// CLOSURE RETURNING VALUE
+// =====================================================
+
+fun makeAdder(x: int): (int) -> int {
+    return fun(y: int): int {
+        return x + y;
+    };
+}
+
+let add10: (int) -> int = makeAdder(10);
+print(add10(5));
+
+
+// =====================================================
+// MULTIPLE CAPTURES
+// =====================================================
+
+fun makeSum(a: int, b: int): () -> int {
+    return fun(): int {
+        return a + b;
+    };
+}
+
+let sum: () -> int = makeSum(3, 7);
+print(sum());
+
+
+// =====================================================
+// UPVALUE CAPTURING UPVALUE
+// =====================================================
+
+// TODO: support () shorthand if parser dislikes it.
+// e.g. () -> (() -> void)
+
+fun outer(): () -> () -> void {
+    let x: int = 100;
+
+    return fun(): () -> void {
+        return fun(): void {
+            print(x);
+        };
+    };
+}
+
+let mid: () -> void = outer()();
+mid();
+
+
+// =====================================================
+// CAPTURE + PARAM
+// =====================================================
+
+fun makeMul(x: int): (int) -> int {
+    return fun(y: int): int {
+        return x * y;
+    };
+}
+
+let mul3: (int) -> int = makeMul(3);
+print(mul3(7));
+
+
+// =====================================================
+// CAPTURE SHADOWING
+// =====================================================
+
+let v: int = 999;
+
+fun shadowTest(): () -> void {
+    let v: int = 123;
+
+    return fun(): void {
+        print(v);
+    };
+}
+
+let s: () -> void = shadowTest();
+
+s();
+print(v);

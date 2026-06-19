@@ -1,35 +1,64 @@
 #pragma once
 
 #include <vector>
-#include "SSAInstr.hpp"
-#include "SSAValue.hpp"
+#include "BasicBlock.hpp"
+#include "IRInstr.hpp"
+#include "IRValue.hpp"
+#include "IRFunction.hpp"
 #include "../Core/visitor.hpp"
 #include "../Core/Ast.hpp"
 
-class SSABuilder : public Visitor {    
-public:
-    SSABuilder(FunctionExprPtr program);
+struct LoopContext {
+    BasicBlock* continueTarget;
+    BasicBlock* breakTarget;
+};
 
-    std::vector<SSAInstr> compile();
-
-private:
+// This is temporary! Only lived in this file.
+struct IRCodegenFnCtx {
     int nextId = 0;
-    std::vector<SSAInstr> code;
-
-    const FunctionExprPtr program;
-
-    SSAValue makeValue();
-
-    SSAValue lastValue;
-    inline SSAValue getLastValue();
-    inline void setLastValue(SSAValue value);
-
-    SSAValue emit(SSAOp op, int constant);
-    void emitVoid(SSAOp op, SSAValue val);
-    SSAValue emit(SSAOp op, SSAValue lhs, SSAValue rhs);
 
     // Locals
-    std::unordered_map<VarSymbol*, SSAValue> locals;
+    IRValue lastValue;
+    std::unordered_map<VarSymbol*, IRValue> locals;
+    
+    // Upvalues
+    std::unordered_map<VarSymbol*, IRValue> upvalues;
+    
+    // Loops
+    std::vector<LoopContext> loopStack;
+    
+    // Blocks
+    int nextBlockId = 0;
+    BasicBlock* currBlock = nullptr;
+};
+
+class IRBuilder : public Visitor {    
+public:
+    IRBuilder(FunctionExprPtr program);
+
+    std::vector<IRFunction*> compile();
+
+private:
+    // Readonly AST
+    const FunctionExprPtr program;
+
+
+    // Current function context
+    IRCodegenFnCtx* currCtx = nullptr;
+
+    // Blocks
+    BasicBlock* makeBlock();
+    void connectBlock(BasicBlock* from, BasicBlock* to);
+
+    // Code
+    IRValue makeValue(Type* type);
+
+    inline IRValue getLastValue();
+    inline void setLastValue(IRValue value);
+
+    // Functions
+    IRFunction* currFunc = nullptr;
+    std::vector<IRFunction*> functions;
 
     // Expressions
     void visit(Literal& e) override;

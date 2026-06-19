@@ -58,6 +58,7 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
             UpvalueInfo {
                 true,               // it is in parent's local
                 parentLocalSlot,    // return slot of parent's local.
+                sym                 // Storing the symbol for the captured value (for IR codegen)
             }
         );
 
@@ -82,6 +83,7 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
                 false,              // it is not in parent's local.
                 parentUpvalueSlot,  // It is a slot in parent's upvalue (so fnCtx->upvalue[slot] = parentUpvalueSlot) 
                                     // You need to recursively walk in parent's upvalues, not locals.
+                sym
             }
         );
         return slot;
@@ -223,6 +225,8 @@ void ClosureAnalyser::visit(ScopeAccessExpr& e) {}
 
 void ClosureAnalyser::visit(FunctionExpr& e) {
     std::cout << "Entering function: " << e.params.size() << " params\n";
+    std::cout << "it is given an id of " << functionId << "\n";
+    e.functionId = functionId++;
     
     // 1. Create new context
     FunctionContext* fnCtx = new FunctionContext;

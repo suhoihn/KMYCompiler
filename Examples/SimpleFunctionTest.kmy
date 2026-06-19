@@ -1,0 +1,91 @@
+// ===================== FUNCTIONS =====================
+
+fun add(a: int, b: int): int {
+    return a + b;
+}
+
+fun printTwice(x: int) {
+    print(x);
+    print(x);
+}
+
+// ===================== MAIN =====================
+
+fun main() {
+
+    // ---- PARAM / CALL TEST ----
+    let a = 10;
+    let b = 20;
+    let c = add(a, b);
+    print(c);
+
+    printTwice(c);
+
+    // ---- IF / ELSE ----
+    let x = 5;
+
+    if (x < 10) {
+        print(1);
+    } else {
+        print(0);
+    }
+
+    // ---- NESTED IF ----
+    if (x < 20) {
+        if (x < 3) {
+            print(100);
+        } else {
+            print(200);
+        }
+    }
+
+    // ---- WHILE LOOP ----
+    let i = 0;
+    while (i < 5) {
+        print(i);
+        i = i + 1;
+    }
+
+    // ---- BREAK / CONTINUE TEST ----
+    let j = 0;
+    while (j < 10) {
+        j = j + 1;
+
+        if (j < 3) {
+            continue;
+        }
+
+        if (j > 7) {
+            break;
+        }
+
+        print(j);
+    }
+
+    // ---- NESTED LOOPS ----
+    let m = 0;
+    while (m < 3) {
+        let n = 0;
+        while (n < 3) {
+            print(m + n);
+            n = n + 1;
+        }
+        m = m + 1;
+    }
+
+    // ---- SHADOWING TEST ----
+    let v = 100;
+
+    while (v > 0) {
+        let v = 1;   // shadow outer v
+        print(v);
+        break;
+    }
+
+    print(v);
+
+    // ---- VOID CALL STRESS ----
+    printTwice(add(1, 2));
+}
+
+main();

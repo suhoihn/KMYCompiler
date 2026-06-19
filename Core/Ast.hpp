@@ -194,7 +194,7 @@ struct Parameter {
     bool defaultExists = false;
 
     bool implicitThis = false; // For methods and arg check
-    
+
     ExprPtr defaultValue;
     VarSymbol* symbol = nullptr;
 
@@ -214,11 +214,14 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
     StmtPtr body;
     TypeNodePtr annotatedReturnType;
 
-    VarSymbol* symbol = nullptr;
+    //VarSymbol* symbol = nullptr;
     Scope* scope = nullptr;
     std::vector<UpvalueInfo> upvalues;
     int frameSize = 0;
     int fnProtoIdx = INVALID_SLOT;
+
+    // For IR codegen
+    int functionId = INVALID_SLOT;
 
     FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType);
 

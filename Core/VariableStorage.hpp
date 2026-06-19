@@ -12,6 +12,7 @@ struct Local {
 struct UpvalueInfo {
     bool isLocal;
     int index; // Slot index in parent locals OR parent upvalues
+    VarSymbol* symbol = nullptr;
 };
 
 struct ResolvedVar {

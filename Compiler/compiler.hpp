@@ -8,19 +8,6 @@
 #include "../BytecodeVM/vm.hpp"
 #include "../Semantics/Resolver.hpp"
 
-struct FunctionContextOld {
-    FunctionContextOld* parent;
-
-    Chunk chunk;
-    
-    std::unordered_map<std::string, int> localMap;
-    
-    
-    int nextSlot = 0;
-    
-    std::unordered_map<std::string, int> upvalueMap;
-};
-
 struct CodegenFnCtx {
     int scopeDepth = 0;
     std::vector<Local> locals;

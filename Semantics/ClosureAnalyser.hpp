@@ -46,6 +46,9 @@ private:
     bool insideMethod = false;
     Aggregate* currentAggregate = nullptr;
 
+    // ID given to each function expr.
+    int functionId = 0;
+
     // Expressions
     void visit(Literal& e) override;
     void visit(ArrayLiteral& e) override;
