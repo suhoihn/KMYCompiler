@@ -8,7 +8,7 @@ inline constexpr int INVALID_SLOT = -1;
 // Forward decl.
 struct Type;
 
-enum struct SymbolKind {
+enum class SymbolKind {
     VARIABLE, // "let x", "fun f" build them (+ aggregate member decls).
     TYPE // "record/class X", "typealias IntArr", "enum E" build them.
 };
@@ -28,6 +28,58 @@ struct Symbol {
 struct VarSymbol : Symbol {
     bool isMutable;
     Type* type = nullptr;
+
+    // On symbol creation, the symbol exists on scope's map.
+    // However, you cannot use before actually passing through the decl again in pass 2.
+    /*
+        {
+            print(x)     // Here, "x" has a symbol in its scope but is in an unavailable state.
+            let x = 10;  // "x" is now available.
+            print(x);    // Legal usage.
+        }
+        print(x); // "x" is not in its scope, so undefined.
+    */
+
+    // However, func DECLs have their symbols available on creation.
+    // This allows for mutual recursions.
+    /*
+        printX(); // This is fine.
+
+        fun printX() {
+            print("x");
+        }
+    */
+    
+    // Still, func EXPRs follow var decl orders.
+    /*
+        printX(); // Again, printX is in an unavailable state.
+    
+        let printX = fun() { print("x"); };
+    */
+   
+    // To use it in mutual recursion, you can forward declare.
+    /*
+        let odd: (int) -> bool;
+
+        let even = fun(n: int): bool {
+            if (n < 0) { return false; }
+            if (n == 0) { return true; }
+            return odd(n - 1);
+        };
+
+        odd = fun(n: int): bool {
+            if (n < 0) { return false; }
+            if (n == 1) { return true; }
+            return even(n - 1);
+        };
+
+        print(even(10));
+    */
+
+    // Also, availability is set AFTER the init expr visit.
+    // Otherwise, let x = x; is allowed, which causes weird errors.
+
+    bool available = false;
 
     // Fields below are ONLY for debug. Each pass (or phase) has its own storage of the same info.
     

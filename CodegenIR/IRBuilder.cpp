@@ -169,13 +169,12 @@ void IRBuilder::visit(Assignment& e) {
             currCtx->currBlock->code.push_back(instr);
 
             setLastValue(dst);
-            return;
         } else {
             e.right->accept(*this);
-            currCtx->locals[var->symbol] = getLastValue();
             // last value isnt updated.
             // In a = 42, the last value is RHS.
         }
+        currCtx->locals[var->symbol] = getLastValue();
         return;
     }
 

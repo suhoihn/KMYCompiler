@@ -224,7 +224,8 @@ StmtPtr Parser::parse_let() {
         type,
         varToken.lexeme,
         move(initialiser),
-        isMutable
+        isMutable,
+        false // Not a direct function decl
     );
 }
 
@@ -241,7 +242,8 @@ StmtPtr Parser::parse_functionDecl() {
         nullptr, // Function type left blank in parser phase.
         name.lexeme,
         move(fnExpr),
-        false // Function declarations are immutable for default.
+        false, // Function declarations are immutable for default.
+        true // Special flag that this is from function decl.
     );
 }
 

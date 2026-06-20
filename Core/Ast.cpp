@@ -36,8 +36,8 @@ While::While(ExprPtr condition, StmtPtr body)
 // Nothing for Break
 // Nothing for Continue
 Block::Block(std::vector<StmtPtr> statements) : statements(move(statements)) {}
-Let::Let(TypeNodePtr annotatedType, const std::string& name, ExprPtr expr, bool isMutable) 
-    : annotatedType(std::move(annotatedType)), name(name), expr(move(expr)), isMutable(isMutable) {}
+Let::Let(TypeNodePtr annotatedType, const std::string& name, ExprPtr expr, bool isMutable, bool isFunctionDecl) 
+    : annotatedType(std::move(annotatedType)), name(name), expr(move(expr)), isMutable(isMutable), isFunctionDecl(isFunctionDecl) {}
 Return::Return(ExprPtr expr) : expr(move(expr)) {}
 FieldMember::FieldMember(TypeNodePtr annotatedType, std::string name, ExprPtr initialiser, bool isMutable) 
     : annotatedType(move(annotatedType)), name(move(name)), initialiser(move(initialiser)), isMutable(isMutable) {}

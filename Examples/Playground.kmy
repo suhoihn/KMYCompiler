@@ -1,0 +1,18 @@
+let odd: (int) -> bool;
+
+let even = fun(n: int): bool {
+    //if (n < 0) { return false; }
+    if (n == 0) { return true; }
+    return odd(n - 1);
+};
+
+odd = fun(n: int): bool {
+    //if (n < 0) { return false; }
+    if (n == 1) { return true; }
+    return even(n - 1);
+};
+
+print(even(100));
+
+let x = 3;
+print(x);

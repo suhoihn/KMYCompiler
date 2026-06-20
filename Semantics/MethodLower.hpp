@@ -2,12 +2,15 @@
 
 #include <vector>
 #include "../Core/Ast.hpp"
+#include "../Utils/DefaultVisitor.hpp"
 
 // Pass 3: Method lowerer
-// 
+// Lowers all function calls in form of 
+//  obj.f(...) -> f(obj, ...)
+// NOTE: The method's parameters already have implicit_this inserted in pass 1. 
 
 
-class MethodLower : public Visitor {
+class MethodLower : public DefaultVisitor {
 public:
     MethodLower(FunctionExprPtr program);
     void lower();
@@ -15,32 +18,6 @@ public:
 private:
     const FunctionExprPtr program;
 
-    void visit(Literal& e) override;
-    void visit(ArrayLiteral& e) override;
-    void visit(RecordLiteral& e) override;
-    void visit(Variable& e) override;
-    void visit(BinaryExpr& e) override;
-    void visit(UnaryExpr& e) override;
-    void visit(Assignment& e) override;
-    void visit(Index& e) override;
+    // Expressions
     void visit(Call& e) override;
-    void visit(Get& e) override;
-    void visit(ScopeAccessExpr& e) override;
-    void visit(FunctionExpr& e) override;
-    void visit(ThisExpr& e) override;
-    void visit(NewExpr& e) override;
-
-    // Statements
-    void visit(Print& s) override;
-    void visit(If& s) override;
-    void visit(While& s) override;
-    void visit(Block& s) override;
-    void visit(Break& s) override;
-    void visit(Continue& s) override;
-    void visit(Let& s) override;
-    void visit(Return& s) override;
-    void visit(Aggregate& s) override;
-    void visit(TypeAlias& s) override;
-    void visit(Enum& s) override;
-    void visit(ExprStmt& s) override;
 };

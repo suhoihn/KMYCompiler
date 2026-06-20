@@ -310,10 +310,17 @@ struct Let : StmtHelper<Let> {
     std::string name;
     ExprPtr expr;
     bool isMutable;
-
+    bool isFunctionDecl;
+    
     VarSymbol* symbol = nullptr;
 
-    Let(TypeNodePtr annotatedType, const std::string& name, ExprPtr expr, bool isMutable);
+    Let(
+        TypeNodePtr annotatedType,
+        const std::string& name, 
+        ExprPtr expr, 
+        bool isMutable,
+        bool isFunctionDecl
+    );
     // StmtPtr clone() const override;
 };
 

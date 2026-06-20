@@ -23,6 +23,10 @@ private:
     Scope* globalScope;
     Scope* currScope;
 
+
+    // Local var declaration (since it is order-sensitive)
+    VarSymbol* declareVar(const std::string& name, bool isMutable);
+
     // Type related
     Type* expectedType = nullptr;
     //std::unordered_map<TypeKey, Type*> typeCache;

@@ -78,12 +78,8 @@ TypeSymbol* SymbolScopeBuilder::declareType(const std::string& name, bool isMuta
     return sym;
 }
 
-void SymbolScopeBuilder::visit(Literal&) {}
-void SymbolScopeBuilder::visit(Variable&) {}
-void SymbolScopeBuilder::visit(ArrayLiteral& e) {
-    for (auto& elem : e.elements)
-        elem->accept(*this);
-}
+
+// Check duplicate fields.
 void SymbolScopeBuilder::visit(RecordLiteral& e) {
     std::unordered_set<std::string> seen;
 
@@ -97,38 +93,8 @@ void SymbolScopeBuilder::visit(RecordLiteral& e) {
         value->accept(*this);
     }
 }
-void SymbolScopeBuilder::visit(BinaryExpr& e) {
-    e.left->accept(*this);
-    e.right->accept(*this);
-}
-void SymbolScopeBuilder::visit(UnaryExpr& e) {
-    e.operand->accept(*this);
-}
-void SymbolScopeBuilder::visit(Assignment& e) {
-    e.left->accept(*this);
-    e.right->accept(*this);
-}
-void SymbolScopeBuilder::visit(Index& e) {
-    e.obj->accept(*this);
-    e.index->accept(*this);
-}
-void SymbolScopeBuilder::visit(Call& e) {
-    e.func->accept(*this);
 
-    for (auto& arg : e.args)
-        arg->accept(*this);
-}
-void SymbolScopeBuilder::visit(Get& e) {
-    e.obj->accept(*this);
-}
-void SymbolScopeBuilder::visit(ScopeAccessExpr& e) {}
-void SymbolScopeBuilder::visit(ThisExpr&) {}
-void SymbolScopeBuilder::visit(NewExpr& e) {
-    for (auto& arg : e.args)
-        arg->accept(*this);
-}
-
-// Function expr (or decl) has a var symbol AND a scope.
+// Function expr (or decl) has a scope, and each parameter has a var symbol.
 void SymbolScopeBuilder::visit(FunctionExpr& e) {
     bool isRoot = (&e == program.get());
 
@@ -175,36 +141,21 @@ void SymbolScopeBuilder::visit(Block& s) {
         exitScope();
 }
 
-void SymbolScopeBuilder::visit(Print& s) {
-    s.expr->accept(*this);
-}
-void SymbolScopeBuilder::visit(If& s) {
-    s.condition->accept(*this);
-
-    s.thenbranch->accept(*this);
-
-    if (s.elsebranch)
-        s.elsebranch->accept(*this);
-}
-void SymbolScopeBuilder::visit(While& s) {
-    s.condition->accept(*this);
-    s.body->accept(*this);
-}
-void SymbolScopeBuilder::visit(Break&) {}
-void SymbolScopeBuilder::visit(Continue&) {}
-void SymbolScopeBuilder::visit(Return& s) {
-    if (s.expr)
-        s.expr->accept(*this);
-}
 
 // Let stmt has a var symbol.
 void SymbolScopeBuilder::visit(Let& s) {
+    // Only declare early if this is a FUNCTION DECL!
     VarSymbol* sym = declareVar(s.name, s.isMutable);
-
+    
     if (!sym) {
         throw KMYCompileError(
             "Redeclaration of variable \"" + s.name + "\""
         );
+    }
+    
+    // Function decls always available in the current scope.
+    if (s.isFunctionDecl) {
+        sym->available = true;
     }
 
     s.symbol = sym;
@@ -344,9 +295,4 @@ void SymbolScopeBuilder::visit(Enum& s) {
             );
         }
     }
-}
-
-
-void SymbolScopeBuilder::visit(ExprStmt& s) {
-    s.expr->accept(*this);
 }

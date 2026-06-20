@@ -4,6 +4,7 @@
 #include "../Core/errorhandler.hpp"
 #include "../Utils/SymbolPrinter.hpp"
 #include "../Utils/utils.hpp"
+#include <assert.h>
 
 Resolver::Resolver(
     FunctionExprPtr program,
@@ -20,6 +21,22 @@ void Resolver::resolve() {
     printLog(LogLevel::INFO, "Resolver pass ended.\n");
 }
 
+VarSymbol* Resolver::declareVar(const std::string& name, bool isMutable) {
+    // 1. Check current scope only (NOT parents)
+    if (currScope->values.find(name) != currScope->values.end()) {
+        // Redeclaration in same scope.
+        return nullptr; 
+    }
+
+    // 2. Create symbol
+    VarSymbol* sym = new VarSymbol(name, isMutable);
+
+    // 3. Store in scope
+    currScope->values[name] = sym;
+
+    return sym;
+}
+
 VarSymbol* Resolver::resolveVarSymbol(const std::string& name) {
     Scope* scope = currScope;
     printLog(LogLevel::DEBUG, "Resolving var symbol: " + name + "\n");
@@ -28,7 +45,11 @@ VarSymbol* Resolver::resolveVarSymbol(const std::string& name) {
         auto it = scope->values.find(name);
 
         if (it != scope->values.end()) {
-            return it->second;
+            if (it->second->available) {
+                return it->second;
+            }
+            printLog(LogLevel::DEBUG, "Var symbol used before let: " + name + "\n");
+            return nullptr;
         }
 
         scope = scope->parent;
@@ -430,6 +451,9 @@ void Resolver::visit(Assignment& e) {
 
     e.right->accept(*this);
 
+    // Assignment doesn't change the type... right?
+    e.type = e.left->type;
+
     expectedType = oldET;
 
     // std::cout << "In assign checking assignability of " << (int)(e.left->type->kind) << " and  " << (int)(e.right->type->kind) << "\n"; 
@@ -690,6 +714,9 @@ void Resolver::visit(FunctionExpr& e) {
                 throw KMYCompileError("Default value type mismatch.");
             }
         }
+        
+        // Param is now usable (prevents f(a = a) or f(a = b, b = 3) style errors.)
+        param.symbol->available = true;
 
         info.push_back({param.defaultExists, param.isVariadic, param.implicitThis, param.symbol->type});
     }
@@ -821,6 +848,9 @@ void handleAnnotatedAndInferred(VarSymbol* sym, Type* annotated, Type* inferred)
 void Resolver::visit(Let& s) {
     printLog(LogLevel::DEBUG, "Visiting let node for " + s.name + "\n");
 
+    // Check pass 1 did correct job.
+    assert(s.symbol);
+    
     Type* annotated = nullptr;
 
     if (s.annotatedType) {
@@ -842,11 +872,10 @@ void Resolver::visit(Let& s) {
         inferred = s.expr->type;
     }
 
-    if (annotated) { expectedType = oldET; }
+    // After visiting the expr, the symbol is now available to use.
+    s.symbol->available = true;
 
-    if (!s.symbol) {
-        throw KMYCompileError("How is this not allocated? missed a let?");
-    }
+    if (annotated) { expectedType = oldET; }
 
     handleAnnotatedAndInferred(s.symbol, annotated, inferred);
 }

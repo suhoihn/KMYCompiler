@@ -3,9 +3,19 @@
 #include "../Core/Ast.hpp"
 #include "../Core/Scope.hpp"
 #include "../Core/Symbol.hpp"
+#include "../Utils/DefaultVisitor.hpp"
 
 // Pass 1: Scope & Symbol Construction
-// Builds scope hierarchy and registers all declarations (variables, functions, classes).
+// Builds scope hierarchy and registers all "order-independent" declarations
+// - function DECL, aggregate itself's definition, type alias are order-independent
+//      - fun main() {}
+//      - class X {};
+//      - typealias Y = X;
+//      - Aggregate's member decls except fields
+// - variables, including function EXPR are order-dependent (they are handled in resolver.)
+//      - let x = y;
+//      - let f = fun() {};
+//      - Aggregate's field member decls
 // Creates symbols and stores them in the correct scope.
 // Symbols are semantic identities of a variable, function (which are variables here)
 
@@ -44,7 +54,7 @@
 //
 // AST identifier nodes resolve to symbols during semantic analysis.
 
-class SymbolScopeBuilder : public Visitor {
+class SymbolScopeBuilder : public DefaultVisitor {
 public:
     SymbolScopeBuilder(FunctionExprPtr program);
     Scope* analyse();
@@ -61,32 +71,14 @@ private:
     VarSymbol* declareVar(const std::string& name, bool isMutable);
     TypeSymbol* declareType(const std::string& name, bool isMutable);
 
-    void visit(Literal& e) override;
-    void visit(ArrayLiteral& e) override;
+    // Expressions
     void visit(RecordLiteral& e) override;
-    void visit(Variable& e) override;
-    void visit(BinaryExpr& e) override;
-    void visit(UnaryExpr& e) override;
-    void visit(Assignment& e) override;
-    void visit(Index& e) override;
-    void visit(Call& e) override;
-    void visit(Get& e) override;
-    void visit(ScopeAccessExpr& e) override;
     void visit(FunctionExpr& e) override;
-    void visit(ThisExpr& e) override;
-    void visit(NewExpr& e) override;
 
     // Statements
-    void visit(Print& s) override;
-    void visit(If& s) override;
-    void visit(While& s) override;
     void visit(Block& s) override;
-    void visit(Break& s) override;
-    void visit(Continue& s) override;
     void visit(Let& s) override;
-    void visit(Return& s) override;
     void visit(Aggregate& s) override;
     void visit(TypeAlias& s) override;
     void visit(Enum& s) override;
-    void visit(ExprStmt& s) override;
 };

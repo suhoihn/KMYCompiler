@@ -17,6 +17,9 @@ void ClosureAnalyser::analyse() {
 }
 
 static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
+    // Returns the slot of upvalue where name belongs in fnCtx's context.
+    // TODO: Example will be very helpful.
+
     if (!sym) {
         throw KMYCompileError("Symbol not resolved? this is stupid.");
     }
@@ -26,7 +29,7 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
     auto parentCtx = fnCtx->parent;
     if (!parentCtx) {
         // Parent doesn't exist (woah!)
-        return -1;
+        return INVALID_SLOT;
     }
 
     std::cout << "In resolveupvalue part 1\n";
@@ -64,7 +67,7 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
 
         // Also we tell the local in locals that it is captured.
         // So that VM knows to keep it on heap when destroyed.
-        parentCtx->locals[it->second].captured = true;
+        parentCtx->locals[parentLocalSlot].captured = true;
         return slot;
     }
 
@@ -73,7 +76,7 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
     // Let's go up and add name in ancestor's upvalues vector.
     // Slot in parent's upvalue vector.
     int parentUpvalueSlot = resolveUpvalue(parentCtx, sym);
-    if (parentUpvalueSlot != -1) {
+    if (parentUpvalueSlot != INVALID_SLOT) {
         // parentCtx->upvalues[parentSlot] stores where name is stored.
 
         int slot = fnCtx->upvalues.size();
@@ -90,7 +93,7 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
     }
 
     // Cannot find name anywhere. Allocation failed.
-    return -1;
+    return INVALID_SLOT;
 }
 
 
@@ -115,7 +118,7 @@ ResolvedVar ClosureAnalyser::resolveVariable(VarSymbol* sym) {
     std::cout << "In resolveVariable(), next search upvalue\n";
     // 2. Upvalue
     int up = resolveUpvalue(currCtx, sym);
-    if (up != -1) {
+    if (up != INVALID_SLOT) {
         std::cout << "Captured upvalue! " << sym->name << "\n";
         std::cout << "Upvalue slot: " << up << "\n";
 
@@ -152,16 +155,6 @@ int ClosureAnalyser::allocateLocal(VarSymbol* sym) {
 }
 
 
-void ClosureAnalyser::visit(Literal&) {}
-void ClosureAnalyser::visit(ArrayLiteral& e) {
-    for (auto& elem : e.elements)
-        elem->accept(*this);
-}
-void ClosureAnalyser::visit(RecordLiteral& e) {
-    for (auto& [_, value] : e.fields)
-        value->accept(*this);
-}
-
 void ClosureAnalyser::visit(Variable& e) {
     std::cout << "haha i got ya\n";
     std::cout << "var node=" << &e << '\n';
@@ -188,40 +181,6 @@ void ClosureAnalyser::visit(Variable& e) {
         e.resolution = resolveVariable(e.symbol);
     }
 }
-
-void ClosureAnalyser::visit(BinaryExpr& e) {
-    e.left->accept(*this);
-    e.right->accept(*this);
-}
-void ClosureAnalyser::visit(UnaryExpr& e) {
-    e.operand->accept(*this);
-}
-void ClosureAnalyser::visit(Assignment& e) {
-    std::cout << "crash now. L: " << e.left << " R: " << e.right << "\n";
-    e.left->accept(*this);
-    e.right->accept(*this);
-}
-void ClosureAnalyser::visit(Index& e) {
-    e.obj->accept(*this);
-    e.index->accept(*this);
-}
-void ClosureAnalyser::visit(Call& e) {
-    std::cout << "Is call the culprit?\n";
-    e.func->accept(*this);
-
-    std::cout << "not the func\n";
-    for (auto& arg : e.args) {
-        std::cout << "then which arg?\n";
-        arg->accept(*this);
-    }
-    
-    std::cout << "no\n";
-}
-void ClosureAnalyser::visit(Get& e) {
-    e.obj->accept(*this);
-}
-
-void ClosureAnalyser::visit(ScopeAccessExpr& e) {}
 
 void ClosureAnalyser::visit(FunctionExpr& e) {
     std::cout << "Entering function: " << e.params.size() << " params\n";
@@ -266,30 +225,8 @@ void ClosureAnalyser::visit(ThisExpr& e) {
     }
     printLog(LogLevel::DEBUG, "ThisExpr visit done.");
 }
-void ClosureAnalyser::visit(NewExpr& e) {
-    for (auto& arg : e.args)
-        arg->accept(*this);
-}
-
 
 // Statements
-void ClosureAnalyser::visit(Print& s) {
-    std::cout << "print? ru culprit\n";
-    s.expr->accept(*this);
-    std::cout << "no haha\n";
-}
-void ClosureAnalyser::visit(If& s) {
-    s.condition->accept(*this);
-
-    s.thenbranch->accept(*this);
-
-    if (s.elsebranch)
-        s.elsebranch->accept(*this);
-}
-void ClosureAnalyser::visit(While& s) {
-    s.condition->accept(*this);
-    s.body->accept(*this);
-}
 void ClosureAnalyser::visit(Block& s) {
     currCtx->scopeDepth++;   // ENTER scope
 
@@ -311,20 +248,12 @@ void ClosureAnalyser::visit(Block& s) {
     }
 }
 
-void ClosureAnalyser::visit(Break&) {}
-void ClosureAnalyser::visit(Continue&) {}
-
 void ClosureAnalyser::visit(Let& s) {
     if (s.expr)
         s.expr->accept(*this);
     
     int slot = allocateLocal(s.symbol);
     s.symbol->slot = slot;
-}
-
-void ClosureAnalyser::visit(Return& s) {
-    if (s.expr)
-        s.expr->accept(*this);
 }
 
 void ClosureAnalyser::visit(Aggregate& s) {
@@ -352,8 +281,6 @@ void ClosureAnalyser::visit(Aggregate& s) {
     std::cout << "member check done" << std::endl;
 }
 
-void ClosureAnalyser::visit(TypeAlias& s) {}
-
 void ClosureAnalyser::visit(Enum& s) {
     EnumType* enumType = static_cast<EnumType*>(s.typeSymbol->type);
 
@@ -361,8 +288,4 @@ void ClosureAnalyser::visit(Enum& s) {
     for (auto& str : s.variants) {
         enumType->variantMap[str] = num;
     }
-}
-
-void ClosureAnalyser::visit(ExprStmt& s) {
-    s.expr->accept(*this);
 }
