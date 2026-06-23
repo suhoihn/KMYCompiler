@@ -13,7 +13,8 @@ using std::cout, std::endl;
 
 constexpr const char* RESET  = "\033[0m";
 
-void printLog(LogLevel level, const std::string& msg) {
+void printLog(LogLevel level, const std::string& msg, bool withPrefix) {
+    // No new line added.
     const char* color;
     const char* prefix;
 

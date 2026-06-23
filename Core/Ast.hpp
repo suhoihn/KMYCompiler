@@ -11,6 +11,7 @@
 #include "VariableStorage.hpp"
 #include "operators.hpp"
 #include "visitor.hpp"
+#include "FunctionContext.hpp"
 
 enum class ExprKind {
     Literal,
@@ -214,14 +215,16 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
     StmtPtr body;
     TypeNodePtr annotatedReturnType;
 
-    //VarSymbol* symbol = nullptr;
     Scope* scope = nullptr;
-    std::vector<UpvalueInfo> upvalues;
-    int frameSize = 0;
+
+    // Closure analysis result
+    FunctionContext* functionContext = nullptr;
+
+    // For stack VM codegen
     int fnProtoIdx = INVALID_SLOT;
 
     // For IR codegen
-    int functionId = INVALID_SLOT;
+    int functionId = INVALID_SLOT; 
 
     FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType);
 

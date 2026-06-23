@@ -1,18 +1,23 @@
-let odd: (int) -> bool;
+typealias C = B;
+typealias B = A;
+typealias A = C;
 
-let even = fun(n: int): bool {
-    //if (n < 0) { return false; }
-    if (n == 0) { return true; }
-    return odd(n - 1);
-};
+let x = 42;
+outer();
 
-odd = fun(n: int): bool {
-    //if (n < 0) { return false; }
-    if (n == 1) { return true; }
-    return even(n - 1);
-};
+fun outer() {
+    print("1. I am outer.");
+    let y = middle();
+    fun middle() {
+        fun inner() {
+            x += x;
+            print("3. I am inner.");
+        }
+        return inner;
+    }
+    print("2. I am middle.");
+    y();
+}
 
-print(even(100));
-
-let x = 3;
 print(x);
+print("Am I 84?");

@@ -7,6 +7,7 @@ inline constexpr int INVALID_SLOT = -1;
 
 // Forward decl.
 struct Type;
+struct Scope;
 
 enum class SymbolKind {
     VARIABLE, // "let x", "fun f" build them (+ aggregate member decls).
@@ -81,6 +82,9 @@ struct VarSymbol : Symbol {
 
     bool available = false;
 
+    // To later answer: "In which scope is this defined in?" or "Is this defined in a scope or in its children?"
+    Scope* definingScope = nullptr;
+
     // Fields below are ONLY for debug. Each pass (or phase) has its own storage of the same info.
     
     // Runtime storage info for locals and upvalues (if used)
@@ -106,6 +110,11 @@ struct TypeSymbol : Symbol {
     bool isMutable;
     // TODO: Move this field to base symbol?
     Type* type = nullptr;
+
+    // Used this only for type expression defined ones.
+    // Namely, typealias.
+    TypeNodePtr typeNode = nullptr;
+    bool resolving = false; // For cycle detection
 
     TypeSymbol(const std::string& name, bool isMutable)
         : Symbol(name, SymbolKind::TYPE), isMutable(isMutable) {}

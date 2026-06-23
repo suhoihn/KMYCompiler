@@ -15,6 +15,7 @@ struct LoopContext {
 
 // This is temporary! Only lived in this file.
 struct IRCodegenFnCtx {
+    IRCodegenFnCtx* parent = nullptr;
     int nextId = 0;
 
     // Locals
@@ -30,6 +31,13 @@ struct IRCodegenFnCtx {
     // Blocks
     int nextBlockId = 0;
     BasicBlock* currBlock = nullptr;
+
+    // Env
+    std::optional<IRValue> env; // The env this function is making for children (if any)
+    std::optional<IRValue> incomingEnv; // The env this function is taking from parent (if any)
+
+
+    FunctionContext* fnCtx;
 };
 
 class IRBuilder : public Visitor {    

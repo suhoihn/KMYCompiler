@@ -312,12 +312,13 @@ void Compiler::visit(FunctionExpr& e) {
     std::cout << "Compiling function..." << std::endl;
     FunctionProto fnProto;
     fnProto.totalParams = e.params.size();
-    fnProto.frameSize = e.frameSize;
+    fnProto.frameSize = e.functionContext->locals.size();
 
     auto temp = new CodegenFnCtx;
     temp->parent = currCtx;
     currCtx = temp;
 
+    // Allocate params
     for (auto& param : e.params) {
         allocateLocal(param.symbol);
     }
@@ -332,6 +333,40 @@ void Compiler::visit(FunctionExpr& e) {
 
     bool isCompilingMethod = compilingMethod;
     compilingMethod = false;
+
+    for (auto& [funcDeclSym, funcDeclExpr] : e.functionContext->funcDecls) {
+        funcDeclExpr->accept(*this);
+        // 7. Emit closure (NOT MAKE_FUNCTION)
+        
+            if (!isCompilingMethod) {
+                emit(Opcode::MAKE_CLOSURE, funcDeclExpr->fnProtoIdx);
+            }
+            // Not a top level function.
+            // 8. Capture variables
+            /*
+            std::cout << "Capture" << std::endl;
+            for (auto up : e.upvalues) {
+                std::cout << up.index << std::endl;
+                // CAPTURE opcode creates a runtime heap object UpValueObj
+                if (up.isLocal) {
+                    // From immediate parent,
+                    // take x directly from parent stack frame
+                    //emit(Opcode::CAPTURE_LOCAL, up.index);
+                } else {
+                    // take variable from my parent closure’s upvalue list
+                    //emit(Opcode::CAPTURE_UPVALUE, up.index);
+                }
+            }
+            std::cout << "Capture done" << std::endl;
+            std::cout << "Delete temp" << std::endl;
+            */
+        
+        allocateLocal(funcDeclSym);
+
+        emit(Opcode::STORE_LOCAL, funcDeclSym->slot);
+        emit(Opcode::POP);
+    }
+
     // 3. Body
     e.body->accept(*this);
     compilingMethod = isCompilingMethod;
@@ -353,8 +388,8 @@ void Compiler::visit(FunctionExpr& e) {
     }
     // 5. Extract compiled context
     fnProto.chunk = std::move(currCtx->chunk);
-    fnProto.upvalues = e.upvalues;
-    fnProto.upValueCnt = e.upvalues.size();
+    fnProto.upvalues = e.functionContext->upvalues;
+    fnProto.upValueCnt = e.functionContext->upvalues.size();
 
     currCtx = currCtx->parent;
     std::cout << "currctx: " << currCtx << std::endl;
@@ -363,32 +398,6 @@ void Compiler::visit(FunctionExpr& e) {
     int fnIndex = allocateFuncProto(fnProto);
     e.fnProtoIdx = fnIndex;
     
-    // 7. Emit closure (NOT MAKE_FUNCTION)
-    
-    if (currCtx) {
-        if (!isCompilingMethod) {
-            emit(Opcode::MAKE_CLOSURE, fnIndex);
-        }
-        // Not a top level function.
-        // 8. Capture variables
-        /*
-        std::cout << "Capture" << std::endl;
-        for (auto up : e.upvalues) {
-            std::cout << up.index << std::endl;
-            // CAPTURE opcode creates a runtime heap object UpValueObj
-            if (up.isLocal) {
-                // From immediate parent,
-                // take x directly from parent stack frame
-                //emit(Opcode::CAPTURE_LOCAL, up.index);
-            } else {
-                // take variable from my parent closure’s upvalue list
-                //emit(Opcode::CAPTURE_UPVALUE, up.index);
-            }
-        }
-        std::cout << "Capture done" << std::endl;
-        std::cout << "Delete temp" << std::endl;
-        */
-    }
     delete temp;
     std::cout << "function compiled" << std::endl;
 }
@@ -600,13 +609,17 @@ void Compiler::allocateLocal(VarSymbol* sym) {
 }
 
 void Compiler::visit(Let& s) { 
+    if (s.isFunctionDecl) { return; }
+    
     if (s.expr) {
         s.expr->accept(*this);
     } else {
         // emit(Opcode::PUSH_CONST, addConstant(nullptr));
     }
     
+    // Function decl hoisted in the function expr.
     allocateLocal(s.symbol);
+
     if (s.expr) {
         // Only push or pop values when there is an initialiser.
         emit(Opcode::STORE_LOCAL, s.symbol->slot);

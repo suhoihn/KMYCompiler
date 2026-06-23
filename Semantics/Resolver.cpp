@@ -5,6 +5,7 @@
 #include "../Utils/SymbolPrinter.hpp"
 #include "../Utils/utils.hpp"
 #include <assert.h>
+#include "TypeHelpers.hpp"
 
 Resolver::Resolver(
     FunctionExprPtr program,
@@ -21,29 +22,13 @@ void Resolver::resolve() {
     printLog(LogLevel::INFO, "Resolver pass ended.\n");
 }
 
-VarSymbol* Resolver::declareVar(const std::string& name, bool isMutable) {
-    // 1. Check current scope only (NOT parents)
-    if (currScope->values.find(name) != currScope->values.end()) {
-        // Redeclaration in same scope.
-        return nullptr; 
-    }
-
-    // 2. Create symbol
-    VarSymbol* sym = new VarSymbol(name, isMutable);
-
-    // 3. Store in scope
-    currScope->values[name] = sym;
-
-    return sym;
-}
-
-VarSymbol* Resolver::resolveVarSymbol(const std::string& name) {
+VarSymbol* Resolver::lookupVarSymbol(const std::string& name) {
     Scope* scope = currScope;
     printLog(LogLevel::DEBUG, "Resolving var symbol: " + name + "\n");
 
     while (scope) {
         auto it = scope->values.find(name);
-
+        
         if (it != scope->values.end()) {
             if (it->second->available) {
                 return it->second;
@@ -56,136 +41,6 @@ VarSymbol* Resolver::resolveVarSymbol(const std::string& name) {
     }
     printLog(LogLevel::DEBUG, "Var symbol not found: " + name + "\n");
     return nullptr; // Undefined variable.
-}
-
-TypeSymbol* Resolver::resolveTypeSymbol(const std::string& name) {
-    Scope* scope = currScope;
-    printLog(LogLevel::DEBUG, "Resolving type symbol: " + name + "\n");
-
-    while (scope) {
-        auto it = scope->types.find(name);
-
-        if (it != scope->types.end()) {
-            return it->second;
-        }
-
-        scope = scope->parent;
-    }
-
-    printLog(LogLevel::DEBUG, "Type symbol not found: " + name + "\n");
-    return nullptr; // Undefined type name.
-}
-
-static std::unordered_map<std::string, Type*> primitiveToType = {
-    {"int", &Types::INT_TYPE},
-    {"double", &Types::DOUBLE_TYPE},
-    {"bool", &Types::BOOL_TYPE},
-    {"string", &Types::STRING_TYPE},
-    {"null", &Types::NULL_TYPE},
-    {"void", &Types::VOID_TYPE},
-    {"any", &Types::ANY_TYPE},
-};
-
-Type* Resolver::typeSigToType(const TypeNodePtr type) {
-    printLog(LogLevel::DEBUG, "Converting type annotation to Type*: (TODO...)\n" );
-    std::cout << type << "\n";
-    
-    if (!type) {
-        throw KMYCompileError("Missing type annotation.");
-    }
-    switch (type->kind) {
-        case TypeNodeKind::NAMED: {
-            std::cout << "ur named\n";
-            const auto& named = static_cast<NamedTypeNode&>(*type);
-
-            std::cout << "con succ\n";
-            auto it = primitiveToType.find(named.name);
-            if (it != primitiveToType.end()) {
-                std::cout << "found!\n";
-                return it->second;
-            }
-            throw KMYCompileError("Serious error. primitive not handled?");
-        }
-
-        case TypeNodeKind::ARRAY: {
-            std::cout << "ur array\n";
-            const auto& arrayTypeNode = static_cast<ArrayTypeNode&>(*type);
-            Type* elementType = typeSigToType(arrayTypeNode.elementType);
-            return TypeInterner::getArrayType(elementType);
-        }
-
-        case TypeNodeKind::FUNCTION: {
-            std::cout << "ur function\n";
-            const auto& funcTypeNode = static_cast<FunctionTypeNode&>(*type);
-            std::vector<Type*> paramTypes;
-            for (const auto& param : funcTypeNode.params) {
-                paramTypes.push_back(typeSigToType(param));
-            }
-            Type* returnType = typeSigToType(funcTypeNode.returnType);
-            // IMPORTANT NOTE: No param info is preserved.
-            return TypeInterner::getFunctionType(std::move(paramTypes), returnType);
-        }
-
-        case TypeNodeKind::RECORD: {
-            std::cout << "ur record\n";
-            const auto& recordTypeNode = static_cast<RecordTypeNode&>(*type);
-            std::unordered_map<std::string, Type*> fieldTypes;
-
-            for(auto& pair : recordTypeNode.paramTypePairs) {
-                if (fieldTypes.count(pair.first)) {
-                    throw KMYCompileError(
-                        "Redeclaration of field name \"" + pair.first + "\" in type signature."
-                    );
-                }
-                fieldTypes[pair.first] = typeSigToType(pair.second);
-            }
-
-            return TypeInterner::getStructualType(std::move(fieldTypes));
-        }
-        
-        case TypeNodeKind::SCOPED: {
-            std::cout << "ur scoped\n";
-            const auto& scopedTypeNode = static_cast<ScopedTypeNode&>(*type);
-
-            const std::string& firstPart = scopedTypeNode.scopeParts[0];
-            std::cout << firstPart << " is the firstpart.\n";
-            TypeSymbol* typeSym = resolveTypeSymbol(firstPart);
-            if (!typeSym) {
-                throw KMYCompileError("Unknown type symbol \"" + firstPart + "\" in scoped type");
-            }
-
-            Type* currType = typeSym->type;
-
-            // start from SECOND element
-            for (size_t i = 1; i < scopedTypeNode.scopeParts.size(); i++) {
-                const std::string& currPart = scopedTypeNode.scopeParts[i];
-
-                if (currType->kind != TypeKind::INSTANCE) {
-                    throw KMYCompileError("Only aggregates support nested ::");
-                }
-
-                auto aggType = static_cast<InstanceType*>(currType);
-
-                std::cout << "enummap contains:\n";
-                for (auto& [f, _] : aggType->enumMap) {
-                    std::cout << f << "\n";
-                }
-
-                auto it = aggType->enumMap.find(currPart);
-                if (it == aggType->enumMap.end()) {
-                    throw KMYCompileError(
-                        "No type symbol \"" + currPart + "\" found in " + aggType->name
-                    );
-                }
-
-                currType = it->second->type;
-            }
-
-            return currType;
-        }
-    }
-
-    throw KMYCompileError("Severe: Unknown type node kind.");
 }
 
 void Resolver::visit(Literal& e) {
@@ -277,7 +132,7 @@ void Resolver::visit(RecordLiteral& e) {
 }
 
 void Resolver::visit(Variable& e) {
-    VarSymbol* sym = resolveVarSymbol(e.name);
+    VarSymbol* sym = lookupVarSymbol(e.name);
 
     if (!sym) {
         throw KMYCompileError(
@@ -430,9 +285,9 @@ static bool isAssignable(Type* from, Type* to) {
     }
 
     // HACK?
-    if (from == &Types::ANY_TYPE) {
-        return true;
-    }
+    //if (from == &Types::ANY_TYPE) {
+    //    return true;
+    //}
     
     if (from == &Types::INT_TYPE && to == &Types::DOUBLE_TYPE) {
         return true; // int can be assigned to double.
@@ -620,8 +475,8 @@ void Resolver::visit(ScopeAccessExpr& e) {
     if (e.parts.size() < 2)
         throw KMYCompileError("Invalid scope access. This should not be even allowed here though...");
 
-    // Step 1: resolve first part as type
-    auto typeSym = resolveTypeSymbol(e.parts[0]);
+    // Step 1: lookup first part as type
+    auto typeSym = lookupTypeSymbol(currScope, e.parts[0]);
 
     if (!typeSym)
         throw KMYCompileError("\"" + e.parts[0] + "\" is not a type symbol.");
@@ -683,30 +538,9 @@ void Resolver::visit(FunctionExpr& e) {
     Scope* old = currScope;
 
     currScope = e.scope; // scope created in Pass 1
-   
-    std::vector<Type*> paramTypes;
-    std::vector<ParamTypeInfo> info;
 
+    // Param types, return type, and eventually function signature are declared in pass 2.
     for (auto& param : e.params) {
-        if (!param.symbol->type) {
-            // This(^) check is present since param.symbol->type can be already defined
-            // in which case, it should not be overriden.
-            // Namely, implicit "this" parameter. 
-            if (!param.type) {
-                // No annotation means we don't know the type. Assume any.
-                // We delegate this in runtime.
-                param.symbol->type = &Types::ANY_TYPE;
-    
-                // If strict mode:
-                // throw KMYCompileError("Parameter must have explicit type signature.");
-            } else {
-                std::cout << "param has annotation! but the symbol doesnt have it\n";
-                param.symbol->type = typeSigToType(param.type);
-                std::cout << "ok? so the error is after here?\n";
-            }
-        }
-
-        paramTypes.push_back(param.symbol->type);
 
         if (param.defaultExists) {
             param.defaultValue->accept(*this);
@@ -714,32 +548,16 @@ void Resolver::visit(FunctionExpr& e) {
                 throw KMYCompileError("Default value type mismatch.");
             }
         }
-        
-        // Param is now usable (prevents f(a = a) or f(a = b, b = 3) style errors.)
-        param.symbol->available = true;
-
-        info.push_back({param.defaultExists, param.isVariadic, param.implicitThis, param.symbol->type});
     }
 
     e.body->accept(*this);
 
     currScope = old;
-
-    // IMPORTANT NOTE: SEMANTIC INFO IS LOST WHEN ANNOTATED.
-    std::cout << "function return type annotation check\n";
-    FunctionType* fnType = TypeInterner::getFunctionType(
-        std::move(paramTypes),
-        e.annotatedReturnType ? typeSigToType(e.annotatedReturnType) : &Types::ANY_TYPE
-    );
-    std::cout << "ok? so the error is NOT after here???????\n";
-
-    fnType->info = std::move(info);
-    fnType->infoExists = true;
-    e.type = fnType;
-    std::cout << "function np\n";
 }
 
 void Resolver::visit(ThisExpr& e) {
+    // In pass 2.
+    /*
     if (!currentThis) {
         throw KMYCompileError("\"this\" used outside of method... :(");
     }
@@ -748,10 +566,11 @@ void Resolver::visit(ThisExpr& e) {
 
     e.symbol = currentThis;
     e.type = currentThis->type;
+    */
 }
 
 void Resolver::visit(NewExpr& e) {
-    TypeSymbol* aggType = resolveTypeSymbol(e.typeName);
+    TypeSymbol* aggType = lookupTypeSymbol(currScope, e.typeName);
     
     // TODO: Separate instance and agg type...
     if (aggType->type->kind != TypeKind::INSTANCE) {
@@ -854,7 +673,7 @@ void Resolver::visit(Let& s) {
     Type* annotated = nullptr;
 
     if (s.annotatedType) {
-        annotated = typeSigToType(s.annotatedType);
+        annotated = typeSigToType(currScope, s.annotatedType);
 
         if (annotated == &Types::VOID_TYPE) {
             // TODO: if not strict mode, u ignore this. 
@@ -896,16 +715,11 @@ void Resolver::visit(Aggregate& s) {
 
     currScope = s.scope;
 
-    // Critical: make class type right after. Initially its inner types are empty.
-    InstanceType* aggType = new InstanceType();
-    aggType->name = s.name; // DEBUG
+    // Aggregate type is defined in pass 2.
+    assert(s.typeSymbol);
+    assert(s.typeSymbol->type);
 
-    if (!s.typeSymbol) {
-        throw KMYCompileError("? agg type symbol where");
-    }
-
-    s.typeSymbol->type = aggType;
-    currentAggregate = aggType;
+    auto aggType = static_cast<InstanceType*>(s.typeSymbol->type);
 
     // Enums should be done first.
     // *****CRITICAL TODO: IN FACT, THESE SHOULD BE IN THE ORDER OF DECL!!!!!!!!!
@@ -913,13 +727,8 @@ void Resolver::visit(Aggregate& s) {
     // ALSO CONSIDER DOING VIRTUAL DISPATCH FOR ALL derived types instead of kind switches...
     // if possible tho.
     // 
-    for (auto& member : s.enumMembers) {
-        member.customEnum->accept(*this);
-
-        aggType->enumMap[member.customEnum->name] = member.customEnum->typeSymbol;
-    }
     
-    std::cout << "Resolver: enum np\n";
+    // No need to visit enum again for resolving.
 
     int offset = 0;
     for (auto& field : s.fieldMembers) {
@@ -932,12 +741,11 @@ void Resolver::visit(Aggregate& s) {
 
         handleAnnotatedAndInferred(
             field.symbol,
-            field.annotatedType ? typeSigToType(field.annotatedType) : nullptr,
+            field.annotatedType ? typeSigToType(currScope, field.annotatedType) : nullptr,
             inferred
         );
     
         field.symbol->fieldOffset = offset++;
-        aggType->fieldMap[field.name] = field.symbol;
     }
 
     std::cout << "Resolver: field np\n";
@@ -957,7 +765,6 @@ void Resolver::visit(Aggregate& s) {
         std::cout << "crash 1\n";
         member.symbol->methodIdx = methodIdx++;
         std::cout << "crash 2\n";
-        aggType->methodMap[member.name] = member.symbol;
         std::cout << "???????\n";
     }
 
@@ -968,9 +775,6 @@ void Resolver::visit(Aggregate& s) {
         currentThis->type = currentAggregate;
 
         member.initFuncExpr->accept(*this);
-        // Constructor has no type...
-        member.symbol->type = member.initFuncExpr->type;
-        aggType->constructorVec.push_back(member.symbol);
     }
 
     std::cout << "Resolver: ctor np\n";
@@ -992,13 +796,15 @@ void Resolver::visit(Aggregate& s) {
 
 void Resolver::visit(TypeAlias& s) {
     printLog(LogLevel::DEBUG, "Visiting typealias node for " + s.name + "\n");
-
-    s.typeSymbol->type = typeSigToType(s.aliasingType);
+    // In pass 2.
+    // s.typeSymbol->type = typeSigToType(currScope, s.aliasingType);
 }
 
 void Resolver::visit(Enum& s) {
-    printLog(LogLevel::DEBUG, "Visiting enum node for " + s.name + "\n");
+    //printLog(LogLevel::DEBUG, "Visiting enum node for " + s.name + "\n");
     
+    // Type already built in pass 2.
+    /*
     auto* enumType = new EnumType;
     
     // TODO: To type interner?
@@ -1008,8 +814,9 @@ void Resolver::visit(Enum& s) {
     }
     
     s.typeSymbol->type = enumType;
-    
-    printLog(LogLevel::DEBUG, "Enum offset is " + std::to_string(offset) + " for " + s.name + "\n");
+    */
+
+    //printLog(LogLevel::DEBUG, "Enum offset is " + std::to_string(offset) + " for " + s.name + "\n");
 }
 
 void Resolver::visit(ExprStmt& s) {

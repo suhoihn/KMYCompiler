@@ -4,6 +4,7 @@
 #include "../Core/Ast.hpp"
 #include "../Core/Scope.hpp"
 #include "../Core/Symbol.hpp"
+#include "../Utils/DefaultVisitor.hpp"
 #include "TypeInterner.hpp"
 
 // Pass 2: Name Resolution
@@ -12,7 +13,7 @@
 // Also checks valid loop break/continue, return statements.
 // Also does some type building.
 
-class Resolver : public Visitor {
+class Resolver : public DefaultVisitor {
 public:
     Resolver(FunctionExprPtr program, Scope* globalScope);
     void resolve();
@@ -23,10 +24,6 @@ private:
     Scope* globalScope;
     Scope* currScope;
 
-
-    // Local var declaration (since it is order-sensitive)
-    VarSymbol* declareVar(const std::string& name, bool isMutable);
-
     // Type related
     Type* expectedType = nullptr;
     //std::unordered_map<TypeKey, Type*> typeCache;
@@ -35,9 +32,7 @@ private:
 
     int loopDepth = 0;
 
-    Type* typeSigToType(const TypeNodePtr type);
-    TypeSymbol* resolveTypeSymbol(const std::string& name);
-    VarSymbol* resolveVarSymbol(const std::string& name);
+    VarSymbol* lookupVarSymbol(const std::string& name);
 
     InstanceType* currentAggregate = nullptr;
     VarSymbol* currentThis = nullptr; 
@@ -70,5 +65,5 @@ private:
     void visit(Aggregate& s) override;
     void visit(TypeAlias& s) override;
     void visit(Enum& s) override;
-    void visit(ExprStmt& s) override;
+    void visit(ExprStmt& s);
 };

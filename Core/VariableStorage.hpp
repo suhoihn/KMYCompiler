@@ -13,6 +13,27 @@ struct UpvalueInfo {
     bool isLocal;
     int index; // Slot index in parent locals OR parent upvalues
     VarSymbol* symbol = nullptr;
+    
+    bool capturedByChildren = false;
+    /*
+    Example case
+    ------------
+    fun outer() {
+        let x = 42;
+        return fun() {
+            print(x);   <- index = <local slot of x in outer()>
+        };
+    }
+
+    fun outer() {
+        let x = 42;
+        fun middle() {    <- index = <local slot of x in outer()> + its "capturedByChildren" flag is on
+            return fun() {
+                print(x); <- index = <upvalue slot of x in middle()>
+            };
+        }
+    }
+    */
 };
 
 struct ResolvedVar {

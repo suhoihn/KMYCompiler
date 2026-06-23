@@ -109,6 +109,7 @@ struct FunctionType : Type {
     Type* returnType;
     bool isNative = false;
 
+    // TODO: Move this to varsymbol*! not here!
     std::vector<ParamTypeInfo> info;
     bool infoExists = false;
 

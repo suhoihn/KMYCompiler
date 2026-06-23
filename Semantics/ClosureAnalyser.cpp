@@ -4,16 +4,39 @@
 #include "../Core/errorhandler.hpp"
 #include "../Utils/SymbolPrinter.hpp"
 #include "../Utils/utils.hpp"
+#include <assert.h>
 
 ClosureAnalyser::ClosureAnalyser(FunctionExprPtr program)
     : program(program)
-{
-    currCtx = new FunctionContext; // global context
-}
-
+{}
 
 void ClosureAnalyser::analyse() {
     program->accept(*this);
+}
+
+static int allocateLocal(FunctionContext* fnCtx, VarSymbol* sym) {
+    assert(fnCtx);
+    assert(sym);
+
+    // allocateLocal should not be called for symbol already allocated.
+    assert(fnCtx->localMap.find(sym) == fnCtx->localMap.end());
+
+    int slot = fnCtx->nextSlot++;
+    fnCtx->localMap[sym] = slot;
+
+    // For debug.
+    sym->slot = slot;
+
+    std::cout << sym << std::endl;
+    std::cout << "Allocating local variable: " << sym->name << " at slot " << slot << std::endl;
+    fnCtx->locals.push_back(Local{
+        sym,
+        slot,
+        fnCtx->scopeDepth,
+        false, // initially not captured.
+    });
+
+    return slot;
 }
 
 static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
@@ -38,17 +61,24 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
     if (itMap != fnCtx->upvalueMap.end()) {
         return itMap->second;
     }
+    
     std::cout << "In resolveupvalue part 2\n";
     // Firstly, is name in parent's local?
-    auto it = parentCtx->localMap.find(sym);
-    if (it != parentCtx->localMap.end()) {
-        std::cout << "In resolveupvalue part 2-1\n";
-        
+    
+    if (isInsideFunction(sym, parentCtx->fnScope)) {
         // Found in parent's local.
-        // Slot of name in parent's locals.
-        int parentLocalSlot = it->second;
-
-        std::cout << "In resolveupvalue part 2-2\n";
+        // Check whether it has its slot allocated in parent's context.
+        auto it = parentCtx->localMap.find(sym);
+        int parentLocalSlot;
+        if (it != parentCtx->localMap.end()) {
+            // Sym slot already exists in parent's locals.
+            parentLocalSlot = it->second;
+        } else {
+            // Sym hasn't been allocated a slot.
+            // Thus allocate it in parent.
+            parentLocalSlot = allocateLocal(parentCtx, sym);
+        }
+        
 
         // Update current fnCtx's upvalue map.
         int slot = fnCtx->upvalues.size();
@@ -79,6 +109,8 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
     if (parentUpvalueSlot != INVALID_SLOT) {
         // parentCtx->upvalues[parentSlot] stores where name is stored.
 
+        parentCtx->upvalues[parentUpvalueSlot].capturedByChildren = true;
+        
         int slot = fnCtx->upvalues.size();
         fnCtx->upvalueMap[sym] = slot;
         fnCtx->upvalues.push_back(
@@ -97,22 +129,44 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
 }
 
 
+static bool isInsideFunction(VarSymbol* sym, Scope* functionScope) {
+    Scope* s = sym->definingScope;
+
+    while (s) {
+        if (s == functionScope) return true;
+        s = s->parent;
+    }
+
+    return false;
+}
+
 ResolvedVar ClosureAnalyser::resolveVariable(VarSymbol* sym) {
     if (!sym) {
         throw KMYCompileError("Symbol not resolved? this is stupid.");
     }
 
-    std::cout << "In resolveVariable(), first search localMap\n";
+    std::cout << "In resolveVariable(), first search function's local scope.\n";
     // 1. Local
-    auto& localMap = currCtx->localMap;
-    auto it = localMap.find(sym);
-    if (it != localMap.end()) {
-        // Found in local. Easy.
-        std::cout << "Easy!\n";
+    if (isInsideFunction(sym, currCtx->fnScope)) {
+        // Found in function's local.
+        // Check whether it has its slot allocated.
+        auto it = currCtx->localMap.find(sym);
+        if (it != currCtx->localMap.end()) {
+            // Sym slot already exists
+            return ResolvedVar {
+                ResolvedVar::Kind::LOCAL,
+                it->second,
+            };
+        }
+        
+        // Sym hasn't been allocated a slot.
+        int slot = allocateLocal(currCtx, sym);
+
         return ResolvedVar {
             ResolvedVar::Kind::LOCAL,
-            it->second,
+            slot,
         };
+
     }
     
     std::cout << "In resolveVariable(), next search upvalue\n";
@@ -130,30 +184,6 @@ ResolvedVar ClosureAnalyser::resolveVariable(VarSymbol* sym) {
 
     throw KMYCompileError("Undefined variable.");
 }
-
-int ClosureAnalyser::allocateLocal(VarSymbol* sym) {
-    if (!sym) {
-        throw KMYCompileError("Symbol not resolved? this is stupid.");
-    }
-
-    int slot = currCtx->nextSlot++;
-    currCtx->localMap[sym] = slot;
-
-    // For debug.
-    sym->slot = slot;
-
-    std::cout << sym << std::endl;
-    std::cout << "Allocating local variable: " << sym->name << " at slot " << slot << std::endl;
-    currCtx->locals.push_back(Local{
-        sym,
-        slot,
-        currCtx->scopeDepth,
-        false, // initially not captured.
-    });
-
-    return slot;
-}
-
 
 void ClosureAnalyser::visit(Variable& e) {
     std::cout << "haha i got ya\n";
@@ -190,14 +220,18 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
     // 1. Create new context
     FunctionContext* fnCtx = new FunctionContext;
     fnCtx->parent = currCtx;
+    fnCtx->fnScope = e.scope;
     currCtx = fnCtx;
+    
 
     // 2. Parameters
     for (auto& param : e.params) {
         if (!param.symbol) {
             throw KMYCompileError("Symbol not resolved in param? this is stupid.");
         }
-        allocateLocal(param.symbol);
+        // No dedup check since it is guaranteed to be new.
+        // ... right?   
+        allocateLocal(currCtx, param.symbol);
     }
 
     std::cout << "Local alloc done. body check." << std::endl;
@@ -205,15 +239,31 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
     e.body->accept(*this);
     std::cout << "body check done" << std::endl;
 
+    int envSlot = 0;
+
+    // captured locals
+    for (auto& local : currCtx->locals) {
+        if (local.captured) {
+            currCtx->envMap[local.sym] = envSlot++;
+        }
+    }
+
+    // re-exported upvalues
+    for (auto& up : currCtx->upvalues) {
+        if (up.capturedByChildren) {
+            currCtx->envMap[up.symbol] = envSlot++;
+        }
+    }
+
+    currCtx->envSize = envSlot;
+
     currCtx = fnCtx->parent;
     
     std::cout << "framesize: " << fnCtx->nextSlot << std::endl;
     std::cout << "upvalue cnt: " << fnCtx->upvalues.size() << std::endl;
 
-    e.upvalues = fnCtx->upvalues;
-    e.frameSize = fnCtx->nextSlot;
-
-    delete fnCtx;
+    e.functionContext = fnCtx;
+    
 }
 
 void ClosureAnalyser::visit(ThisExpr& e) {
@@ -237,6 +287,8 @@ void ClosureAnalyser::visit(Block& s) {
     currCtx->scopeDepth--;   // EXIT scope
 
     // remove locals declared in this scope
+    return;
+    // Why?
     while (!currCtx->locals.empty() && currCtx->locals.back().scopeDepth > currCtx->scopeDepth) {
         auto& local = currCtx->locals.back();
 
@@ -252,7 +304,23 @@ void ClosureAnalyser::visit(Let& s) {
     if (s.expr)
         s.expr->accept(*this);
     
-    int slot = allocateLocal(s.symbol);
+    if (s.isFunctionDecl) {
+        // H A C K?
+        currCtx->funcDecls.push_back({
+            s.symbol,
+            std::static_pointer_cast<FunctionExpr>(s.expr)
+        });
+    }
+
+    // Hmm, allocateLocal is used all over I think. Some places I think unnecessary.
+    int slot;
+    auto it = currCtx->localMap.find(s.symbol);
+    if (it != currCtx->localMap.end()) {
+        // Already allocated.
+        slot = it->second;
+    } else {
+        slot = allocateLocal(currCtx, s.symbol);
+    }
     s.symbol->slot = slot;
 }
 

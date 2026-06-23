@@ -35,6 +35,11 @@ enum class IROp {
     FUNC_LABEL, // Takes args (which are stored as upvalues) and imm (function id)
     PARAM, // Takes imm which is param_id (1-1 match from CALL's args)
     UPVALUE, // Takes imm which is upvalue_idx for the current closure (1-1 match from FUNC_LABEL's captured vars).
+    
+    INTRODUCE_ENV,
+    ALLOC_ENV, // Takes imm which is the size. (e.g., v0 = ALLOC_ENV 3)
+    SET_ENV, // Takes a value of environment and an index and a value. (e.g., SET_ENV v0 1 v1)
+    GET_ENV, // Gets a value from environment in a given index (e.g., v1 = GET_ENV v0 1)
     CALL,
     RETURN
 };
@@ -72,6 +77,10 @@ inline const char* toString(IROp op) {
         case IROp::FUNC_LABEL:     return "FUNC_LABEL";
         case IROp::PARAM:          return "PARAM";
         case IROp::UPVALUE:        return "UPVALUE";
+        case IROp::INTRODUCE_ENV:  return "INTRODUCE_ENV";
+        case IROp::ALLOC_ENV:      return "ALLOC_ENV";
+        case IROp::SET_ENV:        return "SET_ENV";
+        case IROp::GET_ENV:        return "GET_ENV";
         case IROp::CALL:           return "CALL";
         case IROp::RETURN:         return "RETURN";
     }

@@ -2,12 +2,22 @@
 
 #include <iostream>
 #include "../Core/Ast.hpp"
+#include "utils.hpp"
 
-void DefaultVisitor::visit(Literal&) {}
-void DefaultVisitor::visit(Variable&) {}
+// TODO: finish adding printLogs here...
+void DefaultVisitor::visit(Literal&) {
+    printLog(LogLevel::DEBUG, "Visited literal node.\n");
+}
+void DefaultVisitor::visit(Variable&) {
+    printLog(LogLevel::DEBUG, "Visited variable node.\n");
+}
 void DefaultVisitor::visit(ArrayLiteral& e) {
+    printLog(LogLevel::DEBUG, "Entering array literal node.\n");
+
     for (auto& elem : e.elements)
         elem->accept(*this);
+    
+    printLog(LogLevel::DEBUG, "Exiting array literal node.\n");
 }
 void DefaultVisitor::visit(RecordLiteral& e) {
     for (auto& [_, value] : e.fields) {

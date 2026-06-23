@@ -3,7 +3,10 @@
 #pragma once
 
 #include <vector>
+#include "../Core/Symbol.hpp" 
+#include "../Core/Scope.hpp" 
 #include "../Core/Ast.hpp"
+#include "../Core/FunctionContext.hpp"
 #include "../Utils/DefaultVisitor.hpp"
 
 // Pass 3: Closure Analysis + Slot Allocation
@@ -11,22 +14,12 @@
 // Detects captured variables/upvalues and assigns local stack slots
 // and closure indices required for code generation.
 
-struct FunctionContext {
-    FunctionContext* parent;
-    
-    std::vector<Local> locals;
-    std::unordered_map<VarSymbol*, int> localMap;
-    
-    // Constants are accessed via chunk.constants
-    // This is handled in codegen part.
-    // std::unordered_map<ConstValue, int> constantMap;
 
-    int scopeDepth = 0;
-    int nextSlot = 0;
+// Forward decls.
+static int allocateLocal(FunctionContext* fnCtx, VarSymbol* sym);
+static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym);
+static bool isInsideFunction(VarSymbol* sym, Scope* functionScope);
 
-    std::unordered_map<VarSymbol*, int> upvalueMap;
-    std::vector<UpvalueInfo> upvalues;
-};
 
 class ClosureAnalyser : public DefaultVisitor {
 public:
@@ -38,9 +31,9 @@ private:
     
     FunctionContext* currCtx;
     ResolvedVar resolveVariable(VarSymbol* sym);
-    int allocateLocal(VarSymbol* sym);
 
     bool insideMethod = false;
+
     Aggregate* currentAggregate = nullptr;
 
     // ID given to each function expr.

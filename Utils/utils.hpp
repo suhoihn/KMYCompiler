@@ -12,7 +12,7 @@ enum class LogLevel {
     ERROR
 };
 
-void printLog(LogLevel level, const std::string& msg);
+void printLog(LogLevel level, const std::string& msg, bool withPrefix=true);
 void printTokens(const std::vector<Token>& tokens);
 void printAST(const std::vector<StmtPtr>& stmts);
 void printAST(const ExprPtr expr);

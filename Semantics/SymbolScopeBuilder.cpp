@@ -17,6 +17,7 @@ SymbolScopeBuilder::SymbolScopeBuilder(
     currScope = globalScope;
 
     // Build native functions HERE(?)
+    return;
     for (auto& [name, info] : nativeFnTypes) {
         VarSymbol* sym = declareVar(name, false);
 
@@ -52,6 +53,7 @@ VarSymbol* SymbolScopeBuilder::declareVar(const std::string& name, bool isMutabl
 
     // 2. Create symbol
     VarSymbol* sym = new VarSymbol(name, isMutable);
+    sym->definingScope = currScope;
 
     // 3. Store in scope
     currScope->values[name] = sym;
@@ -77,7 +79,6 @@ TypeSymbol* SymbolScopeBuilder::declareType(const std::string& name, bool isMuta
 
     return sym;
 }
-
 
 // Check duplicate fields.
 void SymbolScopeBuilder::visit(RecordLiteral& e) {
@@ -144,7 +145,6 @@ void SymbolScopeBuilder::visit(Block& s) {
 
 // Let stmt has a var symbol.
 void SymbolScopeBuilder::visit(Let& s) {
-    // Only declare early if this is a FUNCTION DECL!
     VarSymbol* sym = declareVar(s.name, s.isMutable);
     
     if (!sym) {
@@ -280,6 +280,7 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
 void SymbolScopeBuilder::visit(TypeAlias& s) {
     // Simply register a type symbol. (Its Type* is nullptr initially)
     s.typeSymbol = declareType(s.name, false);
+    s.typeSymbol->typeNode = s.aliasingType;
 }
 
 // Enum has a type symbol. (Its member has NO symbols!)

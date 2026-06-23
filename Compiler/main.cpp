@@ -9,12 +9,13 @@
 #include "../Core/Ast.hpp"
 #include "../Core/errorhandler.hpp"
 #include "../Semantics/SymbolScopeBuilder.hpp" // Pass 1
-#include "../Semantics/Resolver.hpp" // Pass 2
-#include "../Semantics/ClosureAnalyser.hpp" // Pass 3
-#include "../Semantics/MethodLower.hpp" // Pass 4
+#include "../Semantics/DeclTypeResolver.hpp" // Pass 2
+#include "../Semantics/Resolver.hpp" // Pass 3
+#include "../Semantics/ClosureAnalyser.hpp" // Pass 4
+#include "../Semantics/MethodLower.hpp" // Pass 5
 // #include "../Semantics/typechecker.hpp" // Planned pass 5
 #include "compiler.hpp" // Code gen in pass 6
-#include "../CodegenIR/IRBuilder.hpp"
+#include "../CodegenIR/IRBuilder.hpp" // Pass 6
 #include <cstring>
 #include <sstream>
 
@@ -131,7 +132,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    std::cout << "[DEBUG]: Reading file..." << std::endl;
+    printLog(LogLevel::INFO, "Reading file...\n");
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Could not open file: " << filename << "\n";
@@ -141,16 +142,16 @@ int main(int argc, char *argv[]) {
     std::string source((std::istreambuf_iterator<char>(file)),
     std::istreambuf_iterator<char>());
     
-    std::cout << "[DEBUG]: Reading done. Source file string created." << std::endl;
+    printLog(LogLevel::INFO, "Reading done. Source file string created.\n");
 
     try {
         // 1. Tokenize
         Lexer lexer(source);
         std::vector<Token> tokens = lexer.tokenise();
 
-        std::cout << "[DEBUG]: Lexing finished. Ready to parse." << std::endl;
+        printLog(LogLevel::INFO, "Lexing finished. Ready to parse.\n");
         if (debugOutput) {
-            std::cout << "[DEBUG]: Tokens:\n";
+            printLog(LogLevel::INFO, "Tokens:\n");
             printTokens(tokens);
         }
 
@@ -158,63 +159,74 @@ int main(int argc, char *argv[]) {
         Parser parser(tokens);
         FunctionExprPtr program = parser.parse();
         if (debugOutput) {
-            std::cout << "[DEBUG]: Tokens:\n";
+            printLog(LogLevel::INFO, "AST:\n");
+            // TODO: improve AST printing.
             printAST(program);
         }
+
+        // Define symbol printer here.
+        SymbolPrinter symPrinter(program);
         
-        std::cout << "[DEBUG]: Parsing finished. Ready to move onto semantic analysis." << std::endl;
+        printLog(LogLevel::INFO, "Parsing finished. Ready to move onto semantic analysis.\n");
         
         // 3-1. Symbol building
         SymbolScopeBuilder builder(program);
         auto globalScope = builder.analyse();
 
-        std::cout << "[DEBUG]: Symbol building done. Ready to resolve variables." << std::endl;
+        printLog(LogLevel::INFO, "Symbol building done. Ready to declare types and func signatures.\n");
         
         if (debugOutput) {
-            std::cout << "[DEBUG]: Symbols built:\n";
-            SymbolPrinter symPrinter(program);
+            printLog(LogLevel::INFO, "Symbols built: \n");
             symPrinter.print();
         }
 
-        // 3-2. Variable resolvance
+        // 3-2. Type declaration and function signature builder
+        DeclTypeResolver temp(program, globalScope);
+        temp.resolve(); // TODO: Better name
+
+        printLog(LogLevel::INFO, "Type declaration done. Ready to resolve variables and their types.\n");
+        
+        if (debugOutput) {
+            printLog(LogLevel::INFO, "Symbols built: \n");
+            symPrinter.print();
+        }
+
+        // 3-3. Variable resolvance
         Resolver resolver(program, globalScope);
         resolver.resolve();
         
         if (debugOutput) {
-            std::cout << "[DEBUG]: Symbols built:\n";
-            SymbolPrinter symPrinter(program);
+            printLog(LogLevel::INFO, "Symbols built: \n");
             symPrinter.print();
         }
 
         std::cout << "[DEBUG]: Variable resolvance done. Ready to lower methods if one exists." << std::endl;
 
         
-        //3-2.5(?). Method lowering
+        //3-3.5(?). Method lowering
         MethodLower lower(program);
         lower.lower();
 
         if (debugOutput) {
-            std::cout << "[DEBUG]: Symbols built:\n";
-            SymbolPrinter symPrinter(program);
+            printLog(LogLevel::INFO, "Symbols built: \n");
             symPrinter.print();
+            printLog(LogLevel::INFO, "Modified AST: \n");
             printAST(program);
         }
         
        
+        printLog(LogLevel::INFO, "Method lowering done. Ready to allocate local slots and analyse closures.\n");
 
-        std::cout << "[DEBUG]: Method lowering done. Ready to allocate local slots and analyse closures." << std::endl;
-
-        // 3-3. Closure analysis and slot allocation.
+        // 3-4. Closure analysis and slot allocation (VM).
         ClosureAnalyser analyser(program);
         analyser.analyse();
 
         if (debugOutput) {
-            std::cout << "[DEBUG]: Symbols built:\n";
-            SymbolPrinter symPrinter(program);
+            printLog(LogLevel::INFO, "Symbols built: \n");
             symPrinter.print();
         }
         
-        std::cout << "[DEBUG]: Slot allocation and closure analysis done." << std::endl;
+        printLog(LogLevel::INFO, "Slot allocation and closure analysis done.\n");
         
         // 3-4. Type check
         if (strictTypes) {
@@ -226,7 +238,7 @@ int main(int argc, char *argv[]) {
         }
 
         
-        std::cout << "[DEBUG]: Ready for code generation." << std::endl;
+        printLog(LogLevel::INFO, "Ready for code generation.\n");
 
         if (isBuildingASM) {
             // 4-a. Code gen (CFG IR)
@@ -243,8 +255,7 @@ int main(int argc, char *argv[]) {
         auto fnProtos = compiler.compile();
 
         if (debugOutput) {
-            std::cout << "[DEBUG]: Symbols built:\n";
-            SymbolPrinter symPrinter(program);
+            printLog(LogLevel::INFO, "Symbols built: \n");
             symPrinter.print();
         }
 

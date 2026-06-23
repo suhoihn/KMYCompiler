@@ -4,6 +4,7 @@
 #include "../Core/type.hpp"
 #include "../Core/errorhandler.hpp"
 #include "IRFunction.hpp"
+#include <iostream>
 
 static bool hasTerminator(BasicBlock* bb) {
     return bb->term.has_value();
@@ -12,6 +13,18 @@ static bool hasTerminator(BasicBlock* bb) {
 IRBuilder::IRBuilder(FunctionExprPtr program)
     : program(program) 
 {
+}
+
+
+static IRValue getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
+    auto& localMap = fnCtx->locals;
+
+    auto it = localMap.find(sym);
+    if (it != localMap.end()) {
+        return it->second;
+    }
+
+    throw KMYCompileError("SERIOUS ERROR. UNDEFINED VAR");
 }
 
 std::vector<IRFunction*> IRBuilder::compile() {
@@ -53,11 +66,19 @@ void IRBuilder::visit(Literal& e) {
         return ConstValue(arg);
     }, e.value);
 
-    if (!std::holds_alternative<int>(e.value)) {
-        throw KMYCompileError("Only int yet sorry.");
+    if (
+        !std::holds_alternative<int>(e.value) &&
+        !std::holds_alternative<bool>(e.value)
+    ) {
+        throw KMYCompileError("Only bool and int yet sorry.");
     }
 
-    auto val = std::get<int>(e.value);
+    int val;
+    if (std::holds_alternative<int>(e.value)) {
+        val = std::get<int>(e.value);
+    } else {
+        val = (int)std::get<bool>(e.value);
+    }
 
     IRValue dst = makeValue(e.type);
     IRInstr instr{
@@ -79,19 +100,16 @@ void IRBuilder::visit(RecordLiteral& e) {
 }
 
 void IRBuilder::visit(Variable& e) {
-    auto localIt = currCtx->locals.find(e.symbol);
-    if (localIt != currCtx->locals.end()) {
-        setLastValue(localIt->second);
-        return;
-    }
-
     auto upvalueIt = currCtx->upvalues.find(e.symbol);
     if (upvalueIt != currCtx->upvalues.end()) {
         setLastValue(upvalueIt->second);
         return;
     }
 
-    assert(false && "Variable not found in locals or upvalues");
+    // Get from local
+    setLastValue( getValueFromLocal(currCtx, e.symbol) );
+
+    // assert(false && "Variable not found in locals or upvalues");
 }
 
 static IROp binaryOpToIROp(BinaryOp op) {
@@ -174,7 +192,25 @@ void IRBuilder::visit(Assignment& e) {
             // last value isnt updated.
             // In a = 42, the last value is RHS.
         }
-        currCtx->locals[var->symbol] = getLastValue();
+        // The locals must already contain the symbol.
+        // Though this may never happen.
+
+        // UNLESS it is an upvalue!
+        // Emit SET_ENV for mutable upvalues (like x = 3 where x is not local.)
+        if (currCtx->locals.count(var->symbol)) {
+            currCtx->locals[var->symbol] = getLastValue();
+            return;
+        }
+        
+        // Upvalue mutation
+        assert(currCtx->incomingEnv.has_value());
+        IRInstr instr{
+            .op = IROp::SET_ENV,
+            .args = { currCtx->incomingEnv.value(), getLastValue() }
+        };
+        currCtx->currBlock->code.push_back(instr);
+
+
         return;
     }
 
@@ -187,9 +223,6 @@ void IRBuilder::visit(Index& e) {
 
 void IRBuilder::visit(Call& e) {
     std::optional<IRValue> v = std::nullopt;
-    if (e.type != &Types::VOID_TYPE) {
-        v = makeValue(e.type);
-    }
     e.func->accept(*this);
 
     std::vector<IRValue> args = { getLastValue() }; // First is always the function value.
@@ -197,6 +230,11 @@ void IRBuilder::visit(Call& e) {
         arg->accept(*this);
         args.push_back( getLastValue() );
     }
+
+    if (e.type != &Types::VOID_TYPE) {
+        v = makeValue(e.type);
+    }
+
     IRInstr instr{
         .op = IROp::CALL,
         .dst = v,
@@ -218,43 +256,112 @@ void IRBuilder::visit(ScopeAccessExpr& e) {
     throw KMYCompileError("scope acc Not yet");
 }
 
-void IRBuilder::visit(FunctionExpr& e) {
-    // TODO: I definitiely need functioncontext struct.
-    // CONTINUE FROM HERE
-    // Encode function in call instr as pointer.
-    // find out why current version is broken
-    // with the CURRENT VERSION of compiler, test SimpleFunctionTest.kmy and ChatGPT history.
-    // GOOD LUCK.
-    // Unfinished job by suho in the past. ^_^
-    
-    auto oldCtx = currCtx;
-
-    IRValue fnValue;
-    if (currCtx) {
-        fnValue = makeValue(e.type);
-        std::vector<IRCapture> capturedVals;
-        for (auto& up : e.upvalues) {
-            if (up.isLocal) {
-                // Capturing in the closure's local
-                capturedVals.push_back({ true, currCtx->locals.at(up.symbol) });
-            } else {
-                // Capturing the closure's upvalue
-                capturedVals.push_back({ false, currCtx->upvalues.at(up.symbol) });
-            }
-        }
-
-        IRInstr instr {
-            .op = IROp::FUNC_LABEL,
-            .dst = fnValue, 
-            .captures = capturedVals,
-            .imm = e.functionId
-        };
-        currCtx->currBlock->code.push_back(instr);
+static void printFunctionContext(FunctionContext* fnCtx) {
+    if (!fnCtx) {
+        std::cout << "<null function context>\n";
+        return;
     }
 
+    std::cout << "========================================\n";
+    std::cout << "FunctionContext @" << fnCtx << "\n";
+
+    //
+    // Locals
+    //
+    std::cout << "\nLocals (" << fnCtx->locals.size() << ")\n";
+    std::cout << "----------------------------------------\n";
+
+    for (const auto& local : fnCtx->locals) {
+        std::cout
+            << "  "
+            << local.sym->name
+            << "  slot=" << local.slot
+            << "  depth=" << local.scopeDepth
+            << "  captured=" << std::boolalpha << local.captured
+            << "\n";
+    }
+
+    //
+    // Upvalues
+    //
+    std::cout << "\nUpvalues (" << fnCtx->upvalues.size() << ")\n";
+    std::cout << "----------------------------------------\n";
+
+    for (int i = 0; i < fnCtx->upvalues.size(); ++i) {
+        const auto& up = fnCtx->upvalues[i];
+
+        std::cout
+            << "  ["
+            << i
+            << "] "
+            << up.symbol->name
+            << "  parentSlot=" << up.index
+            << "  isLocal=" << std::boolalpha << up.isLocal
+            << "  capturedByChildren="
+            << up.capturedByChildren
+            << "\n";
+    }
+
+    //
+    // Environment layout
+    //
+    std::cout << "\nEnvironment (" << fnCtx->envMap.size()
+              << " slots, size=" << fnCtx->envSize << ")\n";
+    std::cout << "----------------------------------------\n";
+
+    for (const auto& [sym, slot] : fnCtx->envMap) {
+        std::cout
+            << "  slot " << slot
+            << " -> " << sym->name
+            << "\n";
+    }
+
+    //
+    // Local map
+    //
+    std::cout << "\nLocalMap\n";
+    std::cout << "----------------------------------------\n";
+
+    for (const auto& [sym, slot] : fnCtx->localMap) {
+        std::cout
+            << "  "
+            << sym->name
+            << " -> " << slot
+            << "\n";
+    }
+
+    //
+    // Upvalue map
+    //
+    std::cout << "\nUpvalueMap\n";
+    std::cout << "----------------------------------------\n";
+
+    for (const auto& [sym, slot] : fnCtx->upvalueMap) {
+        std::cout
+            << "  "
+            << sym->name
+            << " -> " << slot
+            << "\n";
+    }
+
+    std::cout << "========================================\n";
+}
+
+void IRBuilder::visit(FunctionExpr& e) {
+    
+    IRValue fnValue;
+    std::optional<IRValue> upperEnv;
+    
+    std::cout << "NEW FUNC " << e.functionId << "\n";
+    printFunctionContext(e.functionContext);
+
+    // Context switch
+    auto oldCtx = currCtx;
     IRFunction* oldFn = currFunc;
 
     currCtx = new IRCodegenFnCtx{};
+    currCtx->fnCtx = e.functionContext;
+
     currFunc = new IRFunction{ e.functionId, static_cast<FunctionType*>(e.type) };
 
     BasicBlock* entry = makeBlock();
@@ -263,7 +370,38 @@ void IRBuilder::visit(FunctionExpr& e) {
     currFunc->entry = entry;
     currCtx->currBlock = entry;
 
-    // params
+    // Allocate my env if children capture my locals or upvalues
+    if (e.functionContext->envSize > 0) {
+        IRValue env = makeValue(nullptr);
+
+        currCtx->env = env;
+
+        IRInstr instr{
+            .op  = IROp::ALLOC_ENV,
+            .dst = env,
+            .imm = e.functionContext->envSize
+        };
+
+        currCtx->currBlock->code.push_back(instr);
+    }
+
+
+    // Incoming env from parent
+    std::optional<IRValue> incomingEnv;
+    if (!e.functionContext->upvalues.empty()) {
+        incomingEnv = makeValue(nullptr);
+        currCtx->incomingEnv = incomingEnv;
+
+        IRInstr instr{
+            .op  = IROp::INTRODUCE_ENV,
+            .dst = incomingEnv.value()
+        };
+
+        currCtx->currBlock->code.push_back(instr);
+    }
+
+
+    // Introduce params
     for (int i = 0; i < e.params.size(); i++) {
         IRValue v = makeValue(e.params[i].symbol->type);
 
@@ -295,23 +433,110 @@ void IRBuilder::visit(FunctionExpr& e) {
         currCtx->currBlock->code.push_back(instr);
     }
 
-    // upvalues
-    for (int i = 0; i < e.upvalues.size(); i++) {
-        IRValue v = makeValue(e.upvalues[i].symbol->type);
+    // Introduce upvalues
+    // They are assigned on function entry from its env.
+    for (int i = 0; i < e.functionContext->upvalues.size(); i++) {
+        auto& up = e.functionContext->upvalues[i];
+        IRValue v = makeValue(up.symbol->type);
 
-        currCtx->upvalues[e.upvalues[i].symbol] = v;
+        currCtx->upvalues[up.symbol] = v; // Needed? maybe
 
         IRInstr instr {
-            .op = IROp::UPVALUE,
+            .op = IROp::GET_ENV,    
             .dst = v,
-            .imm = i
+            .args = { incomingEnv.value() },
+            .imm = up.index // Upvalue slot allocated from pass 4.
         };
 
         currCtx->currBlock->code.push_back(instr);
+
+        if (up.capturedByChildren) {
+            std::cout << "Hey! it's a me, UPVALUECAPTUREDBYCHILDREN!\n";
+            // Children captures MY upvalue
+            // We need to put it in env so that the children can see my upvalues.
+            
+            assert(e.functionContext->envMap.count(up.symbol) > 0);
+            IRInstr instr {
+                .op = IROp::SET_ENV,    
+                .dst = v,
+                .args = { currCtx->env.value(), v },
+                .imm = e.functionContext->envMap.at(up.symbol)
+            };
+
+            currCtx->currBlock->code.push_back(instr);
+        }
     }
 
+    // Hoist function declarations (in opposite order)
+    for (auto& [funcDeclSym, funcDeclExpr] : e.functionContext->funcDecls) {
+        fnValue = makeValue(e.type);
+        if (currCtx) {
+            assert(currCtx->env.has_value());
+
+            IRInstr instr {
+                .op = IROp::FUNC_LABEL,
+                .dst = fnValue, 
+                .args = { currCtx->env.value() }, // Env to use
+                .imm = funcDeclExpr->functionId // TODO: Don't store the whole expr...
+            };
+            currCtx->currBlock->code.push_back(instr);
+        }
+        //funcDeclExpr->accept(*this);
+
+        if (currCtx->locals.find(funcDeclSym) == currCtx->locals.end()) {
+            currCtx->locals[funcDeclSym] = fnValue;
+        } else {
+            std::cout << "Duplicate write prevented which is not very desired.\n";
+        }
+
+        auto it = currCtx->fnCtx->envMap.find(funcDeclSym);
+        assert(currCtx->env.has_value());
+        
+        if (it != currCtx->fnCtx->envMap.end()) {
+            currCtx->currBlock->code.push_back({
+                .op = IROp::SET_ENV,
+                .args = { currCtx->env.value(), fnValue },
+                .imm = it->second
+            });
+        }
+    }
+
+    std::cout << "env\n";
+    for (auto& [sym, slot] : e.functionContext->envMap) {
+        std::cout << sym->name << " -> " << slot << "\n";
+    }
+    std::cout << "locals so far\n";
+    for (auto& [sym, v] : currCtx->locals) {
+        std::cout << sym->name << " -> " << v << "\n";
+    }
+
+    
     // body
     e.body->accept(*this);
+    
+    /*
+    // populate MY env
+    if (currCtx->env) {
+        // CONTINUE FROM HERE
+        // outer middle inner capture fail.
+        for (auto& local : e.functionContext->locals) {
+
+            if (!local.captured)
+                continue;
+            std::cout << "searching " << local.sym->name << "\n";
+            currCtx->currBlock->code.push_back({
+                .op   = IROp::SET_ENV,
+                .args = {
+                    currCtx->env.value(),
+                    // This causes error.
+                    currCtx->locals.at(local.sym)
+                },
+                .imm = e.functionContext->envMap.at(local.sym)
+            });
+        }
+    }
+    */
+    
 
     // implicit return
     if (!hasTerminator(currCtx->currBlock)) {
@@ -320,10 +545,11 @@ void IRBuilder::visit(FunctionExpr& e) {
 
     functions.push_back(currFunc);
 
+
+    // Prevent currCtx from being nullptr (top level entry func)
     if (oldCtx) {
         currFunc = oldFn;
-        currCtx = oldCtx;    
-    
+        currCtx = oldCtx;
         setLastValue(fnValue);
     }
 }
@@ -480,7 +706,6 @@ void IRBuilder::visit(While& s) {
 }
 
 void IRBuilder::visit(Block& s) {
-    // TODO
     for (auto& stmt : s.statements) {
         stmt->accept(*this);
     }
@@ -520,13 +745,38 @@ void IRBuilder::visit(Continue& s) {
 }
 
 void IRBuilder::visit(Let& s) {
+    if (s.isFunctionDecl) {
+        // Do not traverse when it is hoisted.
+        // It is traversed in the function expr.
+        //return;   
+    }
+
     if (s.expr) {
         s.expr->accept(*this);
     } else {
         throw KMYCompileError("Uninit expr not yet.");
     }
 
-    currCtx->locals[s.symbol] = getLastValue();
+    // Don't allocate function decl again (already hoisted in func expr visit)
+    if (s.isFunctionDecl) { return; }
+
+    IRValue value = getLastValue();
+    if (currCtx->locals.find(s.symbol) == currCtx->locals.end()) {
+        currCtx->locals[s.symbol] = value;
+    } else {
+        std::cout << "Duplicate write prevented which is not very desired.\n";
+    }
+
+    // Set env right away.
+    auto it = currCtx->fnCtx->envMap.find(s.symbol);
+    if (currCtx->env && it != currCtx->fnCtx->envMap.end()) {
+
+        currCtx->currBlock->code.push_back({
+            .op = IROp::SET_ENV,
+            .args = { currCtx->env.value(), value },
+            .imm = it->second
+        });
+    }
 }
 
 void IRBuilder::visit(Return& s) {

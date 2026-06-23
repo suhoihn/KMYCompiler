@@ -1,0 +1,167 @@
+#pragma once
+
+#include "../Core/Scope.hpp"
+#include "../Core/Symbol.hpp"
+#include "../Utils/utils.hpp"
+#include "../Core/errorhandler.hpp"
+#include <iostream>
+#include "TypeInterner.hpp"
+
+// Converts TypeSymbol* to Type*
+// This may be trivial if sym->type is defined.
+// Otherwise, it walks sym->typeNode via typeSigToType
+// Forward decl.
+inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type);
+
+inline Type* resolveTypeSymbol(Scope* currScope, TypeSymbol* sym) {
+    if (!sym)
+        throw KMYCompileError("Null type symbol");
+
+    // Basic case: TypeSymbol already has type resolved.
+    if (sym->type)
+        return sym->type;
+
+    if (sym->resolving)
+        throw KMYCompileError("Cyclic type alias: " + sym->name);
+        
+    sym->resolving = true;
+        
+    // Otherwise, resolving TypeSymbol's type expression AST.
+    if (!sym->typeNode) {
+        throw KMYCompileError("Type symbol's AST is nullptr. This is a serious bug.");
+    }
+    sym->type = typeSigToType(currScope, sym->typeNode);
+
+    sym->resolving = false;
+
+    return sym->type;
+}
+
+inline TypeSymbol* lookupTypeSymbol(Scope* currScope, const std::string& name) {
+    Scope* scope = currScope;
+    printLog(LogLevel::DEBUG, "Looking up type symbol: " + name + "\n");
+
+    while (scope) {
+        auto it = scope->types.find(name);
+
+        if (it != scope->types.end()) {
+            return it->second;
+        }
+
+        scope = scope->parent;
+    }
+
+    printLog(LogLevel::DEBUG, "Type symbol not found: " + name + "\n");
+    return nullptr; // Undefined type name.
+}
+
+static std::unordered_map<std::string, Type*> primitiveToType = {
+    {"int", &Types::INT_TYPE},
+    {"double", &Types::DOUBLE_TYPE},
+    {"bool", &Types::BOOL_TYPE},
+    {"string", &Types::STRING_TYPE},
+    {"null", &Types::NULL_TYPE},
+    {"void", &Types::VOID_TYPE},
+    {"any", &Types::ANY_TYPE},
+};
+
+// Converts TypeNodePtr to Type*
+inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
+    printLog(LogLevel::DEBUG, "Converting type annotation to Type*: (TODO...)\n" );
+    
+    if (!type) {
+        throw KMYCompileError("Type annotation is null.");
+    }
+    switch (type->kind) {
+        // Primitives
+        case TypeNodeKind::NAMED: {
+            const auto& named = static_cast<NamedTypeNode&>(*type);
+
+            auto it = primitiveToType.find(named.name);
+            if (it != primitiveToType.end()) {
+                std::cout << "found!\n";
+                return it->second;
+            }
+            throw KMYCompileError("Serious error. Unhandled primitive: " + named.name);
+        }
+
+        case TypeNodeKind::ARRAY: {
+            std::cout << "ur array\n";
+            const auto& arrayTypeNode = static_cast<ArrayTypeNode&>(*type);
+            Type* elementType = typeSigToType(currScope, arrayTypeNode.elementType);
+            return TypeInterner::getArrayType(elementType);
+        }
+
+        case TypeNodeKind::FUNCTION: {
+            std::cout << "ur function\n";
+            const auto& funcTypeNode = static_cast<FunctionTypeNode&>(*type);
+            std::vector<Type*> paramTypes;
+            for (const auto& param : funcTypeNode.params) {
+                paramTypes.push_back(typeSigToType(currScope, param));
+            }
+            Type* returnType = typeSigToType(currScope, funcTypeNode.returnType);
+            // IMPORTANT NOTE: No param info is preserved. (default value, var arg etc.)
+            return TypeInterner::getFunctionType(std::move(paramTypes), returnType);
+        }
+
+        case TypeNodeKind::RECORD: {
+            std::cout << "ur record\n";
+            const auto& recordTypeNode = static_cast<RecordTypeNode&>(*type);
+            std::unordered_map<std::string, Type*> fieldTypes;
+
+            for(auto& pair : recordTypeNode.paramTypePairs) {
+                if (fieldTypes.count(pair.first)) {
+                    throw KMYCompileError(
+                        "Redeclaration of field name \"" + pair.first + "\" in type signature."
+                    );
+                }
+                fieldTypes[pair.first] = typeSigToType(currScope, pair.second);
+            }
+
+            return TypeInterner::getStructualType(std::move(fieldTypes));
+        }
+        
+        case TypeNodeKind::SCOPED: {
+            std::cout << "ur scoped\n";
+            const auto& scopedTypeNode = static_cast<ScopedTypeNode&>(*type);
+
+            const std::string& firstPart = scopedTypeNode.scopeParts[0];
+            std::cout << firstPart << " is the firstpart.\n";
+            TypeSymbol* typeSym = lookupTypeSymbol(currScope, firstPart);
+            if (!typeSym) {
+                throw KMYCompileError("Unknown type symbol \"" + firstPart + "\" in scoped type");
+            }
+
+            Type* currType = resolveTypeSymbol(currScope, typeSym);
+
+            // start from SECOND element
+            for (size_t i = 1; i < scopedTypeNode.scopeParts.size(); i++) {
+                const std::string& currPart = scopedTypeNode.scopeParts[i];
+
+                if (currType->kind != TypeKind::INSTANCE) {
+                    throw KMYCompileError("Only aggregates support nested ::");
+                }
+
+                auto aggType = static_cast<InstanceType*>(currType);
+
+                std::cout << "enummap contains:\n";
+                for (auto& [f, _] : aggType->enumMap) {
+                    std::cout << f << "\n";
+                }
+
+                auto it = aggType->enumMap.find(currPart);
+                if (it == aggType->enumMap.end()) {
+                    throw KMYCompileError(
+                        "No type symbol \"" + currPart + "\" found in " + aggType->name
+                    );
+                }
+
+                currType = it->second->type;
+            }
+
+            return currType;
+        }
+    }
+
+    throw KMYCompileError("Severe: Unknown type node kind.");
+}

@@ -12,7 +12,7 @@ struct IRInstr {
     std::optional<IRValue> dst;
 
     std::vector<IRValue> args;
-    std::vector<IRCapture> captures;
+    std::optional<IRValue> env;
 
     int64_t imm;
 };
@@ -37,6 +37,19 @@ inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
             << instr.imm
             << ")";
 
+            if (!instr.args.empty()) {
+                os << " ";
+
+                for (size_t i = 0; i < instr.args.size(); i++) {
+                    os << instr.args[i];
+
+                    if (i + 1 < instr.args.size()) {
+                        os << ", ";
+                    }
+                }
+            }
+
+            /*
             if (!instr.captures.empty()) {
                 os << " captures [";
 
@@ -52,6 +65,7 @@ inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
 
                 os << "]";
             }
+            */
 
             break;
         }
@@ -65,6 +79,27 @@ inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
         case IROp::UPVALUE:
             os << instr.dst.value() 
                << " = upvalue "
+               << instr.imm;
+            break;
+        
+        case IROp::ALLOC_ENV:
+            os << instr.dst.value() 
+               << " = alloc_env of size "
+               << instr.imm;
+            break;
+        
+        case IROp::SET_ENV:
+            os << toString(instr.op)
+               << " "
+               << instr.args[0] << ", "
+               << instr.imm << ", "
+               << instr.args[1];
+            break;
+
+        case IROp::GET_ENV:
+            os << instr.dst.value() 
+               << " = " << toString(instr.op) << " "
+               << instr.args[0] << ", "
                << instr.imm;
             break;
             
