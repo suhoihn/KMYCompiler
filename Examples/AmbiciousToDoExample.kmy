@@ -1,0 +1,12 @@
+// This will compile both in VM and CFG IR
+// But fail during execution. (It will read x as undefined.)
+// We need some definite assignment analysis(?) like in C++++, whoops, C#
+// It only matters for reading undefined UPVALUES (locals are handled obviously.)
+outer();
+let x = 42;
+
+fun outer() {
+    print(x);
+}
+
+print(outer);

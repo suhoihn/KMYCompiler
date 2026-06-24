@@ -1,23 +1,29 @@
-typealias C = B;
+typealias C = B; // TODO: This is not handled
 typealias B = A;
 typealias A = C;
+
+let g: ()->any;
+let f = fun() { g(); };
+g = fun() { f(); }; // Error (or runtime TDZ)
+
+// TODO: This bypasses type check.
+// Good news: C# has an elegant solution to this
+// At all call site, CHECK WHETHER ALL VARS ARE ALLOCED.
+// Possibly on pass 3? (While resolving names)
+// Perhaps a dedicated initialisation control pass? (after closure analysis) 
+
+// For each block:
+//   IN[B]  = vars definitely assigned on entry
+//    OUT[B] = vars definitely assigned on exit
+
+//OUT[B] = GEN[B] ∪ (IN[B] - KILL[B])
+//IN[B]  = intersection of predecessors' OUTs
 
 let x = 42;
 outer();
 
 fun outer() {
-    print("1. I am outer.");
-    let y = middle();
-    fun middle() {
-        fun inner() {
-            x += x;
-            print("3. I am inner.");
-        }
-        return inner;
-    }
-    print("2. I am middle.");
-    y();
+    print(x);
 }
 
-print(x);
-print("Am I 84?");
+print(outer);

@@ -398,6 +398,14 @@ void Compiler::visit(FunctionExpr& e) {
     int fnIndex = allocateFuncProto(fnProto);
     e.fnProtoIdx = fnIndex;
     
+    // 7. Emit closure (NOT MAKE_FUNCTION)
+    
+    if (currCtx) {
+        if (!isCompilingMethod) {
+            emit(Opcode::MAKE_CLOSURE, fnIndex);
+        }
+    }
+    
     delete temp;
     std::cout << "function compiled" << std::endl;
 }
