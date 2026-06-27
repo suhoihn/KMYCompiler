@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
+#include <variant>
 #include "IROp.hpp"
 #include "IRValue.hpp"
 
@@ -12,9 +13,11 @@ struct IRInstr {
     std::optional<IRValue> dst;
 
     std::vector<IRValue> args;
-    std::optional<IRValue> env;
+    //std::optional<IRValue> env;
 
-    int64_t imm;
+    ConstValue literal; // For actual literals
+
+    int64_t imm; // For arguments of ints (e.g, env slot, func id, param id)
 };
 
 inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {

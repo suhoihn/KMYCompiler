@@ -1015,6 +1015,8 @@ ExprPtr Parser::parse_functionExpr() {
 
                 Token name = consume(TokenType::Identifier, "Expected an identifier");
 
+                TypeNodePtr varargType = match(TokenType::Colon) ? parse_type() : nullptr;
+
                 if (!check(TokenType::RightParen)) {
                     throw KMYParseError(
                         "Variadic parameter should come at the end of the parameter list. Didn't see ')'",
@@ -1023,8 +1025,6 @@ ExprPtr Parser::parse_functionExpr() {
                         previous().endIdx
                     );
                 }
-
-                TypeNodePtr varargType = match(TokenType::Colon) ? parse_type() : nullptr;
 
                 params.push_back(
                     Parameter(std::move(varargType), name.lexeme, true, isMutable, false, nullptr) 
