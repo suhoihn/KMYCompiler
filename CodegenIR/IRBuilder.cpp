@@ -6,13 +6,14 @@
 #include "IRFunction.hpp"
 #include <iostream>
 
-static bool hasTerminator(BasicBlock* bb) {
+static inline bool hasTerminator(BasicBlock* bb) {
     return bb->term.has_value();
 }
 
 IRBuilder::IRBuilder(FunctionExprPtr program)
     : program(program) 
 {
+
 }
 
 
@@ -140,6 +141,16 @@ static IROp binaryOpToIROp(BinaryOp op) {
     throw KMYCompileError("Unknown BinaryOp");
 }
 
+static IROp unaryOpToIROp(UnaryOp op) {
+    switch (op) {
+        case UnaryOp::Minus:      return IROp::NEG;
+        case UnaryOp::BitNot:     return IROp::BIT_NOT;
+        case UnaryOp::LogicalNot: return IROp::LOGICAL_NOT;
+    }
+
+    throw KMYCompileError("Unknown UnaryOp");
+}
+
 void IRBuilder::visit(BinaryExpr& e) {
     e.left->accept(*this);
     IRValue lhs = getLastValue();
@@ -159,7 +170,19 @@ void IRBuilder::visit(BinaryExpr& e) {
 }
 
 void IRBuilder::visit(UnaryExpr& e) {
-    throw KMYCompileError("unary Not yet");
+    e.operand->accept(*this);
+    IRValue v = getLastValue();
+
+    IRValue dst = makeValue(e.type);
+
+    IRInstr instr{
+        .op = unaryOpToIROp(e.op),
+        .dst = dst,
+        .args = { v }
+    };
+    currCtx->currBlock->code.push_back(instr);
+
+    setLastValue(dst);
 }
 
 void IRBuilder::visit(Assignment& e) {
@@ -387,6 +410,8 @@ void IRBuilder::visit(FunctionExpr& e) {
 
 
     // Incoming env from parent
+    // Only introduce env if there is a free variable in the function
+    // i.e., if upvalues are present.
     std::optional<IRValue> incomingEnv;
     if (!e.functionContext->upvalues.empty()) {
         incomingEnv = makeValue(nullptr);
@@ -433,7 +458,7 @@ void IRBuilder::visit(FunctionExpr& e) {
         currCtx->currBlock->code.push_back(instr);
     }
 
-    // Introduce upvalues
+    // Introduce upvalues (They are accessed via incoming env with given env slot.)
     // They are assigned on function entry from its env.
     for (int i = 0; i < e.functionContext->upvalues.size(); i++) {
         auto& up = e.functionContext->upvalues[i];
@@ -441,11 +466,13 @@ void IRBuilder::visit(FunctionExpr& e) {
 
         currCtx->upvalues[up.symbol] = v; // Needed? maybe
 
+        assert(e.functionContext->parent != nullptr); // Having upvalue means incoming env exists but still...
+        assert(e.functionContext->parent->envMap.count(up.symbol) > 0);
         IRInstr instr {
             .op = IROp::GET_ENV,    
             .dst = v,
             .args = { incomingEnv.value() },
-            .imm = up.index // Upvalue slot allocated from pass 4.
+            .imm = e.functionContext->parent->envMap.at(up.symbol) 
         };
 
         currCtx->currBlock->code.push_back(instr);
@@ -467,20 +494,22 @@ void IRBuilder::visit(FunctionExpr& e) {
         }
     }
 
-    // Hoist function declarations (in opposite order)
+    // Hoist function declarations (in opposite order?)
     for (auto& [funcDeclSym, funcDeclExpr] : e.functionContext->funcDecls) {
         fnValue = makeValue(e.type);
-        if (currCtx) {
-            assert(currCtx->env.has_value());
+        //assert(currCtx->env.has_value());
 
-            IRInstr instr {
-                .op = IROp::FUNC_LABEL,
-                .dst = fnValue, 
-                .args = { currCtx->env.value() }, // Env to use
-                .imm = funcDeclExpr->functionId // TODO: Don't store the whole expr...
-            };
-            currCtx->currBlock->code.push_back(instr);
-        }
+        std::vector<IRValue> arg = {};
+        if (currCtx->env.has_value()) { arg.push_back(currCtx->env.value()); }
+
+        IRInstr instr {
+            .op = IROp::FUNC_LABEL,
+            .dst = fnValue, 
+            .args = arg, // Env to use
+            .imm = funcDeclExpr->functionId // TODO: Don't store the whole expr...
+        };
+        currCtx->currBlock->code.push_back(instr);
+        
         //funcDeclExpr->accept(*this);
 
         if (currCtx->locals.find(funcDeclSym) == currCtx->locals.end()) {
@@ -490,9 +519,9 @@ void IRBuilder::visit(FunctionExpr& e) {
         }
 
         auto it = currCtx->fnCtx->envMap.find(funcDeclSym);
-        assert(currCtx->env.has_value());
         
         if (it != currCtx->fnCtx->envMap.end()) {
+            assert(currCtx->env.has_value());
             currCtx->currBlock->code.push_back({
                 .op = IROp::SET_ENV,
                 .args = { currCtx->env.value(), fnValue },
@@ -700,7 +729,6 @@ void IRBuilder::visit(While& s) {
     }
 
     currCtx->loopStack.pop_back();
-    connectBlock(currCtx->currBlock, condBB);
 
     currCtx->currBlock = exitBB;
 }
@@ -724,7 +752,8 @@ void IRBuilder::visit(Break& s) {
 
     connectBlock(currCtx->currBlock, loop.breakTarget);
 
-    currCtx->currBlock = makeBlock();
+    // Return to the upper block
+    currCtx->currBlock = loop.breakTarget;
 }
 
 void IRBuilder::visit(Continue& s) {
@@ -741,7 +770,7 @@ void IRBuilder::visit(Continue& s) {
     connectBlock(currCtx->currBlock, loop.continueTarget);
 
     // current block is dead after continue
-    currCtx->currBlock = makeBlock();
+    currCtx->currBlock = loop.continueTarget;
 }
 
 void IRBuilder::visit(Let& s) {

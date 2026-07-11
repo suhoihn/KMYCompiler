@@ -2,9 +2,9 @@ typealias C = B; // TODO: This is not handled
 typealias B = A;
 typealias A = C;
 
-let g: ()->any;
-let f = fun() { g(); };
-g = fun() { f(); }; // Error (or runtime TDZ)
+//let g: ()->any;
+//let f = fun() { g(); };
+//g = fun() { f(); }; // Error (or runtime TDZ)
 
 // TODO: This bypasses type check.
 // Good news: C# has an elegant solution to this
@@ -19,11 +19,17 @@ g = fun() { f(); }; // Error (or runtime TDZ)
 //OUT[B] = GEN[B] ∪ (IN[B] - KILL[B])
 //IN[B]  = intersection of predecessors' OUTs
 
-let x = 42;
-outer();
-
-fun outer() {
-    print(x);
+fun f(): void {
+    let x = 3;
+    let w = 5;
+    fun g(): (int)->void {
+        let y = 4;
+        print(w);
+        fun h(t: int): void {
+            print(y + x + w + t);
+        }
+        return h;
+    }
+    g()(10); // Allowed thanks to hoisting.
 }
-
-print(outer);
+f();

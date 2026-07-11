@@ -241,6 +241,9 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
 
     int envSlot = 0;
 
+    // Env genreation.
+    // Very simple principle: if children closures capture any of my locals or upvalues,
+    // Give it an envSlot.
     // captured locals
     for (auto& local : currCtx->locals) {
         if (local.captured) {

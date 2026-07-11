@@ -167,10 +167,10 @@ void SymbolScopeBuilder::visit(Let& s) {
 // Aggregate has a type symbol AND a scope.
 // Each field member also has a var symbol.
 void SymbolScopeBuilder::visit(Aggregate& s) {
-    // Declare class in outer scope (maybe not.)
+    // Declare class in outer scope (the scope where aggregate is declared)
     // VarSymbol* sym = declareVar(s.name, false);
 
-    // class is immutable type?
+    // class is an immutable type?
     auto sym = declareType(s.name, false);
 
     if (!sym) {
@@ -202,7 +202,7 @@ void SymbolScopeBuilder::visit(Aggregate& s) {
         member.symbol = fieldSym;
         
         if (member.initialiser)
-        member.initialiser->accept(*this);
+            member.initialiser->accept(*this);
     }
     
     // Methods

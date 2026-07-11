@@ -30,6 +30,11 @@ enum class IROp {
     LEFT_SHIFT,
     RIGHT_SHIFT,
 
+    // Unary
+    NEG,
+    BIT_NOT,
+    LOGICAL_NOT,
+
     PRINT,
 
     FUNC_LABEL, // Takes args (which are stored as upvalues) and imm (function id)

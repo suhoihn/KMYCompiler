@@ -43,7 +43,7 @@ enum class UnaryOp {
     // Bitwise
     BitNot, // ~
 
-    // Optional future additions:
+    // TODO: Optional future additions:
     // PreIncrement,   // ++x
     // PreDecrement,   // --x
     // PostIncrement,  // x++
