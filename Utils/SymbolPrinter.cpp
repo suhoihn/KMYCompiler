@@ -73,6 +73,18 @@ std::string typeToString(Type* type) {
         case TypeKind::ENUM:
             return "enum";
 
+        case TypeKind::POINTER: {
+            auto p = static_cast<const PointerType*>(type);
+
+            return typeToString(p->pointee) + "*";
+        }
+        case TypeKind::CELL: {
+            auto p = static_cast<const CellType*>(type);
+
+            return "Cell<" + typeToString(p->pointee) + ">";
+        }
+
+
         default:
             return "SEVERE: UNCLASSIFIED TYPE";
     }

@@ -7,16 +7,19 @@
 #include "IRInstr.hpp"
 
 // Forward decl.    
+template<typename Instr>
 struct BasicBlock;
 
+template<typename Instr>
 struct JumpTerm {
-    BasicBlock* target;
+    BasicBlock<Instr>* target;
 };
 
+template<typename Instr>
 struct BranchTerm {
     IRValue cond;
-    BasicBlock* trueTarget;
-    BasicBlock* falseTarget;
+    BasicBlock<Instr>* trueTarget;
+    BasicBlock<Instr>* falseTarget;
 };
 
 struct ReturnTerm {
@@ -25,31 +28,34 @@ struct ReturnTerm {
 
 struct HaltTerm {};
 
+template<typename Instr>
 using Terminator =
     std::variant<
-        JumpTerm,
-        BranchTerm,
+        JumpTerm<Instr>,
+        BranchTerm<Instr>,
         ReturnTerm,
         HaltTerm
 >;
 
-
+template<typename Instr>
 struct BasicBlock {
     int id;
-    std::optional<Terminator> term = std::nullopt;
+    std::optional<Terminator<Instr>> term = std::nullopt;
 
-    std::vector<IRInstr> code;    
+    std::vector<Instr> code;    
     
-    std::vector<BasicBlock*> preds; // Optional graph
-    std::vector<BasicBlock*> succs; // Optional graph
+    std::vector<BasicBlock<Instr>*> preds; // Optional graph
+    std::vector<BasicBlock<Instr>*> succs; // Optional graph
 };
 
-inline std::ostream& operator<<(std::ostream& os, const JumpTerm& t) {
+template<typename Instr>
+inline std::ostream& operator<<(std::ostream& os, const JumpTerm<Instr>& t) {
     os << "jump B" << t.target->id;
     return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const BranchTerm& t) {
+template<typename Instr>
+inline std::ostream& operator<<(std::ostream& os, const BranchTerm<Instr>& t) {
     os << "branch v" << t.cond.id
        << ", B" << t.trueTarget->id
        << ", B" << t.falseTarget->id;
@@ -71,7 +77,8 @@ inline std::ostream& operator<<(std::ostream& os, const HaltTerm& t) {
     return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const Terminator& term) {
+template<typename Instr>
+inline std::ostream& operator<<(std::ostream& os, const Terminator<Instr>& term) {
     std::visit([&](const auto& t) {
         os << t;
     }, term);
@@ -79,7 +86,8 @@ inline std::ostream& operator<<(std::ostream& os, const Terminator& term) {
     return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const BasicBlock& bb) {
+template<typename Instr>
+inline std::ostream& operator<<(std::ostream& os, const BasicBlock<Instr>& bb) {
     os << "B" << bb.id << ":\n";
 
     for (const auto& instr : bb.code) {

@@ -9,8 +9,21 @@
 #include "../Core/Ast.hpp"
 
 struct LoopContext {
-    BasicBlock* continueTarget;
-    BasicBlock* breakTarget;
+    BasicBlock<IRInstr>* continueTarget;
+    BasicBlock<IRInstr>* breakTarget;
+};
+
+enum class StorageType {
+    SSA,
+    STACK,
+    CELL,
+};
+
+struct IRLocalInfo {
+    IRValue value;
+    bool isCell = false; // If this local is a cell.
+    
+    StorageType storageType = StorageType::SSA; // TODO: Later consider timing when to promote to cell.
 };
 
 // This is temporary! Only lived in this file.
@@ -20,7 +33,7 @@ struct IRCodegenFnCtx {
 
     // Locals
     IRValue lastValue;
-    std::unordered_map<VarSymbol*, IRValue> locals;
+    std::unordered_map<VarSymbol*, IRLocalInfo> locals;
     
     // Upvalues
     std::unordered_map<VarSymbol*, IRValue> upvalues;
@@ -30,7 +43,7 @@ struct IRCodegenFnCtx {
     
     // Blocks
     int nextBlockId = 0;
-    BasicBlock* currBlock = nullptr;
+    BasicBlock<IRInstr>* currBlock = nullptr;
 
     // Env
     std::optional<IRValue> env; // The env this function is making for children (if any)
@@ -44,7 +57,7 @@ class IRBuilder : public Visitor {
 public:
     IRBuilder(FunctionExprPtr program);
 
-    std::vector<IRFunction*> compile();
+    std::vector<IRFunction<IRInstr>*> compile();
 
 private:
     // Readonly AST
@@ -55,8 +68,8 @@ private:
     IRCodegenFnCtx* currCtx = nullptr;
 
     // Blocks
-    BasicBlock* makeBlock();
-    void connectBlock(BasicBlock* from, BasicBlock* to);
+    BasicBlock<IRInstr>* makeBlock();
+    void connectBlock(BasicBlock<IRInstr>* from, BasicBlock<IRInstr>* to);
 
     // Code
     IRValue makeValue(Type* type);
@@ -65,8 +78,8 @@ private:
     inline void setLastValue(IRValue value);
 
     // Functions
-    IRFunction* currFunc = nullptr;
-    std::vector<IRFunction*> functions;
+    IRFunction<IRInstr>* currFunc = nullptr;
+    std::vector<IRFunction<IRInstr>*> functions;
 
     // Expressions
     void visit(Literal& e) override;

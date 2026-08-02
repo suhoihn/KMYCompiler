@@ -105,6 +105,24 @@ inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
                << instr.args[0] << ", "
                << instr.imm;
             break;
+        
+        case IROp::ALLOC_CELL_INIT:
+            os << instr.dst.value() 
+               << " = " << toString(instr.op) << " "
+               << instr.args[0];
+            break;
+        
+        case IROp::STORE_CELL:
+            os << toString(instr.op) << " "
+               << instr.args[0] << ", "
+               << instr.args[1];
+            break;
+        
+        case IROp::LOAD_CELL:
+            os << instr.dst.value()
+               << " = " << toString(instr.op) << " "
+               << instr.args[0];
+            break;
             
         case IROp::RETURN: {
             os << "return ";

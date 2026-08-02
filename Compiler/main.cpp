@@ -18,6 +18,7 @@
 #include "../CodegenIR/IRBuilder.hpp" // Pass 6
 #include <cstring>
 #include <sstream>
+#include "../MachineIR/MIRBuilder.hpp" // Pass X
 
 const std::string RED = "\033[31m";
 const std::string RESET = "\033[0m";
@@ -245,6 +246,13 @@ int main(int argc, char *argv[]) {
             IRBuilder builder(program);
             auto funcs = builder.compile();
             for (const auto& func: funcs) {
+                std::cout << *func << "\n";
+            }
+
+            std::cout << "[DEBUG]: CFG IR generation done. Ready to lower to MIR." << std::endl;
+            MIRBuilder mirBuilder(funcs);
+            auto mirFuncs = mirBuilder.lower();
+            for (const auto& func: mirFuncs) {
                 std::cout << *func << "\n";
             }
             return 0;

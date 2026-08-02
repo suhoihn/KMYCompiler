@@ -26,6 +26,7 @@ fun f(): void {
         let y = 4;
         print(w);
         fun h(t: int): void {
+            w += 1;
             print(y + x + w + t);
         }
         return h;

@@ -6,18 +6,19 @@
 #include "IRFunction.hpp"
 #include <iostream>
 
-static inline bool hasTerminator(BasicBlock* bb) {
+using HIRBlock = BasicBlock<IRInstr>;
+using HIRFunction = IRFunction<IRInstr>;
+
+static inline bool hasTerminator(HIRBlock* bb) {
     return bb->term.has_value();
 }
 
 IRBuilder::IRBuilder(FunctionExprPtr program)
     : program(program) 
-{
-
-}
+{}
 
 
-static IRValue getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
+static IRLocalInfo getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
     auto& localMap = fnCtx->locals;
 
     auto it = localMap.find(sym);
@@ -28,7 +29,7 @@ static IRValue getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
     throw KMYCompileError("SERIOUS ERROR. UNDEFINED VAR");
 }
 
-std::vector<IRFunction*> IRBuilder::compile() {
+std::vector<HIRFunction*> IRBuilder::compile() {
     assert(program);
 
     program->accept(*this);
@@ -47,13 +48,13 @@ IRValue IRBuilder::makeValue(Type* type) {
     return IRValue{currCtx->nextId++, type};
 }
 
-BasicBlock* IRBuilder::makeBlock() {
-    auto* newBlock = new BasicBlock{currCtx->nextBlockId++};
+HIRBlock* IRBuilder::makeBlock() {
+    auto* newBlock = new HIRBlock{currCtx->nextBlockId++};
     currFunc->blocks.push_back(newBlock);
     return newBlock;
 }
 
-void IRBuilder::connectBlock(BasicBlock* from, BasicBlock* to) {
+void IRBuilder::connectBlock(HIRBlock* from, HIRBlock* to) {
     from->succs.push_back(to);
     to->preds.push_back(from);
 }
@@ -103,12 +104,38 @@ void IRBuilder::visit(RecordLiteral& e) {
 void IRBuilder::visit(Variable& e) {
     auto upvalueIt = currCtx->upvalues.find(e.symbol);
     if (upvalueIt != currCtx->upvalues.end()) {
-        setLastValue(upvalueIt->second);
+        IRValue cell = upvalueIt->second;
+
+        IRValue loaded = makeValue(e.type);
+
+        currCtx->currBlock->code.push_back({
+            .op = IROp::LOAD_CELL,
+            .dst = loaded,
+            .args = {cell}
+        });
+
+        setLastValue(loaded);
         return;
     }
 
     // Get from local
-    setLastValue( getValueFromLocal(currCtx, e.symbol) );
+    IRLocalInfo localInfo = getValueFromLocal(currCtx, e.symbol);
+
+    if (localInfo.isCell) {
+
+        IRValue loaded = makeValue(e.type);
+
+        currCtx->currBlock->code.push_back({
+            .op = IROp::LOAD_CELL,
+            .dst = loaded,
+            .args = {localInfo.value}
+        });
+
+        setLastValue(loaded);
+
+    } else {
+        setLastValue(localInfo.value);
+    }
 
     // assert(false && "Variable not found in locals or upvalues");
 }
@@ -221,18 +248,39 @@ void IRBuilder::visit(Assignment& e) {
         // UNLESS it is an upvalue!
         // Emit SET_ENV for mutable upvalues (like x = 3 where x is not local.)
         if (currCtx->locals.count(var->symbol)) {
-            currCtx->locals[var->symbol] = getLastValue();
+            IRLocalInfo varInfo = getValueFromLocal(currCtx, var->symbol);
+            if (varInfo.isCell) {
+                currCtx->currBlock->code.push_back({
+                    .op = IROp::STORE_CELL,
+                    .args = {
+                        varInfo.value,
+                        getLastValue()
+                    }
+                });
+
+            } else {
+                currCtx->locals[var->symbol].value = getLastValue();
+            }
             return;
         }
         
         // Upvalue mutation
         assert(currCtx->incomingEnv.has_value());
-        IRInstr instr{
-            .op = IROp::SET_ENV,
-            .args = { currCtx->incomingEnv.value(), getLastValue() }
-        };
-        currCtx->currBlock->code.push_back(instr);
+        
+        // Should have a parent that provides addr to upvalue.
+        std::cout << var->name << std::endl;
+        std::cout << "= " << getLastValue() << std::endl;
+        assert(currCtx->parent);
 
+        IRValue cell = currCtx->upvalues[var->symbol];
+
+        currCtx->currBlock->code.push_back({
+            .op = IROp::STORE_CELL,
+            .args = {
+                cell,
+                getLastValue()
+            }
+        });
 
         return;
     }
@@ -373,29 +421,32 @@ static void printFunctionContext(FunctionContext* fnCtx) {
 void IRBuilder::visit(FunctionExpr& e) {
     
     IRValue fnValue;
-    std::optional<IRValue> upperEnv;
     
     std::cout << "NEW FUNC " << e.functionId << "\n";
     printFunctionContext(e.functionContext);
 
-    // Context switch
+    // Context switch to a new function.
     auto oldCtx = currCtx;
-    IRFunction* oldFn = currFunc;
+    HIRFunction* oldFn = currFunc;
 
     currCtx = new IRCodegenFnCtx{};
+    currCtx->parent = oldCtx;   
     currCtx->fnCtx = e.functionContext;
 
-    currFunc = new IRFunction{ e.functionId, static_cast<FunctionType*>(e.type) };
+    currFunc = new HIRFunction{ 
+        .functionId = e.functionId, 
+        .funcType = static_cast<FunctionType*>(e.type) 
+    };
 
-    BasicBlock* entry = makeBlock();
+    HIRBlock* entry = makeBlock();
     // entry has no preds!
 
     currFunc->entry = entry;
     currCtx->currBlock = entry;
 
-    // Allocate my env if children capture my locals or upvalues
+    // Allocate my env (for children) if children capture my locals or upvalues
     if (e.functionContext->envSize > 0) {
-        IRValue env = makeValue(nullptr);
+        IRValue env = makeValue(new PointerType(&Types::VOID_TYPE));
 
         currCtx->env = env;
 
@@ -414,8 +465,8 @@ void IRBuilder::visit(FunctionExpr& e) {
     // i.e., if upvalues are present.
     std::optional<IRValue> incomingEnv;
     if (!e.functionContext->upvalues.empty()) {
-        incomingEnv = makeValue(nullptr);
-        currCtx->incomingEnv = incomingEnv;
+        incomingEnv = makeValue(new PointerType(&Types::VOID_TYPE));
+        currCtx->incomingEnv = incomingEnv; // Unused?
 
         IRInstr instr{
             .op  = IROp::INTRODUCE_ENV,
@@ -431,7 +482,7 @@ void IRBuilder::visit(FunctionExpr& e) {
         IRValue v = makeValue(e.params[i].symbol->type);
 
         // Allow locals (function body) to see this param.
-        currCtx->locals[e.params[i].symbol] = v;
+        currCtx->locals[e.params[i].symbol] = IRLocalInfo{ .value = v, .isCell = false };
 
         // Instructing the function to use the param
         /*
@@ -462,11 +513,12 @@ void IRBuilder::visit(FunctionExpr& e) {
     // They are assigned on function entry from its env.
     for (int i = 0; i < e.functionContext->upvalues.size(); i++) {
         auto& up = e.functionContext->upvalues[i];
-        IRValue v = makeValue(up.symbol->type);
+        IRValue v = makeValue(new CellType(up.symbol->type));
 
-        currCtx->upvalues[up.symbol] = v; // Needed? maybe
+        currCtx->upvalues[up.symbol] = v; // Needed for varaible upvalue lookup.
 
-        assert(e.functionContext->parent != nullptr); // Having upvalue means incoming env exists but still...
+        // Having upvalue means incoming env and parent exists!
+        assert(e.functionContext->parent != nullptr); 
         assert(e.functionContext->parent->envMap.count(up.symbol) > 0);
         IRInstr instr {
             .op = IROp::GET_ENV,    
@@ -483,9 +535,11 @@ void IRBuilder::visit(FunctionExpr& e) {
             // We need to put it in env so that the children can see my upvalues.
             
             assert(e.functionContext->envMap.count(up.symbol) > 0);
+            
+            // Here, v is already a pointer from parent's env. so a copy should occur.
+            // This is essentially flattening environment.
             IRInstr instr {
                 .op = IROp::SET_ENV,    
-                .dst = v,
                 .args = { currCtx->env.value(), v },
                 .imm = e.functionContext->envMap.at(up.symbol)
             };
@@ -512,16 +566,20 @@ void IRBuilder::visit(FunctionExpr& e) {
         
         //funcDeclExpr->accept(*this);
 
+        // Quirky! TODO!!!
         if (currCtx->locals.find(funcDeclSym) == currCtx->locals.end()) {
-            currCtx->locals[funcDeclSym] = fnValue;
+            currCtx->locals[funcDeclSym] = IRLocalInfo{ .value = fnValue, .isCell = false };
         } else {
             std::cout << "Duplicate write prevented which is not very desired.\n";
         }
 
         auto it = currCtx->fnCtx->envMap.find(funcDeclSym);
         
+        // If the hoisted function (closure) itself is needed from children closure,
+        // Set it on env (func/closure is also a pointer, so copy occurs.)
         if (it != currCtx->fnCtx->envMap.end()) {
             assert(currCtx->env.has_value());
+            std::cout << "Hoisted function " << funcDeclSym->name << " is captured by children. Setting it on env.\n";
             currCtx->currBlock->code.push_back({
                 .op = IROp::SET_ENV,
                 .args = { currCtx->env.value(), fnValue },
@@ -536,36 +594,12 @@ void IRBuilder::visit(FunctionExpr& e) {
     }
     std::cout << "locals so far\n";
     for (auto& [sym, v] : currCtx->locals) {
-        std::cout << sym->name << " -> " << v << "\n";
+        std::cout << sym->name << " -> " << v.value << " (isCell: " << v.isCell << ")\n";
     }
 
     
     // body
-    e.body->accept(*this);
-    
-    /*
-    // populate MY env
-    if (currCtx->env) {
-        // CONTINUE FROM HERE
-        // outer middle inner capture fail.
-        for (auto& local : e.functionContext->locals) {
-
-            if (!local.captured)
-                continue;
-            std::cout << "searching " << local.sym->name << "\n";
-            currCtx->currBlock->code.push_back({
-                .op   = IROp::SET_ENV,
-                .args = {
-                    currCtx->env.value(),
-                    // This causes error.
-                    currCtx->locals.at(local.sym)
-                },
-                .imm = e.functionContext->envMap.at(local.sym)
-            });
-        }
-    }
-    */
-    
+    e.body->accept(*this);    
 
     // implicit return
     if (!hasTerminator(currCtx->currBlock)) {
@@ -573,7 +607,7 @@ void IRBuilder::visit(FunctionExpr& e) {
     }
 
     functions.push_back(currFunc);
-
+    currFunc->lastValueId = currCtx->nextId;
 
     // Prevent currCtx from being nullptr (top level entry func)
     if (oldCtx) {
@@ -626,11 +660,11 @@ void IRBuilder::visit(If& s) {
     */
     
     // Note that order matters!!
-    BasicBlock* thenBB  = makeBlock();
-    BasicBlock* mergeBB = makeBlock();
+    HIRBlock* thenBB  = makeBlock();
+    HIRBlock* mergeBB = makeBlock();
 
     // Note that else block is just final block if else branch doesn't exist.
-    BasicBlock* elseBB = mergeBB;
+    HIRBlock* elseBB = mergeBB;
 
     if (s.elsebranch) {
         elseBB = makeBlock();
@@ -640,7 +674,7 @@ void IRBuilder::visit(If& s) {
     s.condition->accept(*this);
     IRValue cond = getLastValue();
 
-    currCtx->currBlock->term = BranchTerm{
+    currCtx->currBlock->term = BranchTerm<IRInstr>{
         cond,
         thenBB,
         elseBB
@@ -657,7 +691,7 @@ void IRBuilder::visit(If& s) {
     // After thenBranch, the terminator MAY exist (e.g. return)
     // so we should be careful not to overwrite it.
     if (!hasTerminator(currCtx->currBlock)) {
-        currCtx->currBlock->term = JumpTerm{mergeBB};
+        currCtx->currBlock->term = JumpTerm<IRInstr>{mergeBB};
         connectBlock(currCtx->currBlock, mergeBB);
     }
 
@@ -670,7 +704,7 @@ void IRBuilder::visit(If& s) {
 
         // Similar logic to thenBranch.
         if (!hasTerminator(currCtx->currBlock)) {
-            currCtx->currBlock->term = JumpTerm{mergeBB};
+            currCtx->currBlock->term = JumpTerm<IRInstr>{mergeBB};
             connectBlock(currCtx->currBlock, mergeBB);
         }
     }
@@ -698,11 +732,11 @@ void IRBuilder::visit(While& s) {
     B3(exit):
         ...
     */
-    BasicBlock* condBB = makeBlock();
-    BasicBlock* bodyBB = makeBlock();
-    BasicBlock* exitBB = makeBlock();
+    HIRBlock* condBB = makeBlock();
+    HIRBlock* bodyBB = makeBlock();
+    HIRBlock* exitBB = makeBlock();
 
-    currCtx->currBlock->term = JumpTerm{condBB};
+    currCtx->currBlock->term = JumpTerm<IRInstr>{condBB};
 
     connectBlock(currCtx->currBlock, condBB);
 
@@ -713,7 +747,7 @@ void IRBuilder::visit(While& s) {
     IRValue cond = getLastValue();
 
     currCtx->currBlock->term =
-        BranchTerm{cond, bodyBB, exitBB};
+        BranchTerm<IRInstr>{cond, bodyBB, exitBB};
 
     connectBlock(condBB, bodyBB);
     connectBlock(condBB, exitBB);
@@ -724,7 +758,7 @@ void IRBuilder::visit(While& s) {
     s.body->accept(*this);
 
     if (!hasTerminator(currCtx->currBlock)) {
-        currCtx->currBlock->term = JumpTerm{condBB};
+        currCtx->currBlock->term = JumpTerm<IRInstr>{condBB};
         connectBlock(currCtx->currBlock, condBB);
     }
 
@@ -746,7 +780,7 @@ void IRBuilder::visit(Break& s) {
 
     auto& loop = currCtx->loopStack.back();
 
-    currCtx->currBlock->term = JumpTerm{
+    currCtx->currBlock->term = JumpTerm<IRInstr>{
         loop.breakTarget
     };
 
@@ -763,7 +797,7 @@ void IRBuilder::visit(Continue& s) {
 
     auto& loop = currCtx->loopStack.back();
 
-    currCtx->currBlock->term = JumpTerm{
+    currCtx->currBlock->term = JumpTerm<IRInstr>{
         loop.continueTarget
     };
 
@@ -791,20 +825,35 @@ void IRBuilder::visit(Let& s) {
 
     IRValue value = getLastValue();
     if (currCtx->locals.find(s.symbol) == currCtx->locals.end()) {
-        currCtx->locals[s.symbol] = value;
+        currCtx->locals[s.symbol] = IRLocalInfo{ .value = value, .isCell = false };
     } else {
         std::cout << "Duplicate write prevented which is not very desired.\n";
     }
 
     // Set env right away.
+    // This decl is captured from children closure.
+    // This time, we need to copy the POINTER of this value.
     auto it = currCtx->fnCtx->envMap.find(s.symbol);
     if (currCtx->env && it != currCtx->fnCtx->envMap.end()) {
 
+        IRValue cell = makeValue(
+            new CellType(value.type)
+        );
+
+        currCtx->currBlock->code.push_back({
+            .op = IROp::ALLOC_CELL_INIT,
+            .dst = cell,
+            .args = { value }
+        });
+
         currCtx->currBlock->code.push_back({
             .op = IROp::SET_ENV,
-            .args = { currCtx->env.value(), value },
+            .args = { currCtx->env.value(), cell },
             .imm = it->second
         });
+
+        // IMPORTANT! Overwrite local reads with cell reads.
+        currCtx->locals[s.symbol] = IRLocalInfo{ .value = cell, .isCell = true };
     }
 }
 

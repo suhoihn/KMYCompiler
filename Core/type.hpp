@@ -75,6 +75,8 @@ enum class TypeKind {
     INT,
     DOUBLE,
     BOOL,
+    POINTER, // NOTE: Only used in IR code gen! (TODO: Refactor to IRType or smth)
+    CELL, // NOTE: Only used in IR code gen! (TODO: Refactor to IRType or smth)
     STRING,
     NULLTYPE,
     ARRAY,
@@ -95,6 +97,23 @@ struct Type {
     Type(TypeKind kind) : kind(kind) {}
 };
 
+struct PointerType : Type {
+    Type* pointee;
+
+    PointerType(Type* pointee)
+        : Type(TypeKind::POINTER),
+          pointee(pointee) {}
+};
+
+// Temporary!
+struct CellType : Type {
+    Type* pointee;
+
+    CellType(Type* pointee)
+        : Type(TypeKind::CELL),
+          pointee(pointee) {}
+};
+
 // TODO: to symbol maybe?
 struct ParamTypeInfo {
     bool hasDefault;
@@ -102,6 +121,7 @@ struct ParamTypeInfo {
     bool implicitThis;
     Type* type;
 };
+
 
 
 struct FunctionType : Type {
