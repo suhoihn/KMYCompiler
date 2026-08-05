@@ -4,12 +4,6 @@
 #include "../Core/errorhandler.hpp"
 #include "TypeLayout.hpp"
 
-using MIRBlock = BasicBlock<MIRInstr>;
-using HIRBlock = BasicBlock<IRInstr>;
-
-using MIRTerm = Terminator<MIRInstr>;
-using HIRTerm = Terminator<IRInstr>;
-
 MIRBuilder::MIRBuilder(std::vector<HIRFunction*> irFunctions)
     : irFunctions(irFunctions) 
 {}
@@ -149,7 +143,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         // =====================
         // Calls
         // =====================
-        case IROp::CALL:
+        case IROp::CALL: 
             return { make(MIROp::CALL) };
 
 
@@ -250,7 +244,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             MIRInstr storeEnv {
                 .op = MIROp::NOP
             };
-            
+
             if (instr.args.size() > 0) {
                 storeEnv.op = MIROp::STORE;
                 storeEnv.args = {
@@ -389,6 +383,9 @@ MIRFunction* MIRBuilder::lowerHIRFunc(HIRFunction* hirFunc) {
             mirBlock->preds.push_back(blockMap[pred]);
         }
     }
+    // Update MIR func's value cnt (since it may have increased).
+    // Used for stack offset.
+    mirFunc->lastValueId = this->lastValueId;
     return mirFunc;
 }
 

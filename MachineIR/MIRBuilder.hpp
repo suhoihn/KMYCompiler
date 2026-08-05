@@ -8,6 +8,12 @@
 using HIRFunction = IRFunction<IRInstr>;
 using MIRFunction = IRFunction<MIRInstr>;
 
+using MIRBlock = BasicBlock<MIRInstr>;
+using HIRBlock = BasicBlock<IRInstr>;
+
+using MIRTerm = Terminator<MIRInstr>;
+using HIRTerm = Terminator<IRInstr>;
+
 class MIRBuilder {
 private:
     std::vector<HIRFunction*> irFunctions;

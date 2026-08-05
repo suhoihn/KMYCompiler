@@ -19,6 +19,7 @@
 #include <cstring>
 #include <sstream>
 #include "../MachineIR/MIRBuilder.hpp" // Pass X
+#include "../X86Codegen/x86Builder.hpp" // The ultimate pass... right?
 
 const std::string RED = "\033[31m";
 const std::string RESET = "\033[0m";
@@ -255,6 +256,12 @@ int main(int argc, char *argv[]) {
             for (const auto& func: mirFuncs) {
                 std::cout << *func << "\n";
             }
+
+            std::cout << "[DEBUG]: MIR generation done. Ready to lower to X86 assembly." << std::endl;
+            printLog(LogLevel::WARN, "FINAL STEP...\n");
+            printLog(LogLevel::WARN, "The assembled code may corrupt the raw memory. Say hi to seg fault and sudden stops.\n");
+            X86Builder x86Builder(mirFuncs, std::cout);
+            x86Builder.build();
             return 0;
         }
 
