@@ -148,7 +148,14 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
 
 
         case IROp::PARAM:
-            return { make(MIROp::PARAM) };
+            return { 
+                MIRInstr {
+                    .op = MIROp::PARAM,
+                    .dst = instr.dst,
+                    .args = instr.args,
+                    .imm = instr.imm.value() + 1, // +1 because MIR PARAM's 0th idx is for closure pointer for now. TODO
+                }
+            };
 
 
         case IROp::RETURN:
@@ -160,16 +167,12 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         // =====================
         case IROp::PRINT:
         {
-            MIRInstr arg;
-            arg.op = MIROp::ARG;
-            arg.args = instr.args;
-
             MIRInstr call;
             call.op = MIROp::RUNTIME_CALL;
+            call.args = instr.args;
             call.imm = /* runtime_print id */ 0;
 
             return {
-                arg,
                 call
             };
         }
@@ -220,7 +223,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             MIRInstr code;
             code.op = MIROp::LABEL;
             code.dst = makeValue(instr.dst->type);
-            code.imm = instr.imm;
+            code.imm = instr.imm.value();
 
 
             // allocate closure object
@@ -240,24 +243,47 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             storeCode.imm = 0;
 
 
-            // store environment pointer
-            MIRInstr storeEnv {
-                .op = MIROp::NOP
-            };
-
             if (instr.args.size() > 0) {
+                MIRInstr storeEnv;
                 storeEnv.op = MIROp::STORE;
                 storeEnv.args = {
                     instr.dst.value(), // Base address of closure object
                     instr.args[0]
                 };
                 storeEnv.imm = 8;
-            }
+                return {
+                    code,
+                    alloc,
+                    storeCode,
+                    storeEnv
+                };
+            } 
 
+            // TODO: THIS WILL NEVER HAPPEN!
+            throw KMYCompileError("This should have been handled in HIR.");
+            // No env pointer.
+            // i.e., no env exists on my function. (Children captures nothing)
+            IRValue nullValue = makeValue(&Types::INT_TYPE);
+            MIRInstr nullValueInstr {
+                .op = MIROp::CONST,
+                .dst = nullValue,
+                .imm = 0
+            };
+
+            MIRInstr storeEnv {
+                .op = MIROp::STORE,
+                .args = {
+                    instr.dst.value(), // Base address of closure object
+                    nullValue
+                },
+                .imm = 8
+            };
+            
             return {
                 code,
                 alloc,
                 storeCode,
+                nullValueInstr,
                 storeEnv
             };
         }
@@ -267,7 +293,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             MIRInstr alloc;
             alloc.op = MIROp::ALLOC;
             alloc.dst = instr.dst;
-            alloc.imm = instr.imm * 8; // Assuming the cell is a pointer to the base type
+            alloc.imm = instr.imm.value() * 8; // Assuming the cell is a pointer to the base type
 
             return {
                 alloc
@@ -278,7 +304,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             return { 
                 MIRInstr {
                     .op = MIROp::PARAM,
-                    .dst = makeValue(instr.dst->type),
+                    .dst = instr.dst,
                     .imm = 0,
                 }
             };
@@ -292,7 +318,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             MIRInstr store {
                 .op = MIROp::STORE,
                 .args = instr.args, // [env_ptr, value_to_set]
-                .imm = instr.imm * 8 // Assuming 64-bit architecture, each cell is 8 bytes
+                .imm = instr.imm.value() * 8 // Assuming 64-bit architecture, each cell is 8 bytes
             };
             return { store };
         }
@@ -305,7 +331,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
                 .op = MIROp::LOAD,
                 .dst = instr.dst,
                 .args = instr.args, // [env_ptr]
-                .imm = instr.imm * 8 // Assuming 64-bit architecture, each cell is 8 bytes
+                .imm = instr.imm.value() * 8 // Assuming 64-bit architecture, each cell is 8 bytes
             };
             return { load };
         }
@@ -349,6 +375,7 @@ static MIRTerm lowerTerm(
 
 MIRFunction* MIRBuilder::lowerHIRFunc(HIRFunction* hirFunc) {
     auto* mirFunc = new MIRFunction;
+    mirFunc->isEntryFunc = hirFunc->isEntryFunc;
     mirFunc->functionId = hirFunc->functionId;
 
     // 1. Create all blocks (for map)

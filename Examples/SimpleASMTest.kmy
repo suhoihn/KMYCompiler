@@ -1,2 +1,13 @@
-let x = 3 * 4 + 2;
-print(x);
+fun outer(): () -> void {
+    fun hello(): void {
+        print(123);
+    }
+
+    fun call(): void {
+        hello();
+    }
+
+    return call;
+}
+
+outer()();

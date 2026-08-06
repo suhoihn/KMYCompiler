@@ -17,7 +17,7 @@ struct IRInstr {
 
     ConstValue literal; // For actual literals
 
-    int64_t imm; // For arguments of ints (e.g, env slot, func id, param id)
+    std::optional<int64_t> imm; // For arguments of ints (e.g, env slot, func id, param id)
 };
 
 inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
@@ -25,7 +25,7 @@ inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
         case IROp::CONST_INT:
             os << instr.dst.value() // Guaranteed to have one
                << " = const "
-               << instr.imm;
+               << instr.imm.value();
             break;
 
             
@@ -37,7 +37,7 @@ inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
         case IROp::FUNC_LABEL: {
             os << instr.dst.value()
             << " = func_label (func id: "
-            << instr.imm
+            << instr.imm.value()
             << ")";
 
             if (!instr.args.empty()) {
@@ -76,26 +76,26 @@ inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
         case IROp::PARAM:
             os << instr.dst.value() 
                << " = param "
-               << instr.imm;
+               << instr.imm.value();
             break;
         
         case IROp::UPVALUE:
             os << instr.dst.value() 
                << " = upvalue "
-               << instr.imm;
+               << instr.imm.value();
             break;
         
         case IROp::ALLOC_ENV:
             os << instr.dst.value() 
                << " = alloc_env of size "
-               << instr.imm;
+               << instr.imm.value();
             break;
         
         case IROp::SET_ENV:
             os << toString(instr.op)
                << " "
                << instr.args[0] << ", "
-               << instr.imm << ", "
+               << instr.imm.value() << ", "
                << instr.args[1];
             break;
 
@@ -103,7 +103,7 @@ inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
             os << instr.dst.value() 
                << " = " << toString(instr.op) << " "
                << instr.args[0] << ", "
-               << instr.imm;
+               << instr.imm.value();
             break;
         
         case IROp::ALLOC_CELL_INIT:

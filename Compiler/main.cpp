@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <exception>
+#include <cstdlib>
 
 #include "../Utils/utils.hpp"
 #include "../Utils/SymbolPrinter.hpp"
@@ -102,6 +103,7 @@ int main(int argc, char *argv[]) {
     bool strictTypes = false;
     bool isBuildingASM = false;
     bool run = true;
+    char* output = nullptr;
 
     for (int i = 2; i < argc; i++) {
         char* str = argv[i];
@@ -131,6 +133,17 @@ int main(int argc, char *argv[]) {
             }
             run = false;
             std::cout << "[DEBUG]: Will not execute." << std::endl;
+        }
+        if (strcmp(str, "-o") == 0) {
+            if (output) {
+                printLog(LogLevel::WARN, "Duplicate switch (-o) detected.");
+            }
+            if (argc >= i + 1) {
+                printLog(LogLevel::ERROR, "Wrong switch formation!");
+                return 0;
+            }
+            output = argv[++i];
+            std::cout << "[DEBUG]: Output file name: " << output << std::endl;
         }
     }
 
@@ -259,9 +272,44 @@ int main(int argc, char *argv[]) {
 
             std::cout << "[DEBUG]: MIR generation done. Ready to lower to X86 assembly." << std::endl;
             printLog(LogLevel::WARN, "FINAL STEP...\n");
-            printLog(LogLevel::WARN, "The assembled code may corrupt the raw memory. Say hi to seg fault and sudden stops.\n");
-            X86Builder x86Builder(mirFuncs, std::cout);
+            printLog(LogLevel::WARN, "The assembled code may corrupt the raw memory. Say hi to seg faults and sudden stops.\n");
+            
+            std::ostringstream buffer;
+
+            X86Builder x86Builder(mirFuncs, buffer);
             x86Builder.build();
+
+            std::string assembly = buffer.str();
+
+            // Always print
+            std::cout << assembly;
+
+            
+            if (!output) {
+                output = "out";
+            }
+            
+            // Save asm to file if output is specified.
+            printLog(LogLevel::INFO, "Saving asm to " + std::string(output) + ".s\n");
+            
+            std::string asmFile = std::string(output) + ".s";
+            {
+                std::ofstream file(asmFile);
+                file << assembly;
+            } // close file.
+
+            if (run) {
+                std::string cmd = "gcc " + asmFile + " \"Runtime C Functions\"\\runtime.o -o \"" + std::string(output) + "\"";
+
+                int result = std::system(cmd.c_str());
+
+                if (result != 0) {
+                    std::cerr << "gcc failed\n";
+                    return 1;
+                }
+
+                std::cout << "Built successfully\n";
+            }
             return 0;
         }
 

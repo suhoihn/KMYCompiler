@@ -5,6 +5,7 @@
 #include "../Core/errorhandler.hpp"
 #include "IRFunction.hpp"
 #include <iostream>
+#include "../Semantics/TypeInterner.hpp"
 
 using HIRBlock = BasicBlock<IRInstr>;
 using HIRFunction = IRFunction<IRInstr>;
@@ -435,7 +436,8 @@ void IRBuilder::visit(FunctionExpr& e) {
 
     currFunc = new HIRFunction{ 
         .functionId = e.functionId, 
-        .funcType = static_cast<FunctionType*>(e.type) 
+        .funcType = static_cast<FunctionType*>(e.type),
+        .isEntryFunc = e.isEntry,
     };
 
     HIRBlock* entry = makeBlock();
@@ -443,22 +445,6 @@ void IRBuilder::visit(FunctionExpr& e) {
 
     currFunc->entry = entry;
     currCtx->currBlock = entry;
-
-    // Allocate my env (for children) if children capture my locals or upvalues
-    if (e.functionContext->envSize > 0) {
-        IRValue env = makeValue(new PointerType(&Types::VOID_TYPE));
-
-        currCtx->env = env;
-
-        IRInstr instr{
-            .op  = IROp::ALLOC_ENV,
-            .dst = env,
-            .imm = e.functionContext->envSize
-        };
-
-        currCtx->currBlock->code.push_back(instr);
-    }
-
 
     // Incoming env from parent
     // Only introduce env if there is a free variable in the function
@@ -478,11 +464,29 @@ void IRBuilder::visit(FunctionExpr& e) {
 
 
     // Introduce params
+    // NOTE: This must happen at the very beginning of the function.
+
+    struct CapturedParamInfo {
+        VarSymbol* sym;
+        IRValue v;
+        int envSlot;
+    };
+
+    std::vector<CapturedParamInfo> capturedParams;
+
     for (int i = 0; i < e.params.size(); i++) {
         IRValue v = makeValue(e.params[i].symbol->type);
-
         // Allow locals (function body) to see this param.
         currCtx->locals[e.params[i].symbol] = IRLocalInfo{ .value = v, .isCell = false };
+
+        // Check whether the parameter is captured.
+        // (Same logic as Let stmt visit)
+        auto it = currCtx->fnCtx->envMap.find(e.params[i].symbol);
+        if (it != currCtx->fnCtx->envMap.end()) {
+            // This param needs to be SET_ENV'ed!
+            // Since currCtx->env is not present here, we delegate it.
+            capturedParams.push_back({e.params[i].symbol, v, it->second});
+        }
 
         // Instructing the function to use the param
         /*
@@ -508,6 +512,47 @@ void IRBuilder::visit(FunctionExpr& e) {
         };
         currCtx->currBlock->code.push_back(instr);
     }
+
+    // Allocate my env (for children) if children capture my locals or upvalues
+    if (e.functionContext->envSize > 0) {
+        IRValue env = makeValue(new PointerType(&Types::VOID_TYPE));
+
+        currCtx->env = env;
+
+        IRInstr instr{
+            .op  = IROp::ALLOC_ENV,
+            .dst = env,
+            .imm = e.functionContext->envSize
+        };
+
+        currCtx->currBlock->code.push_back(instr);
+    }
+
+    // Now SET_ENV the captured params
+    if (currCtx->env) {
+        for (auto [sym, v, envSlot] : capturedParams) {
+    
+            IRValue cell = makeValue(
+                new CellType(sym->type)
+            );
+    
+            currCtx->currBlock->code.push_back({
+                .op = IROp::ALLOC_CELL_INIT,
+                .dst = cell,
+                .args = { v }
+            });
+    
+            currCtx->currBlock->code.push_back({
+                .op = IROp::SET_ENV,
+                .args = { currCtx->env.value(), cell },
+                .imm = envSlot
+            });
+    
+            // IMPORTANT! Overwrite local(param) reads with cell reads.
+            currCtx->locals[sym] = IRLocalInfo{ .value = cell, .isCell = true };
+        }            
+    }
+
 
     // Introduce upvalues (They are accessed via incoming env with given env slot.)
     // They are assigned on function entry from its env.
@@ -555,6 +600,15 @@ void IRBuilder::visit(FunctionExpr& e) {
 
         std::vector<IRValue> arg = {};
         if (currCtx->env.has_value()) { arg.push_back(currCtx->env.value()); }
+        else { 
+            IRValue nullValue = makeValue(new PointerType(&Types::VOID_TYPE));
+            currCtx->currBlock->code.push_back({
+                .op = IROp::CONST_INT,
+                .dst = nullValue,
+                .imm = 0
+            });
+            arg.push_back(nullValue); 
+        }
 
         IRInstr instr {
             .op = IROp::FUNC_LABEL,
@@ -580,9 +634,20 @@ void IRBuilder::visit(FunctionExpr& e) {
         if (it != currCtx->fnCtx->envMap.end()) {
             assert(currCtx->env.has_value());
             std::cout << "Hoisted function " << funcDeclSym->name << " is captured by children. Setting it on env.\n";
+            
+            IRValue cell = makeValue(
+                new CellType(e.type)
+            );
+    
+            currCtx->currBlock->code.push_back({
+                .op = IROp::ALLOC_CELL_INIT,
+                .dst = cell,
+                .args = { fnValue }
+            });
+    
             currCtx->currBlock->code.push_back({
                 .op = IROp::SET_ENV,
-                .args = { currCtx->env.value(), fnValue },
+                .args = { currCtx->env.value(), cell },
                 .imm = it->second
             });
         }

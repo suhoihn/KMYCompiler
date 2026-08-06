@@ -14,6 +14,7 @@ struct IRFunction {
     BasicBlock<Instr>* entry = nullptr;
 
     int lastValueId = INVALID_SLOT;
+    bool isEntryFunc = false;
 };
 
 template<typename Instr>

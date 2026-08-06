@@ -19,7 +19,8 @@ FunctionExprPtr Parser::parse() {
     return std::make_shared<FunctionExpr>(
         std::vector<Parameter>{}, // No params for global scope
         std::make_shared<Block>(move(statements)),
-        nullptr // No return type annotation for global scope
+        nullptr, // No return type annotation for global scope
+        true // Entry function.
     );
 }
 

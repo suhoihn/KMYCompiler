@@ -22,8 +22,8 @@ Index::Index(ExprPtr obj, ExprPtr index) : obj(move(obj)), index(move(index)) {}
 Call::Call(ExprPtr func, std::vector<ExprPtr> args) : func(move(func)), args(move(args)) {}
 Get::Get(ExprPtr obj, const std::string& name) : obj(move(obj)), name(name) {}
 ScopeAccessExpr::ScopeAccessExpr(std::vector<std::string> parts): parts(parts) {}
-FunctionExpr::FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType) 
-    : params(move(params)), body(move(body)), annotatedReturnType(std::move(annotatedReturnType)) {}
+FunctionExpr::FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType, bool isEntry) 
+    : params(move(params)), body(move(body)), annotatedReturnType(std::move(annotatedReturnType)), isEntry(isEntry) {}
 // Nothing for ThisLiteral.
 NewExpr::NewExpr(std::string typeName, std::vector<ExprPtr> args) : typeName(move(typeName)), args(move(args)) {}
 

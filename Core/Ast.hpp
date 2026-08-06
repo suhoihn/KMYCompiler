@@ -225,8 +225,9 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
 
     // For IR codegen
     int functionId = INVALID_SLOT; 
+    bool isEntry = false;
 
-    FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType);
+    FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType, bool isEntry=false);
 
     // ExprPtr clone() const override;
 };
