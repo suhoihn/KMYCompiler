@@ -8,6 +8,10 @@
 #include "../Core/visitor.hpp"
 #include "../Core/Ast.hpp"
 
+using HIRFunction = IRFunction<IRInstr>;
+using HIRBlock = BasicBlock<IRInstr>;
+using HIRTerm = Terminator<IRInstr>;
+
 struct LoopContext {
     BasicBlock<IRInstr>* continueTarget;
     BasicBlock<IRInstr>* breakTarget;
@@ -32,7 +36,7 @@ struct IRCodegenFnCtx {
     int nextId = 0;
 
     // Locals
-    IRValue lastValue;
+    HIROperand lastValue;
     std::unordered_map<VarSymbol*, IRLocalInfo> locals;
     
     // Upvalues
@@ -63,19 +67,20 @@ private:
     // Readonly AST
     const FunctionExprPtr program;
 
+    void emit(const IRInstr& instr);
 
     // Current function context
     IRCodegenFnCtx* currCtx = nullptr;
 
     // Blocks
-    BasicBlock<IRInstr>* makeBlock();
-    void connectBlock(BasicBlock<IRInstr>* from, BasicBlock<IRInstr>* to);
+    HIRBlock* makeBlock();
+    void connectBlock(HIRBlock* from, HIRBlock* to);
 
     // Code
     IRValue makeValue(Type* type);
 
-    inline IRValue getLastValue();
-    inline void setLastValue(IRValue value);
+    inline HIROperand getLastValue();
+    inline void setLastValue(HIROperand value);
 
     // Functions
     IRFunction<IRInstr>* currFunc = nullptr;

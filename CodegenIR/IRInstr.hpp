@@ -6,19 +6,32 @@
 #include <variant>
 #include "IROp.hpp"
 #include "IRValue.hpp"
+#include "BasicBlock.hpp"
+
+struct IRInstr;
+using HIRBlock = BasicBlock<IRInstr>;
+
+
+struct IncomingPhi {
+    HIRBlock* pred;
+    HIROperand value;
+};
 
 struct IRInstr {
     IROp op;
 
     std::optional<IRValue> dst;
 
-    std::vector<IRValue> args;
+    std::vector<HIROperand> args;
     //std::optional<IRValue> env;
 
     ConstValue literal; // For actual literals
 
     std::optional<int64_t> imm; // For arguments of ints (e.g, env slot, func id, param id)
+
+    std::vector<IncomingPhi> phis;
 };
+
 
 inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
     switch (instr.op) {
@@ -27,6 +40,19 @@ inline std::ostream& operator<<(std::ostream& os, const IRInstr& instr) {
                << " = const "
                << instr.imm.value();
             break;
+
+        case IROp::PHI: {
+            os << instr.dst.value()
+               << "phi ";
+
+            for (size_t i = 0; i < instr.args.size(); i++) {
+                os << instr.phis[i].value << "(B" << instr.phis[i].pred->id << ")";
+
+                if (i + 1 < instr.args.size()) {
+                    os << ", ";
+                }
+            }
+        }
 
             
         case IROp::PRINT:

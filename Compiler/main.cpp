@@ -19,8 +19,8 @@
 #include "../CodegenIR/IRBuilder.hpp" // Pass 6
 #include <cstring>
 #include <sstream>
-#include "../MachineIR/MIRBuilder.hpp" // Pass X
-#include "../X86Codegen/x86Builder.hpp" // The ultimate pass... right?
+// #include "../MachineIR/MIRBuilder.hpp" // Pass X
+// #include "../X86Codegen/x86Builder.hpp" // The ultimate pass... right?
 
 const std::string RED = "\033[31m";
 const std::string RESET = "\033[0m";
@@ -263,6 +263,7 @@ int main(int argc, char *argv[]) {
                 std::cout << *func << "\n";
             }
 
+            /*
             std::cout << "[DEBUG]: CFG IR generation done. Ready to lower to MIR." << std::endl;
             MIRBuilder mirBuilder(funcs);
             auto mirFuncs = mirBuilder.lower();
@@ -310,6 +311,7 @@ int main(int argc, char *argv[]) {
 
                 std::cout << "Built successfully\n";
             }
+            */
             return 0;
         }
 

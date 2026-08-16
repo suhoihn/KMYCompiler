@@ -1,13 +1,8 @@
-fun outer(): () -> void {
-    fun hello(): void {
-        print(123);
+let cnt = 10;
+while (cnt > 0) {
+    cnt -= 1;
+    if (cnt == 2) {
+        break;
     }
-
-    fun call(): void {
-        hello();
-    }
-
-    return call;
+    continue;
 }
-
-outer()();

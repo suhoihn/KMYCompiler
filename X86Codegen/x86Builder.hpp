@@ -10,8 +10,8 @@ private:
     std::ostream& out;
     std::vector<MIRFunction*> mirFunctions;
     int indent = 0;
-    int currFuncId = 0;
-    std::unordered_map<int, int> stackOffset;
+    MIRFunction* currFunc = nullptr;
+    // std::unordered_map<int, int> stackOffset;
 
     void emitIndent();
     void emit(std::string s);

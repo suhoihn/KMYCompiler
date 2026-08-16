@@ -28,7 +28,7 @@ void X86Builder::emitIndent() {
 }
 
 std::string X86Builder::makeBlockLabel(int blockId) {
-    return "block" + std::to_string(blockId) + "_f" + std::to_string(currFuncId);
+    return "block" + std::to_string(blockId) + "_f" + std::to_string(currFunc->functionId);
 }
 
 void X86Builder::emit(std::string s) {
@@ -325,13 +325,13 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
 
             MIRBlock* entryBlock = f->entry;
 
-            auto oldFuncId = currFuncId;
-            currFuncId = f->functionId;
+            auto oldFuncId = currFunc->functionId;
+            currFunc->functionId = f->functionId;
 
             emit("lea rax, [rip + " + makeBlockLabel(entryBlock->id) + "]");
             emit("mov " + loc(instr.dst.value()) + ", rax");
 
-            currFuncId = oldFuncId;
+            currFunc->functionId = oldFuncId;
             break;
         }
 
@@ -385,6 +385,10 @@ void X86Builder::lowerMIRTerm(const MIRTerm& term) {
                 // move return value into ABI register
                 // e.g. rax
                 emit("mov rax, " + loc(t.value.value()));
+            }
+
+            if (currFunc->isEntryFunc) {
+                emit("mov eax, 0");
             }
 
             emit("mov rsp, rbp");
@@ -463,20 +467,14 @@ void X86Builder::lowerMIRBlock(MIRBlock* mirBlock, MIRFunction* mirFunc) {
     for (const auto& mirInstr : mirBlock->code) {
         lowerMIRInstr(mirInstr);
     }
-    if (isEntry) {
-        emit("mov eax, 0");
-        emit("mov rsp, rbp");
-        emit("pop rbp");
-        emit("ret");
-    } else {
-        lowerMIRTerm(mirBlock->term.value()); // TODO: why optional?
-    }
+    lowerMIRTerm(mirBlock->term.value()); // TODO: why optional?
+    
     indent--;
     emit("\n");
 }
 
 void X86Builder::lowerMIRFunc(MIRFunction* mirFunc) {
-    currFuncId = mirFunc->functionId;
+    currFunc->functionId = mirFunc->functionId;
     // Allocate stack slots
     for (const auto& mirBlock : mirFunc->blocks) {
         lowerMIRBlock(mirBlock, mirFunc);
@@ -487,6 +485,7 @@ void X86Builder::build() {
     emit(".intel_syntax noprefix");
     emit(".globl main");
     for (const auto& mirFunc : mirFunctions) {
+        currFunc = mirFunc;
         lowerMIRFunc(mirFunc);
     }
 }

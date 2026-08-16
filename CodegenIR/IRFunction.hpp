@@ -5,6 +5,7 @@
 #include "BasicBlock.hpp"
 #include "../Utils/SymbolPrinter.hpp"
 
+
 template<typename Instr>
 struct IRFunction {
     //VarSymbol* funcSymbol = nullptr;

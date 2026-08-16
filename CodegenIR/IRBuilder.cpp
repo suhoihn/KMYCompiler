@@ -7,8 +7,6 @@
 #include <iostream>
 #include "../Semantics/TypeInterner.hpp"
 
-using HIRBlock = BasicBlock<IRInstr>;
-using HIRFunction = IRFunction<IRInstr>;
 
 static inline bool hasTerminator(HIRBlock* bb) {
     return bb->term.has_value();
@@ -18,16 +16,23 @@ IRBuilder::IRBuilder(FunctionExprPtr program)
     : program(program) 
 {}
 
+void IRBuilder::emit(const IRInstr& instr) {
+    assert(currCtx && "No current function context");
+    assert(currCtx->currBlock && "No current block");
 
-static IRLocalInfo getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
+    currCtx->currBlock->code.push_back(instr);
+}
+
+
+static IRLocalInfo* getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
     auto& localMap = fnCtx->locals;
 
     auto it = localMap.find(sym);
     if (it != localMap.end()) {
-        return it->second;
+        return &it->second;
     }
-
-    throw KMYCompileError("SERIOUS ERROR. UNDEFINED VAR");
+    std::cout << ("SERIOUS ERROR?. UNDEFINED cell VAR " + sym->name) << "\n";
+    return nullptr;
 }
 
 std::vector<HIRFunction*> IRBuilder::compile() {
@@ -42,8 +47,8 @@ std::vector<HIRFunction*> IRBuilder::compile() {
     return functions;
 }
 
-inline IRValue IRBuilder::getLastValue() { return currCtx->lastValue; }
-inline void IRBuilder::setLastValue(IRValue value) { currCtx->lastValue = value; }
+inline HIROperand IRBuilder::getLastValue() { return currCtx->lastValue; }
+inline void IRBuilder::setLastValue(HIROperand value) { currCtx->lastValue = value; }
 
 IRValue IRBuilder::makeValue(Type* type) {
     return IRValue{currCtx->nextId++, type};
@@ -89,7 +94,7 @@ void IRBuilder::visit(Literal& e) {
         .dst = dst,
         .imm = val
     };
-    currCtx->currBlock->code.push_back(instr);
+    emit(instr);
 
     setLastValue(dst);
 }
@@ -109,7 +114,7 @@ void IRBuilder::visit(Variable& e) {
 
         IRValue loaded = makeValue(e.type);
 
-        currCtx->currBlock->code.push_back({
+        emit({
             .op = IROp::LOAD_CELL,
             .dst = loaded,
             .args = {cell}
@@ -120,22 +125,22 @@ void IRBuilder::visit(Variable& e) {
     }
 
     // Get from local
-    IRLocalInfo localInfo = getValueFromLocal(currCtx, e.symbol);
+    IRLocalInfo* localInfo = getValueFromLocal(currCtx, e.symbol);
 
-    if (localInfo.isCell) {
+    if (localInfo && localInfo->isCell) {
 
         IRValue loaded = makeValue(e.type);
 
-        currCtx->currBlock->code.push_back({
+        emit({
             .op = IROp::LOAD_CELL,
             .dst = loaded,
-            .args = {localInfo.value}
+            .args = {localInfo->value}
         });
 
         setLastValue(loaded);
 
     } else {
-        setLastValue(localInfo.value);
+        setLastValue(VarRef{e.symbol});
     }
 
     // assert(false && "Variable not found in locals or upvalues");
@@ -180,26 +185,182 @@ static IROp unaryOpToIROp(UnaryOp op) {
 }
 
 void IRBuilder::visit(BinaryExpr& e) {
-    e.left->accept(*this);
-    IRValue lhs = getLastValue();
+    if (e.op != BinaryOp::LogicalAnd && e.op != BinaryOp::LogicalOr) {
+        // Simple case
+        e.left->accept(*this);
+        HIROperand lhs = getLastValue();
+        
+        e.right->accept(*this);
+        HIROperand rhs = getLastValue();
     
-    e.right->accept(*this);
-    IRValue rhs = getLastValue();
+        IRValue dst = makeValue(e.type);
+        IRInstr instr{
+            .op = binaryOpToIROp(e.op),
+            .dst = dst,
+            .args = { lhs, rhs }
+        };
+        emit(instr);
+    
+        setLastValue(dst);
+        return;
+    }
 
-    IRValue dst = makeValue(e.type);
-    IRInstr instr{
-        .op = binaryOpToIROp(e.op),
-        .dst = dst,
-        .args = { lhs, rhs }
-    };
-    currCtx->currBlock->code.push_back(instr);
+    // e.op is && or ||
+    if (e.op == BinaryOp::LogicalAnd) {
+        /*
+        Format for &&
+        -----------
+        B0(currBlock):
+            ...
+            cond = <lhs eval>
+            branch cond B1 B2
+        
+        B1(true):
+            ; Using property that true && A == A
+            result_B1 = <rhs eval>
+            jump B3
+        
+        B2(false):
+            ; Using property that false && A == false
+            result_B2 = <false const> 
+            jump B3
+    
+        B3(merge):
+            result = phi(result_B1, result_B2)
+            ...
+        */
 
-    setLastValue(dst);
+        // && short-circuiting
+        e.left->accept(*this);
+        HIROperand lhs = getLastValue();
+
+        HIRBlock* trueBlock = makeBlock();
+        HIRBlock* falseBlock = makeBlock();
+        HIRBlock* mergeBlock = makeBlock();
+
+        currCtx->currBlock->term = BranchTerm<IRInstr>{
+            .cond = lhs,
+            .trueTarget = trueBlock,
+            .falseTarget = falseBlock
+        };
+        connectBlock(currCtx->currBlock, trueBlock);
+        connectBlock(currCtx->currBlock, falseBlock);
+        
+        // True block
+        currCtx->currBlock = trueBlock;
+        e.right->accept(*this);
+        HIROperand rhs = getLastValue();
+        
+        currCtx->currBlock->term = JumpTerm<IRInstr>{mergeBlock};
+        connectBlock(trueBlock, mergeBlock);
+        
+        // False block
+        currCtx->currBlock = falseBlock;
+        IRValue falseConst = makeValue(&Types::BOOL_TYPE);
+        emit({
+            .op = IROp::CONST_INT,
+            .dst = falseConst,
+            .imm = 0
+        });
+        
+        currCtx->currBlock->term = JumpTerm<IRInstr>{mergeBlock};
+        connectBlock(falseBlock, mergeBlock);
+
+        // Merge block
+        currCtx->currBlock = mergeBlock;
+
+        IRValue result = makeValue(e.type);
+        emit({
+            .op = IROp::PHI,
+            .dst = result,
+            .phis = {
+                {trueBlock, rhs},
+                {falseBlock, falseConst}
+            }
+        });
+
+        setLastValue(result);
+    } else if (e.op == BinaryOp::LogicalOr) {
+        /*
+        Format for ||
+        -----------
+        B0(currBlock):
+            ...
+            cond = <lhs eval>
+            branch cond B1 B2
+        
+        B1(true):
+            ; Using property that true || A == true
+            result_B1 = <true const>
+            jump B3
+        
+        B2(false):
+            ; Using property that false || A == A
+            result_B2 = <rhs eval>
+            jump B3
+
+        B3(merge):
+            result = phi(result_B1, result_B2)
+            ...
+        */
+
+        // || short-circuiting
+        e.left->accept(*this);
+        HIROperand lhs = getLastValue();
+
+        HIRBlock* trueBlock = makeBlock();
+        HIRBlock* falseBlock = makeBlock();
+        HIRBlock* mergeBlock = makeBlock();
+
+        currCtx->currBlock->term = BranchTerm<IRInstr>{
+            .cond = lhs,
+            .trueTarget = trueBlock,
+            .falseTarget = falseBlock
+        };
+        connectBlock(currCtx->currBlock, trueBlock);
+        connectBlock(currCtx->currBlock, falseBlock);
+
+        // True block
+        currCtx->currBlock = trueBlock;
+        IRValue trueConst = makeValue(&Types::BOOL_TYPE);
+        emit({
+            .op = IROp::CONST_INT,
+            .dst = trueConst,
+            .imm = 1
+        });
+
+        // Since the block is just a statement, there is only this terminator.
+        currCtx->currBlock->term = JumpTerm<IRInstr>{mergeBlock};
+        connectBlock(trueBlock, mergeBlock);
+
+        // False block
+        currCtx->currBlock = falseBlock;
+        e.right->accept(*this);
+        HIROperand rhs = getLastValue();
+
+        // Since the block is just a statement, there is only this terminator.
+        currCtx->currBlock->term = JumpTerm<IRInstr>{mergeBlock};
+        connectBlock(falseBlock, mergeBlock);
+
+        // Merge block
+        currCtx->currBlock = mergeBlock;
+        IRValue result = makeValue(e.type);
+        emit({
+            .op = IROp::PHI,
+            .dst = result,
+            .phis = {
+                {trueBlock, trueConst},
+                {falseBlock, rhs}
+            }
+        });
+
+        setLastValue(result);
+    }
 }
 
 void IRBuilder::visit(UnaryExpr& e) {
     e.operand->accept(*this);
-    IRValue v = getLastValue();
+    HIROperand v = getLastValue();
 
     IRValue dst = makeValue(e.type);
 
@@ -208,7 +369,7 @@ void IRBuilder::visit(UnaryExpr& e) {
         .dst = dst,
         .args = { v }
     };
-    currCtx->currBlock->code.push_back(instr);
+    emit(instr);
 
     setLastValue(dst);
 }
@@ -225,9 +386,9 @@ void IRBuilder::visit(Assignment& e) {
         
         if (e.op != AssignmentOp::Assign) {
             e.left->accept(*this);
-            IRValue lhs = getLastValue();
+            HIROperand lhs = getLastValue();
             e.right->accept(*this);
-            IRValue rhs = getLastValue();
+            HIROperand rhs = getLastValue();
             
             IRValue dst = makeValue(e.type);
             IRInstr instr{
@@ -235,7 +396,7 @@ void IRBuilder::visit(Assignment& e) {
                 .dst = dst,
                 .args = { lhs, rhs }
             };
-            currCtx->currBlock->code.push_back(instr);
+            emit(instr);
 
             setLastValue(dst);
         } else {
@@ -248,20 +409,25 @@ void IRBuilder::visit(Assignment& e) {
 
         // UNLESS it is an upvalue!
         // Emit SET_ENV for mutable upvalues (like x = 3 where x is not local.)
+        std::cout << "[assignment] check: " << var->symbol << std::endl;
         if (currCtx->locals.count(var->symbol)) {
-            IRLocalInfo varInfo = getValueFromLocal(currCtx, var->symbol);
-            if (varInfo.isCell) {
-                currCtx->currBlock->code.push_back({
+            std::cout << "[assignment] check: " << var->symbol << " exists in locals. this is an local cell mutation.\n";
+            IRLocalInfo* varInfo = getValueFromLocal(currCtx, var->symbol);
+            if (varInfo && varInfo->isCell) {
+                emit({
                     .op = IROp::STORE_CELL,
                     .args = {
-                        varInfo.value,
+                        varInfo->value,
                         getLastValue()
                     }
                 });
-
-            } else {
-                currCtx->locals[var->symbol].value = getLastValue();
+                return;
             }
+        } else if (currCtx->upvalues.count(var->symbol) == 0) {
+            // non cell mutation.
+            HIROperand v = getLastValue();
+            //currCtx->locals[var->symbol].value = v;
+            currCtx->currBlock->defs.push_back({var->symbol, v});
             return;
         }
         
@@ -275,7 +441,7 @@ void IRBuilder::visit(Assignment& e) {
 
         IRValue cell = currCtx->upvalues[var->symbol];
 
-        currCtx->currBlock->code.push_back({
+        emit({
             .op = IROp::STORE_CELL,
             .args = {
                 cell,
@@ -297,7 +463,7 @@ void IRBuilder::visit(Call& e) {
     std::optional<IRValue> v = std::nullopt;
     e.func->accept(*this);
 
-    std::vector<IRValue> args = { getLastValue() }; // First is always the function value.
+    std::vector<HIROperand> args = { getLastValue() }; // First is always the function value.
     for (const auto& arg : e.args) {
         arg->accept(*this);
         args.push_back( getLastValue() );
@@ -312,7 +478,7 @@ void IRBuilder::visit(Call& e) {
         .dst = v,
         .args = std::move(args)
     };
-    currCtx->currBlock->code.push_back(instr);
+    emit(instr);
     
     // NOTE: In prev semantic passes, it is guaranteed that void isn't stored anywhere.
     if (e.type != &Types::VOID_TYPE) {
@@ -459,7 +625,7 @@ void IRBuilder::visit(FunctionExpr& e) {
             .dst = incomingEnv.value()
         };
 
-        currCtx->currBlock->code.push_back(instr);
+        emit(instr);
     }
 
 
@@ -478,6 +644,7 @@ void IRBuilder::visit(FunctionExpr& e) {
         IRValue v = makeValue(e.params[i].symbol->type);
         // Allow locals (function body) to see this param.
         currCtx->locals[e.params[i].symbol] = IRLocalInfo{ .value = v, .isCell = false };
+
 
         // Check whether the parameter is captured.
         // (Same logic as Let stmt visit)
@@ -510,7 +677,7 @@ void IRBuilder::visit(FunctionExpr& e) {
             .dst = v,
             .imm = i
         };
-        currCtx->currBlock->code.push_back(instr);
+        emit(instr);
     }
 
     // Allocate my env (for children) if children capture my locals or upvalues
@@ -525,7 +692,7 @@ void IRBuilder::visit(FunctionExpr& e) {
             .imm = e.functionContext->envSize
         };
 
-        currCtx->currBlock->code.push_back(instr);
+        emit(instr);
     }
 
     // Now SET_ENV the captured params
@@ -536,13 +703,13 @@ void IRBuilder::visit(FunctionExpr& e) {
                 new CellType(sym->type)
             );
     
-            currCtx->currBlock->code.push_back({
+            emit({
                 .op = IROp::ALLOC_CELL_INIT,
                 .dst = cell,
                 .args = { v }
             });
     
-            currCtx->currBlock->code.push_back({
+            emit({
                 .op = IROp::SET_ENV,
                 .args = { currCtx->env.value(), cell },
                 .imm = envSlot
@@ -551,6 +718,15 @@ void IRBuilder::visit(FunctionExpr& e) {
             // IMPORTANT! Overwrite local(param) reads with cell reads.
             currCtx->locals[sym] = IRLocalInfo{ .value = cell, .isCell = true };
         }            
+    }
+
+    // At this point, all params must have been assigned as locals
+    // either as a cell or just a normal local.
+    for (const auto& param: e.params) {
+        IRLocalInfo& paramInfo = currCtx->locals[param.symbol];
+        if (!paramInfo.isCell) {
+            currCtx->currBlock->defs.push_back({param.symbol, paramInfo.value});
+        }
     }
 
 
@@ -572,7 +748,7 @@ void IRBuilder::visit(FunctionExpr& e) {
             .imm = e.functionContext->parent->envMap.at(up.symbol) 
         };
 
-        currCtx->currBlock->code.push_back(instr);
+        emit(instr);
 
         if (up.capturedByChildren) {
             std::cout << "Hey! it's a me, UPVALUECAPTUREDBYCHILDREN!\n";
@@ -589,7 +765,7 @@ void IRBuilder::visit(FunctionExpr& e) {
                 .imm = e.functionContext->envMap.at(up.symbol)
             };
 
-            currCtx->currBlock->code.push_back(instr);
+            emit(instr);
         }
     }
 
@@ -598,11 +774,11 @@ void IRBuilder::visit(FunctionExpr& e) {
         fnValue = makeValue(e.type);
         //assert(currCtx->env.has_value());
 
-        std::vector<IRValue> arg = {};
+        std::vector<HIROperand> arg = {};
         if (currCtx->env.has_value()) { arg.push_back(currCtx->env.value()); }
         else { 
             IRValue nullValue = makeValue(new PointerType(&Types::VOID_TYPE));
-            currCtx->currBlock->code.push_back({
+            emit({
                 .op = IROp::CONST_INT,
                 .dst = nullValue,
                 .imm = 0
@@ -616,13 +792,15 @@ void IRBuilder::visit(FunctionExpr& e) {
             .args = arg, // Env to use
             .imm = funcDeclExpr->functionId // TODO: Don't store the whole expr...
         };
-        currCtx->currBlock->code.push_back(instr);
+        emit(instr);
         
         //funcDeclExpr->accept(*this);
 
         // Quirky! TODO!!!
+        bool uncapturedLocal = false;
         if (currCtx->locals.find(funcDeclSym) == currCtx->locals.end()) {
             currCtx->locals[funcDeclSym] = IRLocalInfo{ .value = fnValue, .isCell = false };
+            uncapturedLocal = true;
         } else {
             std::cout << "Duplicate write prevented which is not very desired.\n";
         }
@@ -639,17 +817,22 @@ void IRBuilder::visit(FunctionExpr& e) {
                 new CellType(e.type)
             );
     
-            currCtx->currBlock->code.push_back({
+            emit({
                 .op = IROp::ALLOC_CELL_INIT,
                 .dst = cell,
                 .args = { fnValue }
             });
     
-            currCtx->currBlock->code.push_back({
+            emit({
                 .op = IROp::SET_ENV,
                 .args = { currCtx->env.value(), cell },
                 .imm = it->second
             });
+            uncapturedLocal = false;
+        }
+
+        if (uncapturedLocal) {
+            currCtx->currBlock->defs.push_back({funcDeclSym, fnValue});
         }
     }
 
@@ -701,7 +884,7 @@ void IRBuilder::visit(Print& s) {
         .op = IROp::PRINT,
         .args = {getLastValue()}
     };
-    currCtx->currBlock->code.push_back(instr);
+    emit(instr);
 }
 
 void IRBuilder::visit(If& s) {
@@ -737,7 +920,7 @@ void IRBuilder::visit(If& s) {
 
     // Condition lives in current block.
     s.condition->accept(*this);
-    IRValue cond = getLastValue();
+    HIROperand cond = getLastValue();
 
     currCtx->currBlock->term = BranchTerm<IRInstr>{
         cond,
@@ -809,7 +992,7 @@ void IRBuilder::visit(While& s) {
     currCtx->currBlock = condBB;
 
     s.condition->accept(*this);
-    IRValue cond = getLastValue();
+    HIROperand cond = getLastValue();
 
     currCtx->currBlock->term =
         BranchTerm<IRInstr>{cond, bodyBB, exitBB};
@@ -834,6 +1017,10 @@ void IRBuilder::visit(While& s) {
 
 void IRBuilder::visit(Block& s) {
     for (auto& stmt : s.statements) {
+        if (hasTerminator(currCtx->currBlock)) {
+            // Dead code after terminator
+            break;
+        }
         stmt->accept(*this);
     }
 }
@@ -852,7 +1039,14 @@ void IRBuilder::visit(Break& s) {
     connectBlock(currCtx->currBlock, loop.breakTarget);
 
     // Return to the upper block
-    currCtx->currBlock = loop.breakTarget;
+    //currCtx->currBlock = loop.breakTarget;
+
+    // This(^) is not needed because the break target will be the next block to execute after the loop, 
+    // and the current block is effectively terminated by the jump instruction.
+
+    // Simply, currBlock is done after break/continue,
+    // And the parent AST will contigure where to emit code afterwards.
+    // Since break/continue only happens in loops, While& will handle that.
 }
 
 void IRBuilder::visit(Continue& s) {
@@ -869,7 +1063,7 @@ void IRBuilder::visit(Continue& s) {
     connectBlock(currCtx->currBlock, loop.continueTarget);
 
     // current block is dead after continue
-    currCtx->currBlock = loop.continueTarget;
+    //currCtx->currBlock = loop.continueTarget;
 }
 
 void IRBuilder::visit(Let& s) {
@@ -888,9 +1082,13 @@ void IRBuilder::visit(Let& s) {
     // Don't allocate function decl again (already hoisted in func expr visit)
     if (s.isFunctionDecl) { return; }
 
-    IRValue value = getLastValue();
+    HIROperand value = getLastValue();
+    
+    bool uncapturedLocal = true;
     if (currCtx->locals.find(s.symbol) == currCtx->locals.end()) {
-        currCtx->locals[s.symbol] = IRLocalInfo{ .value = value, .isCell = false };
+        std::cout << "[let] wtf why are you here: " << s.symbol->name << "\n";
+        uncapturedLocal = true;
+       // currCtx->locals[s.symbol] = IRLocalInfo{ .value = value, .isCell = false };
     } else {
         std::cout << "Duplicate write prevented which is not very desired.\n";
     }
@@ -899,19 +1097,32 @@ void IRBuilder::visit(Let& s) {
     // This decl is captured from children closure.
     // This time, we need to copy the POINTER of this value.
     auto it = currCtx->fnCtx->envMap.find(s.symbol);
-    if (currCtx->env && it != currCtx->fnCtx->envMap.end()) {
 
-        IRValue cell = makeValue(
-            new CellType(value.type)
+    IRValue cell;
+    std::cout << "[let] currctx->env: " << currCtx->env.has_value() << "\n";
+    
+    if (currCtx->env && it != currCtx->fnCtx->envMap.end()) {
+        uncapturedLocal = false;
+        std::cout << "[let] " << s.symbol->name << " exists in env\n";
+
+        Type* type = nullptr;
+        if (std::holds_alternative<IRValue>(value)) {
+            type = std::get<IRValue>(value).type;
+        } else if (std::holds_alternative<VarRef>(value)) {
+            type = std::get<VarRef>(value).sym->type;
+        } 
+
+        cell = makeValue(
+            new CellType(type)
         );
 
-        currCtx->currBlock->code.push_back({
+        emit({
             .op = IROp::ALLOC_CELL_INIT,
             .dst = cell,
             .args = { value }
         });
 
-        currCtx->currBlock->code.push_back({
+        emit({
             .op = IROp::SET_ENV,
             .args = { currCtx->env.value(), cell },
             .imm = it->second
@@ -919,6 +1130,12 @@ void IRBuilder::visit(Let& s) {
 
         // IMPORTANT! Overwrite local reads with cell reads.
         currCtx->locals[s.symbol] = IRLocalInfo{ .value = cell, .isCell = true };
+    }
+
+    if (uncapturedLocal) {
+        currCtx->currBlock->defs.push_back({s.symbol, value});
+    } else {
+        //currCtx->currBlock->defs.push_back({s.symbol, cell});
     }
 }
 
