@@ -19,6 +19,7 @@
 #include "../CodegenIR/IRBuilder.hpp" // Pass 6
 #include <cstring>
 #include <sstream>
+#include "../SSA/SSABuilder.hpp" // Pass 7
 // #include "../MachineIR/MIRBuilder.hpp" // Pass X
 // #include "../X86Codegen/x86Builder.hpp" // The ultimate pass... right?
 
@@ -259,6 +260,14 @@ int main(int argc, char *argv[]) {
             // 4-a. Code gen (CFG IR)
             IRBuilder builder(program);
             auto funcs = builder.compile();
+            for (const auto& func: funcs) {
+                std::cout << *func << "\n";
+            }
+
+            // 4-b. Phi computation and SSA renaming
+            SSABuilder ssaBuilder(funcs);
+            ssaBuilder.build();
+
             for (const auto& func: funcs) {
                 std::cout << *func << "\n";
             }

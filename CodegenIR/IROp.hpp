@@ -38,6 +38,7 @@ enum class IROp {
     PRINT,
 
     PHI, // Special since it takes
+    BIND, // Binding varref to one
 
     FUNC_LABEL, // Takes args (which are stored as upvalues) and imm (function id)
     PARAM, // Takes imm which is param_id (1-1 match from CALL's args)
@@ -84,7 +85,8 @@ inline const char* toString(IROp op) {
         case IROp::LEFT_SHIFT:          return "LEFT_SHIFT";
         case IROp::RIGHT_SHIFT:         return "RIGHT_SHIFT";
 
-        case IROp::PHI:               return "PHI";
+        case IROp::PHI:                 return "PHI";
+        case IROp::BIND:                return "BIND";
 
         case IROp::PRINT:               return "PRINT";
 

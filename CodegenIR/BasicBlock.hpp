@@ -150,7 +150,7 @@ inline std::ostream& operator<<(std::ostream& os, const BasicBlock<Instr>& bb) {
     os << "DEFs here\n";
     if (bb.defs.size() == 0) {
         os << "<empty>\n";
-        return;
+        return os;
     }
 
     for (const auto& def : bb.defs) {

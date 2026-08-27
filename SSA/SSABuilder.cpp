@@ -13,6 +13,8 @@ void SSABuilder::build() {
         idom.clear();
         domTree.clear();
         DF.clear();
+        phiBlocks.clear();
+        defBlocks.clear();
 
         computeDoms(func);
         printDoms();
@@ -23,25 +25,24 @@ void SSABuilder::build() {
         buildDomTree();
         printDomTree(func->entry);
 
-        computeDF(func);
+        computeDFNaive(func);
         printDF();
 
         collectDefs(func);
         printDefBlocks();
 
+        std::cout << "This function " << func->functionId << " lastVId: " << func->lastValueId << "\n";
+        
         computePhiPos(func);
         printPhiBlocks();
+        insertPhis(func);
 
-        // CONTINUE FROM HERE
-        // THE UPCOMING FINAL BOSS.
-        // SSA RENAMING PHASE.
+        // Final boss.
         renameSSA(func);
     }
 }
 
 static inline BlockSet intersect(BlockSet a, BlockSet b) {
-    BlockSet res;
-
     if (a.size() > b.size()) {
         std::swap(a, b);
     }
@@ -96,7 +97,25 @@ void SSABuilder::computeDoms(HIRFunction* func) {
 }
 
 void SSABuilder::computeIDoms(HIRFunction* func) {
-    // Formula: D is idom iff D is dominated by every other dominators in dom[B] \ {D, B}
+    /*
+     * D is idom(B) iff:
+     *
+     *   - D strictly dominates B, and
+     *   - D is dominated by every other strict dominator of B.
+     *
+     * In other words, D is the strict dominator of B that is closest
+     * to B in the dominator tree.
+     *
+     * For every other strict dominator X of B:
+     *
+     *     X dominates D
+     *
+     * which we can check as:
+     *
+     *     X ∈ dom[D]
+     *
+     * The candidate is guaranteed to be unique.
+     */
 
     for (const auto& block : func->blocks) {
         if (block == func->entry) {
@@ -110,17 +129,18 @@ void SSABuilder::computeIDoms(HIRFunction* func) {
             if (d == block) continue;
 
             bool dominatedByAll = true;
-            for (const auto& otherD: dom[block]) {
+            for (const auto& X: dom[block]) {
                 // Exclude d itself.
-                if (otherD == block || otherD == d) continue; 
+                if (X == block || X == d) continue; 
                 
-                if (dom[otherD].find(d) != dom[otherD].end()) {
+                if (dom[d].find(X) == dom[d].end()) {
                     dominatedByAll = false;
                     break;
                 }
             }
 
             if (dominatedByAll) {
+                // Guaranteed to be unique (can be proved using proof by contradiction.)
                 candidate = d;
                 break;
             }
@@ -263,7 +283,7 @@ DF[X] =
         - But Z doesn't strictly dominate Y.
     - Then, X's domination may leak for Y. (they are connected but X may not dominate Y)
     - This also applies to the condition: 
-        - X dominates Z, so does the predecessor of Y.
+        - X dominates Z, so does the predecessor of Y. (Bc of transitivity of dominance.)
             - X dominates Z.
             - Z dominates the predecessor of Y.
             - Thus, X dominates the predecessor of Y.
@@ -298,6 +318,34 @@ DF[X] =
         - but X may not strictly dominate Y.
         - So we check idom[Y] != X.
 */
+
+void SSABuilder::computeDFNaive(HIRFunction* func) {
+    /*
+     * Y ∈ DF[X] iff:
+     *
+     *     X dominates some predecessor P of Y
+     *     AND
+     *     X does not strictly dominate Y.
+     */
+
+    for (HIRBlock* X : func->blocks) {
+        for (HIRBlock* Y : func->blocks) {
+
+            // X must not strictly dominate Y.
+            if (X != Y && dom[Y].count(X) > 0)
+                continue;
+
+            for (HIRBlock* P : Y->preds) {
+                // Does X dominate this predecessor of Y?
+                if (dom[P].count(X) > 0) {
+                    DF[X].insert(Y);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 void SSABuilder::computeDF(HIRFunction* func) {
     std::vector<HIRBlock*> postorder;
 
@@ -313,6 +361,7 @@ void SSABuilder::computeDF(HIRFunction* func) {
     dfs(func->entry);
 
     for (HIRBlock* block : postorder) {
+        DF[block] = BlockSet{};
         if (block == func->entry)
             continue;
 
@@ -447,15 +496,267 @@ void SSABuilder::computePhiPos(HIRFunction* func) {
     }
 }
 
+static IRValue makeValue(HIRFunction* func, Type* type) {
+    return IRValue{.id = func->lastValueId++, .type = type};
+}
+
+
+// TODO: Make a dedicated phi zone instead of shoving to instr!
+void SSABuilder::insertPhis(HIRFunction* func) {
+    for (const auto& [block, vars] : phiBlocks) {
+
+        // PHIs must be the first instructions in a block.
+        auto pos = block->code.begin();
+
+        for (VarSymbol* var : vars) {
+
+            // Allocate the SSA result of the PHI.
+            IRValue result = makeValue(func, var->type);
+
+            IRInstr phi{
+                .op = IROp::PHI,
+                .dst = result,
+                .phiVar = var // TODO TODO Hmm this should be an instr tho!
+            };
+
+            // Create one incoming slot for every predecessor.
+            //
+            // The value is only a temporary placeholder.
+            // renameSSA() will replace it with the actual SSA value.
+            for (HIRBlock* pred : block->preds) {
+                phi.phis.push_back({
+                    .pred = pred,
+                    .value = VarRef{var} // temporary!!
+                });
+            }
+
+            pos = block->code.insert(
+                pos,
+                std::move(phi)
+            );
+
+            ++pos;
+        }
+    }
+}
+
+// This is kinda like a starting wrapper for recursion since it needs stack.
+static IRValue lookupVar(
+    std::unordered_map<VarSymbol*, std::vector<IRValue>>& varStack,
+    VarSymbol* var
+) {
+    auto it = varStack.find(var);
+
+    assert(
+        it != varStack.end() &&
+        !it->second.empty()
+    );
+
+    return it->second.back();
+}
+
+static void renameOperand(
+    std::unordered_map<VarSymbol*, std::vector<IRValue>>& varStack,
+    HIROperand& operand
+) {
+    if (auto* ref = std::get_if<VarRef>(&operand)) {
+        operand = lookupVar(varStack, ref->sym);
+    }
+}
+
+static void renameTerminator(
+    std::unordered_map<VarSymbol*, std::vector<IRValue>>& varStack,
+    HIRBlock* block
+) {
+    if (!block->term.has_value())
+        return;
+
+    std::visit(
+        [&](auto& term) {
+            using T = std::decay_t<decltype(term)>;
+
+            if constexpr (
+                std::is_same_v<T, BranchTerm<IRInstr>>
+            ) {
+                renameOperand(varStack, term.cond);
+            }
+            else if constexpr (
+                std::is_same_v<T, ReturnTerm>
+            ) {
+                if (term.value.has_value())
+                    renameOperand(varStack, term.value.value());
+            }
+            else if constexpr (
+                std::is_same_v<T, JumpTerm<IRInstr>>
+            ) {
+            }
+            else if constexpr (
+                std::is_same_v<T, HaltTerm>
+            ) {
+            }
+        },
+        *block->term
+    );
+}
+
+void SSABuilder::rename(
+    std::unordered_map<VarSymbol*, std::vector<IRValue>>& varStack,
+    HIRFunction* func,
+    HIRBlock* block
+) {
+    (void)func;
+
+    std::vector<VarSymbol*> pushed;
+
+    for (IRInstr& instr : block->code) {
+        if (instr.op != IROp::PHI)
+            break;
+
+        assert(instr.dst.has_value());
+
+        if (instr.phiVar != nullptr) {
+            VarSymbol* var = instr.phiVar;
+
+            varStack[var].push_back(
+                instr.dst.value()
+            );
+
+            pushed.push_back(var);
+        }
+        else if (instr.defSym != nullptr) {
+            VarSymbol* var = instr.defSym;
+
+            varStack[var].push_back(
+                instr.dst.value()
+            );
+
+            pushed.push_back(var);
+        }
+    }
+
+    for (IRInstr& instr : block->code) {
+        if (instr.op == IROp::PHI)
+            continue;
+
+        for (HIROperand& operand : instr.args) {
+            renameOperand(
+                varStack,
+                operand
+            );
+        }
+
+        if (instr.defSym == nullptr)
+            continue;
+
+        VarSymbol* var = instr.defSym;
+
+        if (instr.op == IROp::BIND) {
+            assert(instr.args.size() == 1);
+
+            auto* value =
+                std::get_if<IRValue>(&instr.args[0]);
+
+            assert(value);
+
+            varStack[var].push_back(*value);
+        } else {
+            assert(instr.dst.has_value());
+
+            varStack[var].push_back(
+                instr.dst.value()
+            );
+        }
+
+        pushed.push_back(var);
+    }
+
+    renameTerminator(
+        varStack,
+        block
+    );
+
+    for (HIRBlock* succ : block->succs) {
+
+        for (IRInstr& phi : succ->code) {
+            if (phi.op != IROp::PHI)
+                break;
+
+            if (phi.phiVar != nullptr) {
+
+                IRValue incomingValue =
+                    lookupVar(
+                        varStack,
+                        phi.phiVar
+                    );
+
+                bool found = false;
+
+                for (IncomingPhi& incoming : phi.phis) {
+                    if (incoming.pred == block) {
+                        incoming.value = incomingValue;
+                        found = true;
+                        break;
+                    }
+                }
+
+                assert(found);
+
+                continue;
+            }
+
+            for (IncomingPhi& incoming : phi.phis) {
+                if (incoming.pred != block)
+                    continue;
+
+                renameOperand(
+                    varStack,
+                    incoming.value
+                );
+            }
+        }
+    }
+
+    auto it = domTree.find(block);
+
+    if (it != domTree.end()) {
+        for (HIRBlock* child : it->second) {
+            rename(
+                varStack,
+                func,
+                child
+            );
+        }
+    }
+
+    for (auto it = pushed.rbegin();
+         it != pushed.rend();
+         ++it) {
+
+        VarSymbol* var = *it;
+
+        auto stackIt = varStack.find(var);
+
+        assert(
+            stackIt != varStack.end() &&
+            !stackIt->second.empty()
+        );
+
+        stackIt->second.pop_back();
+    }
+}
+
 void SSABuilder::renameSSA(HIRFunction* func) {
-    // TODO TODO TODO
-}
+    std::unordered_map<
+        VarSymbol*,
+        std::vector<IRValue>
+    > varStack;
 
-// Unused since its too simple than I first thought lol.
-void SSABuilder::insertPhi(HIRBlock* block, VarSymbol* sym) {
-    phiBlocks[block].insert(sym);
+    rename(
+        varStack,
+        func,
+        func->entry
+    );
 }
-
 void SSABuilder::printDoms() const {
     for (const auto& [block, doms] : dom) {
         std::cout << "Dom(B"
@@ -474,13 +775,17 @@ void SSABuilder::printDoms() const {
 
 void SSABuilder::printIDoms() const {
     for (const auto& [block, id] : idom) {
-        std::cout << "Dom(B"
+        std::cout << "IDom(B"
                   << block->id
                   << ") : ";
 
-        std::cout << "B"
-                << id->id
-                << "\n";
+        if (id) {
+            std::cout << "B"
+                    << id->id
+                    << "\n";
+        } else {
+            std::cout << "<none>\n";
+        }
     }
 }
 

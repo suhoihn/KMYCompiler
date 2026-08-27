@@ -17,6 +17,8 @@ public:
     void printDF() const;
     void printDefBlocks() const;
     void printPhiBlocks() const;
+    void build();
+
 private:
     std::vector<HIRFunction*> funcs;
     // Dominators (Blocks that are essential to pass through from entry)
@@ -113,14 +115,17 @@ private:
     // (stores info like v? = phi(???) for variable cnt is in block X)
     std::unordered_map<HIRBlock*, VarSet> phiBlocks;
     
-    void build();
     void computeDoms(HIRFunction* func);
     void computeIDoms(HIRFunction* func);
     void buildDomTree();
+
+    void computeDFNaive(HIRFunction* func);
     void computeDF(HIRFunction* func);
     void computeDF_runner(HIRFunction* func);
+
     void collectDefs(HIRFunction* func);
     void computePhiPos(HIRFunction* func);
-    void insertPhi(HIRBlock* block, VarSymbol* sym);
+    void insertPhis(HIRFunction* func);
     void renameSSA(HIRFunction* func);
+    void rename(std::unordered_map<VarSymbol*, std::vector<IRValue>>& varStack, HIRFunction* func, HIRBlock* block);
 };

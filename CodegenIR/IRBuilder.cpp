@@ -423,11 +423,27 @@ void IRBuilder::visit(Assignment& e) {
                 });
                 return;
             }
+            // Normal SSA local. (????????)
+            bindLocalDefinition(
+                var->symbol,
+                getLastValue()
+            );
+
+            return;
         } else if (currCtx->upvalues.count(var->symbol) == 0) {
             // non cell mutation.
+            /*
             HIROperand v = getLastValue();
             //currCtx->locals[var->symbol].value = v;
             currCtx->currBlock->defs.push_back({var->symbol, v});
+            return;
+            */
+
+            // Normal SSA-backed local mutation.
+            HIROperand v = getLastValue();
+
+            bindLocalDefinition(var->symbol, v);
+
             return;
         }
         
@@ -643,7 +659,8 @@ void IRBuilder::visit(FunctionExpr& e) {
     for (int i = 0; i < e.params.size(); i++) {
         IRValue v = makeValue(e.params[i].symbol->type);
         // Allow locals (function body) to see this param.
-        currCtx->locals[e.params[i].symbol] = IRLocalInfo{ .value = v, .isCell = false };
+        
+        //currCtx->locals[e.params[i].symbol] = IRLocalInfo{ .value = v, .isCell = false };
 
 
         // Check whether the parameter is captured.
@@ -675,7 +692,8 @@ void IRBuilder::visit(FunctionExpr& e) {
         IRInstr instr {
             .op = IROp::PARAM,
             .dst = v,
-            .imm = i
+            .imm = i,
+            .defSym = e.params[i].symbol
         };
         emit(instr);
     }
@@ -790,7 +808,8 @@ void IRBuilder::visit(FunctionExpr& e) {
             .op = IROp::FUNC_LABEL,
             .dst = fnValue, 
             .args = arg, // Env to use
-            .imm = funcDeclExpr->functionId // TODO: Don't store the whole expr...
+            .imm = funcDeclExpr->functionId, // TODO: Don't store the whole expr...
+            .defSym = funcDeclSym // TODO: Remove hoisting...
         };
         emit(instr);
         
@@ -799,7 +818,8 @@ void IRBuilder::visit(FunctionExpr& e) {
         // Quirky! TODO!!!
         bool uncapturedLocal = false;
         if (currCtx->locals.find(funcDeclSym) == currCtx->locals.end()) {
-            currCtx->locals[funcDeclSym] = IRLocalInfo{ .value = fnValue, .isCell = false };
+            //??????
+            //currCtx->locals[funcDeclSym] = IRLocalInfo{ .value = fnValue, .isCell = false };
             uncapturedLocal = true;
         } else {
             std::cout << "Duplicate write prevented which is not very desired.\n";
@@ -854,8 +874,9 @@ void IRBuilder::visit(FunctionExpr& e) {
         currCtx->currBlock->term = ReturnTerm{};
     }
 
-    functions.push_back(currFunc);
     currFunc->lastValueId = currCtx->nextId;
+    std::cout << "This function " << currFunc->functionId << " lastVId: " << currFunc->lastValueId << "\n";
+    functions.push_back(currFunc);
 
     // Prevent currCtx from being nullptr (top level entry func)
     if (oldCtx) {
@@ -1066,6 +1087,40 @@ void IRBuilder::visit(Continue& s) {
     //currCtx->currBlock = loop.continueTarget;
 }
 
+void IRBuilder::bindLocalDefinition(
+    VarSymbol* sym,
+    const HIROperand& value
+) {
+    // Keep this for phi placement.
+    currCtx->currBlock->defs.push_back({
+        sym,
+        value
+    });
+
+    // Alias: y = x
+    if (std::holds_alternative<VarRef>(value)) {
+        emit({
+            .op = IROp::BIND,
+            .args = { value },
+            .defSym = sym
+        });
+
+        return;
+    }
+
+    // Normal value-producing expression.
+    IRValue rhs = std::get<IRValue>(value);
+
+    assert(!currCtx->currBlock->code.empty());
+
+    IRInstr& producer = currCtx->currBlock->code.back();
+
+    assert(producer.dst.has_value());
+    assert(producer.dst->id == rhs.id);
+
+    producer.defSym = sym;
+}
+
 void IRBuilder::visit(Let& s) {
     if (s.isFunctionDecl) {
         // Do not traverse when it is hoisted.
@@ -1133,7 +1188,7 @@ void IRBuilder::visit(Let& s) {
     }
 
     if (uncapturedLocal) {
-        currCtx->currBlock->defs.push_back({s.symbol, value});
+        bindLocalDefinition(s.symbol, value);
     } else {
         //currCtx->currBlock->defs.push_back({s.symbol, cell});
     }

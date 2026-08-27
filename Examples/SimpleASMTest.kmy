@@ -1,8 +1,19 @@
-let cnt = 10;
-while (cnt > 0) {
-    cnt -= 1;
-    if (cnt == 2) {
-        break;
+let x = 0;
+let y = 10;
+
+while (x < 10) {
+    if (y > 20) {
+        x = x + 1;
+        y = y - 3;
+    } else {
+        x = x + 2;
+        y = y + 5;
     }
-    continue;
+
+    if (x == 6) {
+        x = 100;
+    }
 }
+
+print(x);
+print(y);

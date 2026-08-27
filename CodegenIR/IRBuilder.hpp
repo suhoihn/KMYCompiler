@@ -86,6 +86,12 @@ private:
     IRFunction<IRInstr>* currFunc = nullptr;
     std::vector<IRFunction<IRInstr>*> functions;
 
+    // Helper
+    void bindLocalDefinition(
+        VarSymbol* sym,
+        const HIROperand& value
+    );
+
     // Expressions
     void visit(Literal& e) override;
     void visit(ArrayLiteral& e) override;
