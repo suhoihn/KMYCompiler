@@ -349,6 +349,11 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             break;
         }
 
+        case MIROp::MOVE: {
+            emit("mov rax, " + loc(instr.args[0]));
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+        }
+
 
         default: {
             std::ostringstream tmp;
@@ -372,7 +377,7 @@ void X86Builder::lowerMIRTerm(const MIRTerm& term) {
         else if constexpr (std::is_same_v<T, BranchTerm<MIRInstr>>) {
 
             // Move condition value to rax for comparison
-            emit("mov rax, " + loc(t.cond));
+            emit("mov rax, " + loc(std::get<IRValue>(t.cond)));
             // Compare it with 0 (Extract only the flags)
             emit("cmp rax, 0");
             emit("jne " + makeBlockLabel(t.trueTarget->id));
@@ -384,7 +389,7 @@ void X86Builder::lowerMIRTerm(const MIRTerm& term) {
             if (t.value.has_value()) {
                 // move return value into ABI register
                 // e.g. rax
-                emit("mov rax, " + loc(t.value.value()));
+                emit("mov rax, " + loc(std::get<IRValue>(t.value.value())));
             }
 
             if (currFunc->isEntryFunc) {

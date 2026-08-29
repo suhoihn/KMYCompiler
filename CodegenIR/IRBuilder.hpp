@@ -7,10 +7,7 @@
 #include "IRFunction.hpp"
 #include "../Core/visitor.hpp"
 #include "../Core/Ast.hpp"
-
-using HIRFunction = IRFunction<IRInstr>;
-using HIRBlock = BasicBlock<IRInstr>;
-using HIRTerm = Terminator<IRInstr>;
+#include "CommonDef.hpp"
 
 struct LoopContext {
     BasicBlock<IRInstr>* continueTarget;

@@ -56,7 +56,10 @@ enum class MIROp {
     LABEL,
 
     // Runtime calls
-    RUNTIME_CALL
+    RUNTIME_CALL,
+
+    // For phi. Simple copy instr
+    MOVE,
 };
 
 
@@ -114,6 +117,8 @@ inline const char* toString(MIROp op) {
 
         case MIROp::RUNTIME_CALL:
             return "RUNTIME_CALL";
+
+        case MIROp::MOVE: return "MOVE";
     }
 
     return "UNKNOWN";

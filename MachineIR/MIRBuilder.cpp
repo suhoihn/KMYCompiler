@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include "../Core/errorhandler.hpp"
 #include "TypeLayout.hpp"
+#include <assert.h>
 
 MIRBuilder::MIRBuilder(std::vector<HIRFunction*> irFunctions)
     : irFunctions(irFunctions) 
@@ -11,6 +12,19 @@ MIRBuilder::MIRBuilder(std::vector<HIRFunction*> irFunctions)
 IRValue MIRBuilder::makeValue(Type* type) {
     return IRValue{.id = lastValueId++, .type = type};
 }
+
+static std::vector<IRValue> convertHIRargs(const std::vector<HIROperand>& HIRargs) {
+    std::vector<IRValue> res;
+    for (const auto& arg : HIRargs) {
+        if (!std::holds_alternative<IRValue>(arg)) {
+            throw KMYCompileError("Untransformed VarRef(" + std::get<VarRef>(arg).sym->name + ")");
+        }
+        res.push_back(std::get<IRValue>(arg));
+    }
+
+    return res;
+}
+
 std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
 
     // SERIOUS TODO: This assumes 1:1 mapping, which is obviously false.
@@ -20,7 +34,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
 
         out.op = op;
         out.dst = instr.dst;
-        out.args = instr.args;
+        out.args = convertHIRargs(instr.args);
         out.imm = instr.imm;
 
         return out;
@@ -117,7 +131,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
                 MIRInstr {
                     .op = MIROp::LOAD,
                     .dst = instr.dst,
-                    .args = instr.args, // [cell_ptr]
+                    .args = convertHIRargs(instr.args), // [cell_ptr]
                     .imm = 0,
                 }
             };
@@ -129,7 +143,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             return { 
                 MIRInstr {
                     .op = MIROp::STORE,
-                    .args = instr.args, // [cell_ptr, value_to_store]
+                    .args = convertHIRargs(instr.args), // [cell_ptr, value_to_store]
                     .imm = 0,
                 }
             };
@@ -152,7 +166,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
                 MIRInstr {
                     .op = MIROp::PARAM,
                     .dst = instr.dst,
-                    .args = instr.args,
+                    .args = convertHIRargs(instr.args),
                     .imm = instr.imm.value() + 1, // +1 because MIR PARAM's 0th idx is for closure pointer for now. TODO
                 }
             };
@@ -169,7 +183,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         {
             MIRInstr call;
             call.op = MIROp::RUNTIME_CALL;
-            call.args = instr.args;
+            call.args = convertHIRargs(instr.args);
             call.imm = /* runtime_print id */ 0;
 
             return {
@@ -196,7 +210,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             store.op = MIROp::STORE;
             store.args = {
                 instr.dst.value(),
-                instr.args[0]
+                std::get<IRValue>(instr.args[0]) // Should be IRValue... Trust SSABuilder.
             };
             store.imm = 0;
 
@@ -248,7 +262,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
                 storeEnv.op = MIROp::STORE;
                 storeEnv.args = {
                     instr.dst.value(), // Base address of closure object
-                    instr.args[0]
+                    std::get<IRValue>(instr.args[0]) // Again, have faith.
                 };
                 storeEnv.imm = 8;
                 return {
@@ -317,7 +331,7 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             // format: STORE base offset value
             MIRInstr store {
                 .op = MIROp::STORE,
-                .args = instr.args, // [env_ptr, value_to_set]
+                .args = convertHIRargs(instr.args), // [env_ptr, value_to_set]
                 .imm = instr.imm.value() * 8 // Assuming 64-bit architecture, each cell is 8 bytes
             };
             return { store };
@@ -330,10 +344,15 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             MIRInstr load {
                 .op = MIROp::LOAD,
                 .dst = instr.dst,
-                .args = instr.args, // [env_ptr]
+                .args = convertHIRargs(instr.args), // [env_ptr]
                 .imm = instr.imm.value() * 8 // Assuming 64-bit architecture, each cell is 8 bytes
             };
             return { load };
+        }
+
+        case IROp::PHI: {
+            // Phi on original block is gone.
+            return {};
         }
 
 
@@ -391,12 +410,42 @@ MIRFunction* MIRBuilder::lowerHIRFunc(HIRFunction* hirFunc) {
     
     this->lastValueId = hirFunc->lastValueId;
     // 2. Fill them
+
+    // Parellel copies for each block
+    /*
+        v2 = phi(v0: B0, v1: B1)
+        v3 = phi(v5: B1, v6: B2)
+
+        parallelCopies[B0] = {
+            {v2 <- v0}
+        }
+
+        parallelCopies[B1] = {
+            {v2 <- v1},
+            {v3 <- v5}
+        }
+
+        parallelCopies[B2] = {
+            {v3 <- v5}
+        }
+    */
+    std::unordered_map<HIRBlock*, std::vector<std::pair<IRValue, IRValue>>> parallelCopies;
     for (const auto& block : hirFunc->blocks) {
         auto* mirBlock = blockMap[block];
         for (const auto& instr : block->code) {
             auto loweredInstrs = lowerHIRInstr(instr);
             for (const auto& loweredInstr : loweredInstrs) {
                 mirBlock->code.push_back(loweredInstr);
+            }
+
+            if (instr.op == IROp::PHI) {
+                for (const auto& phi : instr.phis) {
+                    assert(std::holds_alternative<IRValue>(phi.value));
+                    
+                    parallelCopies[phi.pred].push_back(
+                        { instr.dst.value(), std::get<IRValue>(phi.value) } 
+                    );
+                }
             }
         }
         if (block->term.has_value()) {
@@ -410,10 +459,145 @@ MIRFunction* MIRBuilder::lowerHIRFunc(HIRFunction* hirFunc) {
             mirBlock->preds.push_back(blockMap[pred]);
         }
     }
+
+    // 3. Lower phis
+
+    // Check for cycles and resolve it.
+    /*
+        Problematic case:
+
+        v2 = phi(v1: B0, v3: B1)
+        v1 = phi(v2: B0, v2: B1)
+
+        parallelCopies[B0] = {
+            {v2 <- v1},
+            {v1 <- v2},
+        }
+
+        parallelCopies[B1] = {
+            {v2 <- v3},
+            {v1 <- v2}
+        }
+
+        // parallelCopies in every block is problematic.
+
+        Algorithm:
+        For each pair {D <- S},
+        if D is used as a source (S) somewhere (except itself), that's problematic.
+        Thus, introduce a temp to preserve it.
+
+        For B0 example,
+        both v2 and v1 will be marked problematic.
+        Say v2 <- v1 (since this is preceding) is our target to resolve.
+        Make tmp <- v1, and replace all pair where S is v1 to tmp.
+        Then re-run the check.
+    */
+    for (auto& [blockWithCopies, originalCopies] : parallelCopies) {
+
+        // Copies on this block
+        auto copies = originalCopies;
+
+        // TODO: This version can be improved (maybe?) with hashmap...? (i think)
+        // Currently O(n^3) (eww)
+
+        // Drain every copies vector.
+        while (!copies.empty()) {
+            bool foundSafeCopy = false;
+
+            for (size_t i = 0; i < copies.size(); ++i) {
+                const auto& [D, S] = copies[i];
+
+                bool isThisCopySafe = true;
+                for (size_t j = 0; j < copies.size(); ++j) {
+                    // Skip myself.
+                    if (i == j) continue;
+                    
+                    const auto &[otherD, otherS] = copies[j];
+
+                    // D's old value is still needed.
+                    if (D.id == otherS.id) {
+                        isThisCopySafe = false;
+                        break;
+                    }
+                }
+
+                // This copy is not safe.
+                // Not safe to erase from copies vector directly (need temp)
+                // Make someone to resolve this for me!
+                if (!isThisCopySafe) continue;
+
+                blockMap[blockWithCopies]->code.push_back(
+                    MIRInstr{
+                        .op = MIROp::MOVE,
+                        .dst = D,
+                        .args = {S},
+                    }
+                );
+
+                copies.erase(
+                    copies.begin() + i
+                );
+
+                foundSafeCopy = true;
+                break;
+            }
+
+            // Re-examine the whole thing after emitting safe copy.
+            // Since the safety relationship may have changed.
+            // e.g. A <- B, C <- A
+            // C <- A is safe, so emitted
+            // Re-examine and A <- B is safe.
+            if (foundSafeCopy) continue;
+
+            // No safe copy exists AT ALL.
+            // The remaining copies contain a cycle.
+            // e.g., A <- B, B <- A
+
+            const auto& [D, S] = copies[0];
+
+            // We need temp.
+            IRValue temp = makeValue(S.type);
+
+            // Preserve the old value of S.
+            blockMap[blockWithCopies]->code.push_back(
+                MIRInstr{
+                    .op = MIROp::MOVE,
+                    .dst = temp,
+                    .args = {S},
+                }
+            );
+
+            // Any pending copy that needed old S
+            // now gets it from the temporary.
+            for (auto &[pendingD, pendingS] : copies) {
+                if (pendingS.id == S.id) {
+                    pendingS = temp;
+                }
+            }
+
+            // After this, we re-examine the whole thing.
+        }
+    }
     // Update MIR func's value cnt (since it may have increased).
     // Used for stack offset.
     mirFunc->lastValueId = this->lastValueId;
     return mirFunc;
+}
+
+void MIRBuilder::insertMoves(
+    const IRInstr& instr,
+    std::unordered_map<HIRBlock*, MIRBlock*>& blockMap, 
+    const std::vector<IncomingPhi>& phis
+) {
+    for (const auto& phi : phis) {
+        blockMap[phi.pred]->code.push_back(
+            MIRInstr{
+                .op = MIROp::MOVE,
+                .dst = instr.dst,
+                .args = { std::get<IRValue>(phi.value) },
+            }
+        );
+    }
 }
 
 std::vector<MIRFunction*> MIRBuilder::lower() {

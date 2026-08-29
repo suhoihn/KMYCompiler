@@ -4,15 +4,12 @@
 #include "../CodegenIR/BasicBlock.hpp"
 #include "../CodegenIR/IRFunction.hpp"
 #include "MIRInstr.hpp"
+#include "../CodegenIR/IRInstr.hpp"
+#include "../CodegenIR/CommonDef.hpp"
 
-using HIRFunction = IRFunction<IRInstr>;
 using MIRFunction = IRFunction<MIRInstr>;
-
 using MIRBlock = BasicBlock<MIRInstr>;
-using HIRBlock = BasicBlock<IRInstr>;
-
 using MIRTerm = Terminator<MIRInstr>;
-using HIRTerm = Terminator<IRInstr>;
 
 class MIRBuilder {
 private:
@@ -22,6 +19,12 @@ private:
     std::vector<MIRInstr> lowerHIRInstr(const IRInstr& instr);
     MIRFunction* lowerHIRFunc(HIRFunction* hirFunc);
     IRValue makeValue(Type* type);
+    
+    void insertMoves(
+        const IRInstr& instr,
+        std::unordered_map<HIRBlock*, MIRBlock*>& blockMap, 
+        const std::vector<IncomingPhi>& phis
+    );
 
 public:
     MIRBuilder(std::vector<HIRFunction*> irFunctions);
