@@ -364,6 +364,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    std::cerr << "Usage: ./comp <file>\n";
+    std::cerr << "Usage: kmyc <file>\n";
     return 1;
 }

@@ -32,10 +32,10 @@ native backend.
 The batch files are historical helpers. The reproducible command used by the
 test suite is in `tests/run-x86-tests.ps1`.
 
-To run one program after building `comp.exe`:
+To run one program after building `kmyc.exe`:
 
 ```powershell
-.\comp.exe .\Examples\SimpleASMTest.kmy -asm -o .\build\simpleasm.exe
+.\kmyc.exe .\Examples\SimpleASMTest.kmy -asm -o .\build\simpleasm.exe
 .\build\simpleasm.exe
 ```
 

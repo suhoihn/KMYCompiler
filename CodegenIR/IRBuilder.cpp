@@ -1480,6 +1480,14 @@ void IRBuilder::visit(Continue& s) {
     //currCtx->currBlock = loop.continueTarget;
 }
 
+// Connect a source-level `let` binding to the HIR value it defines.
+//
+// The definition is recorded for SSA renaming/phi placement.  Aliases such as
+// `let y = x` use BIND, while ordinary values are attached to the instruction
+// that produced them.  The producer may be earlier than the last instruction
+// when side-effecting stores follow it (for example, array initialization), so
+// search backward instead of assuming the immediately preceding instruction is
+// the value's producer.
 void IRBuilder::bindLocalDefinition(
     VarSymbol* sym,
     const HIROperand& value

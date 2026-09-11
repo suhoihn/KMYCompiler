@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $buildRoot = Join-Path $repoRoot 'build\x86-tests'
 $buildDir = Join-Path $buildRoot ([Guid]::NewGuid().ToString())
-$compiler = Join-Path $buildDir 'comp-x86-tests.exe'
+$compiler = Join-Path $buildDir 'kmyc-x86-tests.exe'
 $runtimeSource = Join-Path $repoRoot 'Runtime C Functions\runtime.c'
 $runtimeObject = Join-Path $repoRoot 'Runtime C Functions\runtime.o'
 
