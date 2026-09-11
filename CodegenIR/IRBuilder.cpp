@@ -6,6 +6,7 @@
 #include "IRFunction.hpp"
 #include <iostream>
 #include "../Semantics/TypeInterner.hpp"
+#include "../MachineIR/TypeLayout.hpp"
 
 
 static inline bool hasTerminator(HIRBlock* bb) {
@@ -468,6 +469,58 @@ void IRBuilder::visit(Assignment& e) {
         return;
     }
 
+    // Case 2: aggregate field assignment
+    if (e.left->kind == ExprKind::Get) {
+        auto get = std::static_pointer_cast<Get>(e.left);
+        if (get->resolvedMethod) {
+            throw KMYCompileError("Cannot assign to a method.");
+        }
+
+        if (get->obj->type->kind != TypeKind::INSTANCE) {
+            throw KMYCompileError("Native field assignment currently requires a class/record instance.");
+        }
+
+        auto* instanceType = static_cast<InstanceType*>(get->obj->type);
+        auto fieldIt = instanceType->fieldMap.find(get->name);
+        if (fieldIt != instanceType->fieldMap.end() && !fieldIt->second->isMutable) {
+            throw KMYCompileError("Assignment to a constant field \"" + get->name + "\"");
+        }
+
+        get->obj->accept(*this);
+        HIROperand object = getLastValue();
+
+        HIROperand value;
+        if (e.op == AssignmentOp::Assign) {
+            e.right->accept(*this);
+            value = getLastValue();
+        } else {
+            IRValue oldValue = makeValue(get->type);
+            emit({
+                .op = IROp::LOAD_FIELD,
+                .dst = oldValue,
+                .args = { object },
+                .imm = static_cast<int64_t>(get->fieldIdx) * 8
+            });
+
+            e.right->accept(*this);
+            IRValue newValue = makeValue(get->type);
+            emit({
+                .op = binaryOpToIROp(compoundToBinaryOp(e.op)),
+                .dst = newValue,
+                .args = { oldValue, getLastValue() }
+            });
+            value = newValue;
+            setLastValue(newValue);
+        }
+
+        emit({
+            .op = IROp::STORE_FIELD,
+            .args = { object, value },
+            .imm = static_cast<int64_t>(get->fieldIdx) * 8
+        });
+        return;
+    }
+
     throw KMYCompileError("Invalid assignment target");
 }
 
@@ -503,7 +556,53 @@ void IRBuilder::visit(Call& e) {
 }
 
 void IRBuilder::visit(Get& e) {
-    throw KMYCompileError("get Not yet");
+    if (e.obj->type->kind != TypeKind::INSTANCE) {
+        throw KMYCompileError("Native field access currently requires a class/record instance.");
+    }
+
+    if (e.resolvedMethod) {
+        auto* instanceType = static_cast<InstanceType*>(e.obj->type);
+        auto methodIt = instanceType->methodMap.find(e.name);
+        if (methodIt == instanceType->methodMap.end()) {
+            throw KMYCompileError("Method metadata missing for native codegen.");
+        }
+        auto fnIt = methodFunctions.find(methodIt->second);
+        if (fnIt == methodFunctions.end()) {
+            throw KMYCompileError("Method prototype missing for native codegen.");
+        }
+
+        IRValue closure = makeValue(e.type);
+        HIROperand env;
+        if (currCtx->env.has_value()) {
+            env = currCtx->env.value();
+        } else {
+            // Null env (no captured value)
+            // TODO to like const_null
+            IRValue nullEnv = makeValue(new PointerType(&Types::VOID_TYPE));
+            emit({ .op = IROp::CONST_NULL, .dst = nullEnv });
+            env = nullEnv;
+        }
+        emit({
+            .op = IROp::FUNC_LABEL,
+            .dst = closure,
+            .args = { env },
+            .imm = fnIt->second->functionId
+        });
+        setLastValue(closure);
+        return;
+    }
+
+    e.obj->accept(*this);
+    HIROperand object = getLastValue();
+    IRValue value = makeValue(e.type);
+
+    emit({
+        .op = IROp::LOAD_FIELD,
+        .dst = value,
+        .args = { object },
+        .imm = static_cast<int64_t>(e.fieldIdx) * 8
+    });
+    setLastValue(value);
 }
 
 void IRBuilder::visit(ScopeAccessExpr& e) {
@@ -624,7 +723,7 @@ void IRBuilder::visit(FunctionExpr& e) {
             }
         }
 
-        if (!isHoistedDeclaration) {
+        if (!isHoistedDeclaration && !compilingAggregateMember) {
             IRValue fnValue = makeValue(e.type);
             std::vector<HIROperand> args;
 
@@ -633,9 +732,8 @@ void IRBuilder::visit(FunctionExpr& e) {
             } else {
                 IRValue nullEnv = makeValue(new PointerType(&Types::VOID_TYPE));
                 emit({
-                    .op = IROp::CONST_INT,
-                    .dst = nullEnv,
-                    .imm = 0
+                    .op = IROp::CONST_NULL,
+                    .dst = nullEnv
                 });
                 args.push_back(nullEnv);
             }
@@ -836,9 +934,8 @@ void IRBuilder::visit(FunctionExpr& e) {
         else { 
             IRValue nullValue = makeValue(new PointerType(&Types::VOID_TYPE));
             emit({
-                .op = IROp::CONST_INT,
-                .dst = nullValue,
-                .imm = 0
+                .op = IROp::CONST_NULL,
+                .dst = nullValue
             });
             arg.push_back(nullValue); 
         }
@@ -910,7 +1007,22 @@ void IRBuilder::visit(FunctionExpr& e) {
 
     // implicit return
     if (!hasTerminator(currCtx->currBlock)) {
-        currCtx->currBlock->term = ReturnTerm{};
+        bool isConstructor = false;
+        for (const auto& [symbol, fn] : constructorFunctions) {
+            (void)symbol;
+            if (fn == &e) {
+                isConstructor = true;
+                break;
+            }
+        }
+
+        if (isConstructor && !e.params.empty()) {
+            currCtx->currBlock->term = ReturnTerm{
+                currCtx->locals.at(e.params[0].symbol).value
+            };
+        } else {
+            currCtx->currBlock->term = ReturnTerm{};
+        }
     }
 
     currFunc->lastValueId = currCtx->nextId;
@@ -928,11 +1040,119 @@ void IRBuilder::visit(FunctionExpr& e) {
 }
 
 void IRBuilder::visit(ThisExpr& e) {
-    throw KMYCompileError("this Not yet");
+    if (auto it = currCtx->upvalues.find(e.symbol); it != currCtx->upvalues.end()) {
+        IRValue loaded = makeValue(e.type);
+        emit({
+            .op = IROp::LOAD_CELL,
+            .dst = loaded,
+            .args = { it->second }
+        });
+        setLastValue(loaded);
+        return;
+    }
+
+    auto it = currCtx->locals.find(e.symbol);
+    if (it == currCtx->locals.end()) {
+        throw KMYCompileError("Unable to resolve 'this' in native codegen");
+    }
+
+    if (it->second.isCell) {
+        IRValue loaded = makeValue(e.type);
+        emit({
+            .op = IROp::LOAD_CELL,
+            .dst = loaded,
+            .args = { it->second.value }
+        });
+        setLastValue(loaded);
+    } else {
+        setLastValue(it->second.value);
+    }
 }
 
 void IRBuilder::visit(NewExpr& e) {
-    throw KMYCompileError("new Not yet");
+    if (e.type->kind != TypeKind::INSTANCE) {
+        throw KMYCompileError("new applied to a non-instance type");
+    }
+
+    auto* instanceType = static_cast<InstanceType*>(e.type);
+    size_t fieldCount = instanceType->fieldMap.size();
+    size_t objectSize = std::max<size_t>(PTR_SIZE, fieldCount * PTR_SIZE);
+
+    IRValue object = makeValue(e.type);
+    emit({
+        .op = IROp::ALLOC_HEAP,
+        .dst = object,
+        .imm = static_cast<int64_t>(objectSize)
+    });
+
+    // Zero fields before running source-level initializers.
+    // for (auto& [name, field] : instanceType->fieldMap) {
+    //     (void)name;
+    //     IRValue zero = makeValue(&Types::INT_TYPE);
+    //     emit({ .op = IROp::CONST_INT, .dst = zero, .imm = 0 });
+    //     emit({
+    //         .op = IROp::STORE_FIELD,
+    //         .args = { object, zero },
+    //         .imm = static_cast<int64_t>(field->fieldOffset) * 8
+    //     });
+    // }
+
+    auto emitClosure = [&](FunctionExpr* fn) {
+        IRValue closure = makeValue(fn->type);
+        HIROperand env;
+        if (currCtx->env.has_value()) {
+            env = currCtx->env.value();
+        } else {
+            IRValue nullEnv = makeValue(new PointerType(&Types::VOID_TYPE));
+            emit({ .op = IROp::CONST_NULL, .dst = nullEnv });
+            env = nullEnv;
+        }
+        emit({
+            .op = IROp::FUNC_LABEL,
+            .dst = closure,
+            .args = { env },
+            .imm = fn->functionId
+        });
+        return closure;
+    };
+
+    auto fieldInitIt = fieldInitFunctions.find(instanceType);
+    if (fieldInitIt == fieldInitFunctions.end()) {
+        throw KMYCompileError("Field initializer prototype missing for native codegen.");
+    }
+    IRValue fieldInit = emitClosure(fieldInitIt->second);
+    IRValue fieldInitResult = makeValue(&Types::VOID_TYPE);
+    emit({
+        .op = IROp::CALL,
+        .dst = fieldInitResult,
+        .args = { fieldInit, object }
+    });
+
+    FunctionExpr* constructor = nullptr;
+    for (auto* constructorSymbol : instanceType->constructorVec) {
+        auto* fnType = static_cast<FunctionType*>(constructorSymbol->type);
+        if (fnType->paramTypes.size() == e.args.size() + 1) {
+            auto it = constructorFunctions.find(constructorSymbol);
+            if (it != constructorFunctions.end()) {
+                constructor = it->second;
+                break;
+            }
+        }
+    }
+    if (!constructor) {
+        throw KMYCompileError("Cannot find a constructor matching native new expression.");
+    }
+
+    IRValue constructorClosure = emitClosure(constructor);
+    std::vector<HIROperand> callArgs = { constructorClosure, object };
+    for (auto& arg : e.args) {
+        arg->accept(*this);
+        callArgs.push_back(getLastValue());
+    }
+
+    IRValue result = makeValue(e.type);
+    emit({ .op = IROp::CALL, .dst = result, .args = std::move(callArgs) });
+    setLastValue(result);
 }
 
 // ======================================================
@@ -1242,7 +1462,21 @@ void IRBuilder::visit(Return& s) {
 }
 
 void IRBuilder::visit(Aggregate& s) {
-    throw KMYCompileError("agg Not yet");
+    bool oldMemberMode = compilingAggregateMember;
+    compilingAggregateMember = true;
+
+    for (auto& method : s.methodMembers) {
+        methodFunctions[method.symbol] = method.methodExpr.get();
+        method.methodExpr->accept(*this);
+    }
+    fieldInitFunctions[static_cast<InstanceType*>(s.typeSymbol->type)] = s.fieldInitFunc.get();
+    s.fieldInitFunc->accept(*this);
+    for (auto& constructor : s.constructorMembers) {
+        constructorFunctions[constructor.symbol] = constructor.initFuncExpr.get();
+        constructor.initFuncExpr->accept(*this);
+    }
+
+    compilingAggregateMember = oldMemberMode;
 }
 
 void IRBuilder::visit(TypeAlias& s) {}

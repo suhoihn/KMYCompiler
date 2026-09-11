@@ -720,6 +720,7 @@ void Resolver::visit(Aggregate& s) {
     assert(s.typeSymbol->type);
 
     auto aggType = static_cast<InstanceType*>(s.typeSymbol->type);
+    currentAggregate = aggType;
 
     // Enums should be done first.
     // *****CRITICAL TODO: IN FACT, THESE SHOULD BE IN THE ORDER OF DECL!!!!!!!!!

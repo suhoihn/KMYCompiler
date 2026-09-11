@@ -65,15 +65,9 @@ struct TypeLayout {
 
 
             case TypeKind::INSTANCE: {
-                auto* inst = static_cast<InstanceType*>(type);
-
-                size_t size = 0;
-
-                for (auto& [_, sym] : inst->fieldMap) {
-                    size += sizeOf(sym->type);
-                }
-
-                return size;
+                // Instances are represented by pointers to heap records in the
+                // native backend, not by inline aggregate values.
+                return PTR_SIZE;
             }
 
 

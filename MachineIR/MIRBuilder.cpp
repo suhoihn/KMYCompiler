@@ -49,6 +49,12 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         case IROp::CONST_INT:
             return { make(MIROp::CONST) };
 
+        case IROp::CONST_NULL: {
+            MIRInstr constant = make(MIROp::CONST);
+            constant.imm = 0;
+            return { constant };
+        }
+
 
         // =====================
         // Arithmetic
@@ -152,6 +158,33 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         // UNUSED
         case IROp::GET_ADDR:
             return { make(MIROp::LEA) };
+
+        case IROp::ALLOC_HEAP: {
+            MIRInstr alloc;
+            alloc.op = MIROp::ALLOC;
+            alloc.dst = instr.dst;
+            alloc.imm = instr.imm.value();
+            return { alloc };
+        }
+
+        case IROp::LOAD_FIELD:
+            return {
+                MIRInstr {
+                    .op = MIROp::LOAD,
+                    .dst = instr.dst,
+                    .args = convertHIRargs(instr.args), // [object_ptr]
+                    .imm = instr.imm.value()
+                }
+            };
+
+        case IROp::STORE_FIELD:
+            return {
+                MIRInstr {
+                    .op = MIROp::STORE,
+                    .args = convertHIRargs(instr.args), // [object_ptr, value]
+                    .imm = instr.imm.value()
+                }
+            };
 
 
         // =====================

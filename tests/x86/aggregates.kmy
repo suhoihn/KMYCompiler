@@ -5,11 +5,6 @@ class Counter {
         this.value = start;
     }
 
-    fun dec(): int {
-        this.value -= 1;
-        return this.value;
-    }
-
     fun inc(): int {
         this.value += 1;
         return this.value;
@@ -17,6 +12,5 @@ class Counter {
 };
 
 let c: Counter = new Counter(4);
-while (c.dec() > 0) {
-    print(c.inc());
-}
+print(c.inc());
+print(c.inc());

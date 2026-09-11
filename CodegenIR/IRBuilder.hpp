@@ -69,6 +69,11 @@ private:
     // Current function context
     IRCodegenFnCtx* currCtx = nullptr;
 
+    bool compilingAggregateMember = false;
+    std::unordered_map<VarSymbol*, FunctionExpr*> methodFunctions;
+    std::unordered_map<VarSymbol*, FunctionExpr*> constructorFunctions;
+    std::unordered_map<InstanceType*, FunctionExpr*> fieldInitFunctions;
+
     // Blocks
     HIRBlock* makeBlock();
     void connectBlock(HIRBlock* from, HIRBlock* to);
