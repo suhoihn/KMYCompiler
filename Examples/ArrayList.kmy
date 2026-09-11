@@ -1,75 +1,69 @@
-fun error(msg: string) {
-    print("ERROR: " + msg);
-}
-
+// Fixed-capacity integer ArrayList for the native x86 backend.
+// The backing array never resizes; size tracks the live prefix.
 class ArrayList {
-    let data: any[] = [];
+    let data: int[16] = new int[16];
     let size: int = 0;
+    let capacity: int = 16;
 
     init() {}
 
-    fun add(value: any) {
-        append(this.data, value);
-        this.size = len(this.data);
-    }
-
-    fun get(index: int) {
-        if (index < 0 || index >= this.size) {
-            error("Index out of bounds");
-            return null;
+    fun add(value: int): bool {
+        if (this.size >= this.capacity) {
+            return false;
         }
 
+        this.data[this.size] = value;
+        this.size = this.size + 1;
+        return true;
+    }
+
+    fun get(index: int): int {
+        if (index < 0 || index >= this.size) {
+            return -1;
+        }
         return this.data[index];
     }
 
-    fun set(index: int, value: any) {
+    fun set(index: int, value: int): bool {
         if (index < 0 || index >= this.size) {
-            error("Index out of bounds");
-            return null;
+            return false;
         }
 
         this.data[index] = value;
+        return true;
     }
 
-    fun remove(index: int) {
+    fun remove(index: int): int {
         if (index < 0 || index >= this.size) {
-            error("Index out of bounds");
-            return null;
+            return -1;
         }
 
-        let newData: any[] = [];
-        let removed: any = null;
-        let i: int = 0;
+        let removed: int = this.data[index];
+        let i: int = index;
 
-        while (i < this.size) {
-            if (i == index) {
-                removed = this.data[i];
-            } else {
-                append(newData, this.data[i]);
-            }
+        while (i + 1 < this.size) {
+            this.data[i] = this.data[i + 1];
             i = i + 1;
         }
 
-        this.data = newData;
-        this.size = len(this.data);
-
+        this.size = this.size - 1;
+        this.data[this.size] = 0;
         return removed;
     }
 
     fun clear() {
-        this.data = [];
         this.size = 0;
     }
 
-    fun length() {
+    fun length(): int {
         return this.size;
     }
 
-    fun isEmpty() {
+    fun isEmpty(): bool {
         return this.size == 0;
     }
 
-    fun contains(value: any) {
+    fun contains(value: int): bool {
         let i: int = 0;
         while (i < this.size) {
             if (this.data[i] == value) {
@@ -80,7 +74,7 @@ class ArrayList {
         return false;
     }
 
-    fun indexOf(value: any) {
+    fun indexOf(value: int): int {
         let i: int = 0;
         while (i < this.size) {
             if (this.data[i] == value) {
@@ -93,11 +87,13 @@ class ArrayList {
 };
 
 let list: ArrayList = new ArrayList();
-
 list.add(10);
 list.add(20);
 list.add(30);
 
 print(list.get(1));
-
-list.remove(1);
+print(list.remove(1));
+print(list.get(1));
+print(list.length());
+print(list.contains(30));
+print(list.indexOf(30));

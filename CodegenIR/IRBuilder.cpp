@@ -101,7 +101,34 @@ void IRBuilder::visit(Literal& e) {
 }
 
 void IRBuilder::visit(ArrayLiteral& e) {
-    throw KMYCompileError("arr Not yet");
+    auto* arrayType = static_cast<ArrayType*>(e.type);
+    if (!arrayType->fixedLength.has_value()) {
+        throw KMYCompileError("Native arrays must have a fixed length.");
+    }
+
+    size_t elementSize = TypeLayout::sizeOf(arrayType->elementType);
+    if (elementSize != PTR_SIZE) {
+        throw KMYCompileError("Native array elements must fit in one machine word.");
+    }
+
+    IRValue array = makeValue(e.type);
+    emit({
+        .op = IROp::ALLOC_ARRAY,
+        .dst = array,
+        .imm = static_cast<int64_t>(*arrayType->fixedLength * elementSize)
+    });
+
+    // Store each element into the array
+    for (size_t i = 0; i < e.elements.size(); ++i) {
+        e.elements[i]->accept(*this);
+        emit({
+            .op = IROp::STORE_ARRAY,
+            .args = { array, getLastValue() },
+            .imm = static_cast<int64_t>(i * elementSize)
+        });
+    }
+
+    setLastValue(array);
 }
 
 void IRBuilder::visit(RecordLiteral& e) {
@@ -521,11 +548,82 @@ void IRBuilder::visit(Assignment& e) {
         return;
     }
 
+    // Case 3: fixed-array element assignment
+    if (e.left->kind == ExprKind::Index) {
+        auto indexExpr = std::static_pointer_cast<Index>(e.left);
+        if (indexExpr->obj->type->kind != TypeKind::ARRAY) {
+            throw KMYCompileError("Native indexing requires an array.");
+        }
+
+        auto* arrayType = static_cast<ArrayType*>(indexExpr->obj->type);
+        size_t elementSize = TypeLayout::sizeOf(arrayType->elementType);
+        if (elementSize != PTR_SIZE) {
+            throw KMYCompileError("Native array elements must fit in one machine word.");
+        }
+
+        indexExpr->obj->accept(*this);
+        HIROperand array = getLastValue();
+        indexExpr->index->accept(*this);
+        HIROperand index = getLastValue();
+
+        HIROperand value;
+        if (e.op == AssignmentOp::Assign) {
+            e.right->accept(*this);
+            value = getLastValue();
+        } else {
+            IRValue oldValue = makeValue(e.type);
+            emit({
+                .op = IROp::LOAD_ARRAY_INDEX,
+                .dst = oldValue,
+                .args = { array, index },
+                .imm = static_cast<int64_t>(elementSize)
+            });
+            e.right->accept(*this);
+            IRValue newValue = makeValue(e.type);
+            emit({
+                .op = binaryOpToIROp(compoundToBinaryOp(e.op)),
+                .dst = newValue,
+                .args = { oldValue, getLastValue() }
+            });
+            value = newValue;
+            setLastValue(newValue);
+        }
+
+        emit({
+            .op = IROp::STORE_ARRAY_INDEX,
+            .args = { array, index, value },
+            .imm = static_cast<int64_t>(elementSize)
+        });
+        return;
+    }
+
     throw KMYCompileError("Invalid assignment target");
 }
 
 void IRBuilder::visit(Index& e) {
-    throw KMYCompileError("index Not yet");
+    if (e.obj->type->kind != TypeKind::ARRAY) {
+        throw KMYCompileError("Native indexing requires an array.");
+    }
+
+    auto* arrayType = static_cast<ArrayType*>(e.obj->type);
+    size_t elementSize = TypeLayout::sizeOf(arrayType->elementType);
+    if (elementSize != PTR_SIZE) {
+        throw KMYCompileError("Native array elements must fit in one machine word.");
+    }
+
+    e.obj->accept(*this);
+    HIROperand array = getLastValue();
+    e.index->accept(*this);
+    HIROperand index = getLastValue();
+
+    IRValue value = makeValue(e.type);
+    emit({
+        .op = IROp::LOAD_ARRAY_INDEX,
+        .dst = value,
+        .args = { array, index },
+        .imm = static_cast<int64_t>(elementSize)
+    });
+    setLastValue(value);
 }
 
 void IRBuilder::visit(Call& e) {
@@ -536,6 +634,19 @@ void IRBuilder::visit(Call& e) {
     for (const auto& arg : e.args) {
         arg->accept(*this);
         args.push_back( getLastValue() );
+    }
+
+    // MethodLower appends the implicit receiver after the explicit arguments
+    // (the bytecode compiler consumes arguments in reverse order).  Native x64
+    // calls pass arguments left-to-right in registers, so move that receiver
+    // directly after the closure/env operand before lowering to MIR.
+    if (e.func->kind == ExprKind::Get) {
+        auto callee = std::static_pointer_cast<Get>(e.func);
+        if (callee->resolvedMethod && args.size() > 1) {
+            HIROperand receiver = args.back();
+            args.pop_back();
+            args.insert(args.begin() + 1, receiver);
+        }
     }
 
     if (e.type != &Types::VOID_TYPE) {
@@ -1070,6 +1181,27 @@ void IRBuilder::visit(ThisExpr& e) {
 }
 
 void IRBuilder::visit(NewExpr& e) {
+    if (e.arrayType) {
+        auto* arrayType = static_cast<ArrayType*>(e.type);
+        if (!arrayType->fixedLength.has_value()) {
+            throw KMYCompileError("Native array allocation requires a fixed length.");
+        }
+
+        size_t elementSize = TypeLayout::sizeOf(arrayType->elementType);
+        if (elementSize != PTR_SIZE) {
+            throw KMYCompileError("Native array elements must fit in one machine word.");
+        }
+
+        IRValue array = makeValue(e.type);
+        emit({
+            .op = IROp::ALLOC_ARRAY,
+            .dst = array,
+            .imm = static_cast<int64_t>(*arrayType->fixedLength * elementSize)
+        });
+        setLastValue(array);
+        return;
+    }
+
     if (e.type->kind != TypeKind::INSTANCE) {
         throw KMYCompileError("new applied to a non-instance type");
     }
@@ -1376,10 +1508,24 @@ void IRBuilder::bindLocalDefinition(
 
     IRInstr& producer = currCtx->currBlock->code.back();
 
-    assert(producer.dst.has_value());
-    assert(producer.dst->id == rhs.id);
-
-    producer.defSym = sym;
+    if (producer.dst.has_value()) {
+        assert(producer.dst->id == rhs.id);
+        producer.defSym = sym;
+    } else {
+        // The value may have been produced earlier, followed by side-effecting
+        // stores (for example, array literal element initialization). Attach
+        // the definition to that earlier producer so BIND does not survive to
+        // MIR lowering.
+        for (auto it = currCtx->currBlock->code.rbegin();
+             it != currCtx->currBlock->code.rend();
+             ++it) {
+            if (it->dst.has_value() && it->dst->id == rhs.id) {
+                it->defSym = sym;
+                return;
+            }
+        }
+        throw KMYCompileError("Unable to find array value producer for local binding.");
+    }
 }
 
 void IRBuilder::visit(Let& s) {

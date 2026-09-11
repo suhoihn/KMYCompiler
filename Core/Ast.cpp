@@ -26,6 +26,7 @@ FunctionExpr::FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, T
     : params(move(params)), body(move(body)), annotatedReturnType(std::move(annotatedReturnType)), isEntry(isEntry) {}
 // Nothing for ThisLiteral.
 NewExpr::NewExpr(std::string typeName, std::vector<ExprPtr> args) : typeName(move(typeName)), args(move(args)) {}
+NewExpr::NewExpr(TypeNodePtr arrayType) : arrayType(move(arrayType)) {}
 
 // -----Statements
 Print::Print(ExprPtr expr) : expr(move(expr)) {}

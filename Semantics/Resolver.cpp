@@ -95,12 +95,15 @@ void Resolver::visit(ArrayLiteral& e) {
                 throw KMYCompileError("Expected array type for array literal, got " + typeToString(expectedType));
             }
             auto arrayType = static_cast<ArrayType*>(expectedType);
+            if (arrayType->fixedLength.has_value() && *arrayType->fixedLength != 0) {
+                throw KMYCompileError("Empty array literal does not match fixed array length.");
+            }
             e.type = arrayType;
             return;
         }
     }
 
-    e.type = TypeInterner::getArrayType(baseType);
+    e.type = TypeInterner::getArrayType(baseType, e.elements.size());
 }
 
 void Resolver::visit(RecordLiteral& e) {
@@ -570,6 +573,18 @@ void Resolver::visit(ThisExpr& e) {
 }
 
 void Resolver::visit(NewExpr& e) {
+    if (e.arrayType) {
+        e.type = typeSigToType(currScope, e.arrayType);
+        if (e.type->kind != TypeKind::ARRAY) {
+            throw KMYCompileError("Array allocation requires an array type.");
+        }
+        auto* arrayType = static_cast<ArrayType*>(e.type);
+        if (!arrayType->fixedLength.has_value()) {
+            throw KMYCompileError("Array allocation requires a fixed length, e.g. new int[5].");
+        }
+        return;
+    }
+
     TypeSymbol* aggType = lookupTypeSymbol(currScope, e.typeName);
     
     // TODO: Separate instance and agg type...

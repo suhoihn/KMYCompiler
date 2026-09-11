@@ -5,15 +5,16 @@
 #include "../Core/type.hpp"
 #include "../Core/AstBaseForward.hpp"
 
-ArrayType* TypeInterner::getArrayType(Type* elementType) {
-    auto it = arrayCache.find(elementType);
+ArrayType* TypeInterner::getArrayType(Type* elementType, std::optional<size_t> fixedLength) {
+    ArrayKey key{elementType, fixedLength};
+    auto it = arrayCache.find(key);
     if (it != arrayCache.end()) {
         return it->second;
     }
 
     // New element type for array.
-    ArrayType* newArrType = new ArrayType(elementType);
-    arrayCache[elementType] = newArrType;
+    ArrayType* newArrType = new ArrayType(elementType, fixedLength);
+    arrayCache[key] = newArrType;
 
     return newArrType;
 }

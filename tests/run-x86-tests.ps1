@@ -51,7 +51,9 @@ try {
     $tests = @(
         @{ Name = 'control_flow'; Source = 'tests/x86/control_flow.kmy'; Expected = 'tests/x86/control_flow.expected' },
         @{ Name = 'closures'; Source = 'tests/x86/closures.kmy'; Expected = 'tests/x86/closures.expected' },
-        @{ Name = 'aggregates'; Source = 'tests/x86/aggregates.kmy'; Expected = 'tests/x86/aggregates.expected' }
+        @{ Name = 'aggregates'; Source = 'tests/x86/aggregates.kmy'; Expected = 'tests/x86/aggregates.expected' },
+        @{ Name = 'arrays'; Source = 'tests/x86/arrays.kmy'; Expected = 'tests/x86/arrays.expected' },
+        @{ Name = 'arraylist'; Source = 'Examples/ArrayList.kmy'; Expected = 'tests/x86/arraylist.expected' }
     )
 
     foreach ($test in $tests) {
@@ -63,10 +65,14 @@ try {
         & $compiler $source -asm -o $executable *> $null
         if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $($test.Name)" }
 
-        $actual = ((& $executable 2>&1 | Out-String) -replace "`r`n", "`n" -replace "`r", "`n").Trim()
+        $actualRaw = (& $executable 2>&1 | Out-String)
+        $actual = [string]($actualRaw -join '')
+        $actual = ($actual -replace "`r`n", "`n" -replace "`r", "`n").Trim()
         if ($LASTEXITCODE -ne 0) { throw "Native program crashed: $($test.Name)" }
 
-        $expected = ((Get-Content -LiteralPath $expectedPath -Raw) -replace "`r`n", "`n" -replace "`r", "`n").Trim()
+        $expectedRaw = Get-Content -LiteralPath $expectedPath -Raw
+        $expected = [string]($expectedRaw -join '')
+        $expected = ($expected -replace "`r`n", "`n" -replace "`r", "`n").Trim()
         if ($actual -ne $expected) {
             throw "Output mismatch: $($test.Name)`nExpected:`n$expected`nActual:`n$actual"
         }

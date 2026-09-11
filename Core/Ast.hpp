@@ -243,9 +243,11 @@ struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {
 
 struct NewExpr : ExprHelper<NewExpr, ExprKind::NewExpr> {
     std::string typeName;
+    TypeNodePtr arrayType;
     std::vector<ExprPtr> args;
 
     NewExpr(std::string typeName, std::vector<ExprPtr> args);
+    NewExpr(TypeNodePtr arrayType);
 
     // ExprPtr clone() const override;
 };

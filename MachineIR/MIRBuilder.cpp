@@ -167,6 +167,14 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             return { alloc };
         }
 
+        case IROp::ALLOC_ARRAY: {
+            MIRInstr alloc;
+            alloc.op = MIROp::ALLOC;
+            alloc.dst = instr.dst;
+            alloc.imm = instr.imm.value();
+            return { alloc };
+        }
+
         case IROp::LOAD_FIELD:
             return {
                 MIRInstr {
@@ -182,6 +190,34 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
                 MIRInstr {
                     .op = MIROp::STORE,
                     .args = convertHIRargs(instr.args), // [object_ptr, value]
+                    .imm = instr.imm.value()
+                }
+            };
+
+        case IROp::STORE_ARRAY:
+            return {
+                MIRInstr {
+                    .op = MIROp::STORE,
+                    .args = convertHIRargs(instr.args), // [array_data_ptr, value]
+                    .imm = instr.imm.value()
+                }
+            };
+
+        case IROp::LOAD_ARRAY_INDEX:
+            return {
+                MIRInstr {
+                    .op = MIROp::LOAD_INDEX,
+                    .dst = instr.dst,
+                    .args = convertHIRargs(instr.args), // [array_data_ptr, index]
+                    .imm = instr.imm.value()
+                }
+            };
+
+        case IROp::STORE_ARRAY_INDEX:
+            return {
+                MIRInstr {
+                    .op = MIROp::STORE_INDEX,
+                    .args = convertHIRargs(instr.args), // [array_data_ptr, index, value]
                     .imm = instr.imm.value()
                 }
             };
@@ -388,11 +424,15 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             return {};
         }
 
+        case IROp::BIND:
+            // SSA has already propagated this alias into later operands.
+            return {};
+
 
         case IROp::GARBAGE:
         default:
             throw KMYCompileError(
-                "Unhandled HIR instruction"
+                std::string("Unhandled HIR instruction: ") + toString(instr.op)
             );
     }
 }

@@ -4,6 +4,7 @@
 #include <memory>
 #include <unordered_map>
 #include <string>
+#include <optional>
 
 // Forward decls
 struct VarSymbol;
@@ -144,8 +145,10 @@ struct FunctionType : Type {
 
 struct ArrayType : Type {
     Type* elementType;
+    std::optional<size_t> fixedLength;
 
-    ArrayType(Type* elementType) : Type(TypeKind::ARRAY), elementType(elementType) {}
+    ArrayType(Type* elementType, std::optional<size_t> fixedLength = std::nullopt)
+        : Type(TypeKind::ARRAY), elementType(elementType), fixedLength(fixedLength) {}
 };
 
 

@@ -89,6 +89,12 @@ inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
             std::cout << "ur array\n";
             const auto& arrayTypeNode = static_cast<ArrayTypeNode&>(*type);
             Type* elementType = typeSigToType(currScope, arrayTypeNode.elementType);
+            if (arrayTypeNode.isSizeDetermined && !arrayTypeNode.isDynamic) {
+                return TypeInterner::getArrayType(
+                    elementType,
+                    static_cast<size_t>(arrayTypeNode.size)
+                );
+            }
             return TypeInterner::getArrayType(elementType);
         }
 

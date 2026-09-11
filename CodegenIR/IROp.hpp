@@ -53,8 +53,12 @@ enum class IROp {
 
     GET_ADDR, // Gets an address of a value (UNUSED)
     ALLOC_HEAP, // Allocate imm bytes and return a pointer
+    ALLOC_ARRAY, // Allocate and zero imm bytes for a fixed-size array
     LOAD_FIELD, // Load a pointer-sized aggregate field at byte offset imm
     STORE_FIELD, // Store a pointer-sized aggregate field at byte offset imm
+    STORE_ARRAY, // Store an array element at byte offset imm
+    LOAD_ARRAY_INDEX, // Load array[index], using imm as element size
+    STORE_ARRAY_INDEX, // Store array[index], using imm as element size
     ALLOC_CELL_INIT, // Allocates a cell with a given value (e.g., v0 = ALLOC_CELL_INIT v1)
     STORE_CELL, // Stores a value to a cell (e.g., STORE_CELL v0 v1)
     LOAD_CELL, // Loads a value from a cell (e.g., v1 = LOAD_CELL v0)
@@ -106,8 +110,12 @@ inline const char* toString(IROp op) {
 
         case IROp::GET_ADDR:            return "GET_ADDR";
         case IROp::ALLOC_HEAP:          return "ALLOC_HEAP";
+        case IROp::ALLOC_ARRAY:         return "ALLOC_ARRAY";
         case IROp::LOAD_FIELD:          return "LOAD_FIELD";
         case IROp::STORE_FIELD:         return "STORE_FIELD";
+        case IROp::STORE_ARRAY:         return "STORE_ARRAY";
+        case IROp::LOAD_ARRAY_INDEX:    return "LOAD_ARRAY_INDEX";
+        case IROp::STORE_ARRAY_INDEX:   return "STORE_ARRAY_INDEX";
         case IROp::ALLOC_CELL_INIT:     return "ALLOC_CELL_INIT";
         case IROp::STORE_CELL:          return "STORE_CELL";
         case IROp::LOAD_CELL:           return "LOAD_CELL";

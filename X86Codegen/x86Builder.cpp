@@ -233,9 +233,11 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
         // =========================
 
         case MIROp::ALLOC: {
-            emit("mov rcx, " + std::to_string(instr.imm.value()));
+            // calloc(1, size) gives deterministic zeroed storage.
+            emit("mov rcx, 1");
+            emit("mov rdx, " + std::to_string(instr.imm.value()));
             emit("sub rsp, 40");
-            emit("call malloc");
+            emit("call calloc");
             emit("add rsp, 40");
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
@@ -280,8 +282,8 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
 
             // Fill in arguments 
             // TODO NOTE: ONLY LESS THAN 6 ARGUMENTS WORK FOR NOW.
-            if (instr.args.size() > 3) {
-                throw KMYCompileError("Arg >4");
+            if (instr.args.size() > argRegs.size()) {
+                throw KMYCompileError("Too many call arguments for native ABI");
             }
 
             // First argument is always the env pointer
@@ -355,6 +357,30 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             break;
         }
 
+        case MIROp::LOAD_INDEX: {
+            // Load array base pointer and dynamic element index.
+            emit("mov rax, " + loc(instr.args[0]));
+            emit("mov rcx, " + loc(instr.args[1]));
+
+            // Read base[index * elementSize]. Bounds checks are intentionally
+            // deferred; the static array type supplies the element stride.
+            emit("mov rax, [rax+rcx*" + std::to_string(instr.imm.value()) + "]");
+
+            // Spill the loaded element into the MIR destination slot.
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
+        case MIROp::STORE_INDEX: {
+            // Load the value, dynamic index, and array base into scratch regs.
+            emit("mov rax, " + loc(instr.args[2]));
+            emit("mov rcx, " + loc(instr.args[1]));
+            emit("mov rdx, " + loc(instr.args[0]));
+
+            // Write value into base[index * elementSize].
+            emit("mov [rdx+rcx*" + std::to_string(instr.imm.value()) + "], rax");
+            break;
+        }
 
         default: {
             std::ostringstream tmp;

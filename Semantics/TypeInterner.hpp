@@ -27,6 +27,25 @@ struct FunctionHash {
     }
 };
 
+struct ArrayKey {
+    Type* elementType;
+    std::optional<size_t> fixedLength;
+
+    bool operator==(const ArrayKey& other) const {
+        return elementType == other.elementType && fixedLength == other.fixedLength;
+    }
+};
+
+struct ArrayKeyHash {
+    size_t operator()(const ArrayKey& key) const {
+        size_t h = std::hash<Type*>()(key.elementType);
+        if (key.fixedLength.has_value()) {
+            h ^= std::hash<size_t>()(*key.fixedLength) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        }
+        return h;
+    }
+};
+
 // TODO: Just use FieldInfo?
 // TODO that doesnt belong here lol: Symbols only contain name, isMutable, type, and others are purely for debug.
 struct FieldKey {
@@ -65,12 +84,12 @@ struct RecordKeyHash {
 
 namespace TypeInterner {
 //private:
-    inline std::unordered_map<Type*, ArrayType*> arrayCache;
+    inline std::unordered_map<ArrayKey, ArrayType*, ArrayKeyHash> arrayCache;
     inline std::unordered_map<FunctionKey, FunctionType*, FunctionHash> fnCache;
     inline std::unordered_map<RecordKey, StructualType*, RecordKeyHash> recordCache;
     RecordKey makeKey(std::unordered_map<std::string, Type*> raw);
 // public:
-    extern ArrayType* getArrayType(Type* elementType);
+    extern ArrayType* getArrayType(Type* elementType, std::optional<size_t> fixedLength = std::nullopt);
     extern FunctionType* getFunctionType(std::vector<Type*> paramTypes, Type* returnType);
     extern StructualType* getStructualType(std::unordered_map<std::string, Type*> raw);
 };

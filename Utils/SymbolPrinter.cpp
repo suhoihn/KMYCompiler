@@ -31,6 +31,9 @@ std::string typeToString(Type* type) {
 
         case TypeKind::ARRAY: {
             auto arr = static_cast<const ArrayType*>(type);
+            if (arr->fixedLength.has_value()) {
+                return typeToString(arr->elementType) + "[" + std::to_string(*arr->fixedLength) + "]";
+            }
             return typeToString(arr->elementType) + "[]";
         }
 

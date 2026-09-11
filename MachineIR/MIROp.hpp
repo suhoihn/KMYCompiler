@@ -39,8 +39,10 @@ enum class MIROp {
     // Memory
     LOAD,
     STORE,
+    LOAD_INDEX,
+    STORE_INDEX,
     LEA,
-    ALLOC, // Allocates a heap memory with a given size (e.g., v0 = ALLOC 8)
+    ALLOC, // Allocates zero-initialized heap memory with a given size
 
     // Stack / calling convention
     PARAM,
@@ -98,6 +100,8 @@ inline const char* toString(MIROp op) {
 
         case MIROp::LOAD: return "LOAD";
         case MIROp::STORE: return "STORE";
+        case MIROp::LOAD_INDEX: return "LOAD_INDEX";
+        case MIROp::STORE_INDEX: return "STORE_INDEX";
         case MIROp::LEA: return "LEA";
         case MIROp::ALLOC: return "ALLOC";
 

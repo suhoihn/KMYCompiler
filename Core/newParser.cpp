@@ -1104,12 +1104,41 @@ ExprPtr Parser::parse_recordExpr() {
 
 
 /*
-newExpr → "new" IDENTIFIER '(' args? ')'
+newExpr → "new" type '(' args? ')' | "new" arrayType
 args    → expression ("," expression)*
 */
 ExprPtr Parser::parse_newExpr() {
-    Token name = consume(TokenType::Identifier, "Expected an identifier");
+    TypeNodePtr allocatedType = parse_type();
 
+    if (allocatedType->kind == TypeNodeKind::ARRAY && !check(TokenType::LeftParen)) {
+        return std::make_shared<NewExpr>(std::move(allocatedType));
+    }
+
+    if (allocatedType->kind != TypeNodeKind::NAMED &&
+        allocatedType->kind != TypeNodeKind::SCOPED) {
+        throw KMYParseError(
+            "Expected an aggregate type followed by constructor arguments or a fixed array type",
+            previous().line,
+            previous().startIdx,
+            previous().endIdx
+        );
+    }
+
+    std::string aggregateName;
+    if (allocatedType->kind == TypeNodeKind::NAMED) {
+        aggregateName = std::static_pointer_cast<NamedTypeNode>(allocatedType)->name;
+    } else {
+        auto scopedType = std::static_pointer_cast<ScopedTypeNode>(allocatedType);
+        if (scopedType->scopeParts.size() != 1) {
+            throw KMYParseError(
+                "Aggregate allocation currently requires an unqualified type name",
+                previous().line,
+                previous().startIdx,
+                previous().endIdx
+            );
+        }
+        aggregateName = scopedType->scopeParts.front();
+    }
     consume(TokenType::LeftParen, "Expected '(' after class/record name");
     std::vector<ExprPtr> args;
 
@@ -1122,7 +1151,7 @@ ExprPtr Parser::parse_newExpr() {
     consume(TokenType::RightParen, "Expected ')' after class constructor args");
 
     return std::make_shared<NewExpr>(
-        name.lexeme,
+        std::move(aggregateName),
         std::move(args)
     );
 }
