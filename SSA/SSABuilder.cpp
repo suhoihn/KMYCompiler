@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <iostream>
 #include <functional>
+#include "../Core/errorhandler.hpp"
 
 SSABuilder::SSABuilder(
     const std::vector<HIRFunction*> funcs
@@ -510,6 +511,36 @@ void SSABuilder::insertPhis(HIRFunction* func) {
 
         for (VarSymbol* var : vars) {
 
+            // A dominance-frontier candidate is not necessarily a real phi:
+            // locals declared inside a loop body can appear in the frontier
+            // of the loop header even though the header's entry edge has no
+            // definition for that local. Such a phi would have an impossible
+            // incoming value and would later underflow varStack during rename.
+            auto defsIt = defBlocks.find(var);
+            if (defsIt == defBlocks.end()) {
+                continue;
+            }
+
+            bool everyPredecessorHasDefinition = true;
+            for (HIRBlock* pred : block->preds) {
+                bool hasDefinition = false;
+                for (HIRBlock* defBlock : defsIt->second) {
+                    if (dom.at(pred).count(defBlock) != 0) {
+                        hasDefinition = true;
+                        break;
+                    }
+                }
+
+                if (!hasDefinition) {
+                    everyPredecessorHasDefinition = false;
+                    break;
+                }
+            }
+
+            if (!everyPredecessorHasDefinition) {
+                continue;
+            }
+
             // Allocate the SSA result of the PHI.
             IRValue result = makeValue(func, var->type);
 
@@ -547,10 +578,12 @@ static IRValue lookupVar(
 ) {
     auto it = varStack.find(var);
 
-    assert(
-        it != varStack.end() &&
-        !it->second.empty()
-    );
+    if (it == varStack.end() || it->second.empty()) {
+        throw KMYCompileError(
+            "SSA variable '" + var->name +
+            "' has no reaching definition"
+        );
+    }
 
     return it->second.back();
 }

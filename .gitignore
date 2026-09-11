@@ -1,0 +1,7 @@
+# Build directories and generated native artifacts
+build/
+*.exe
+*.s
+
+# Object files are intentionally not ignored: the checked-in runtime object
+# is used by the native compiler's default link command.

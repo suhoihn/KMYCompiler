@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
     bool strictTypes = false;
     bool isBuildingASM = false;
     bool run = true;
-    char* output = nullptr;
+    const char* output = nullptr;
 
     for (int i = 2; i < argc; i++) {
         char* str = argv[i];
@@ -139,9 +139,9 @@ int main(int argc, char *argv[]) {
             if (output) {
                 printLog(LogLevel::WARN, "Duplicate switch (-o) detected.");
             }
-            if (argc >= i + 1) {
+            if (i + 1 >= argc) {
                 printLog(LogLevel::ERROR, "Wrong switch formation!");
-                return 0;
+                return 1;
             }
             output = argv[++i];
             std::cout << "[DEBUG]: Output file name: " << output << std::endl;
@@ -308,7 +308,7 @@ int main(int argc, char *argv[]) {
             } // close file.
 
             if (run) {
-                std::string cmd = "gcc " + asmFile + " \"Runtime C Functions\"\\runtime.o -o \"" + std::string(output) + "\"";
+                std::string cmd = "gcc \"" + asmFile + "\" \"Runtime C Functions\\runtime.o\" -o \"" + std::string(output) + "\"";
 
                 int result = std::system(cmd.c_str());
 

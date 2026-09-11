@@ -1,0 +1,83 @@
+[CmdletBinding()]
+param(
+    [switch]$KeepArtifacts
+)
+
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$buildRoot = Join-Path $repoRoot 'build\x86-tests'
+$buildDir = Join-Path $buildRoot ([Guid]::NewGuid().ToString())
+$compiler = Join-Path $buildDir 'comp-x86-tests.exe'
+$runtimeSource = Join-Path $repoRoot 'Runtime C Functions\runtime.c'
+$runtimeObject = Join-Path $repoRoot 'Runtime C Functions\runtime.o'
+
+New-Item -ItemType Directory -Path $buildDir | Out-Null
+
+$compilerSources = @(
+    'Compiler/main.cpp',
+    'Semantics/MethodLower.cpp',
+    'Semantics/SymbolScopeBuilder.cpp',
+    'Semantics/Resolver.cpp',
+    'Semantics/ClosureAnalyser.cpp',
+    'Semantics/TypeInterner.cpp',
+    'Semantics/DeclTypeResolver.cpp',
+    'Compiler/compiler.cpp',
+    'BytecodeVM/vm.cpp',
+    'Utils/NativeFunctionImpl.cpp',
+    'Utils/utils.cpp',
+    'Utils/SymbolPrinter.cpp',
+    'Utils/DefaultVisitor.cpp',
+    'Core/lexer.cpp',
+    'Core/newParser.cpp',
+    'Core/Ast.cpp',
+    'Core/value.cpp',
+    'CodegenIR/IRBuilder.cpp',
+    'SSA/SSABuilder.cpp',
+    'MachineIR/MIRBuilder.cpp',
+    'X86Codegen/x86Builder.cpp'
+) | ForEach-Object { Join-Path $repoRoot $_ }
+
+Push-Location $repoRoot
+try {
+    Write-Host 'Building native runtime...'
+    & gcc -c $runtimeSource -o $runtimeObject
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to build the native runtime.' }
+
+    Write-Host 'Building compiler...'
+    & g++ -std=c++20 @compilerSources -o $compiler
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to build the compiler.' }
+
+    $tests = @(
+        @{ Name = 'control_flow'; Source = 'tests/x86/control_flow.kmy'; Expected = 'tests/x86/control_flow.expected' },
+        @{ Name = 'closures'; Source = 'tests/x86/closures.kmy'; Expected = 'tests/x86/closures.expected' }
+    )
+
+    foreach ($test in $tests) {
+        $source = Join-Path $repoRoot $test.Source
+        $expectedPath = Join-Path $repoRoot $test.Expected
+        $executable = Join-Path $buildDir ($test.Name + '.exe')
+
+        Write-Host "Compiling $($test.Name)..."
+        & $compiler $source -asm -o $executable *> $null
+        if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $($test.Name)" }
+
+        $actual = ((& $executable 2>&1 | Out-String) -replace "`r`n", "`n" -replace "`r", "`n").Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Native program crashed: $($test.Name)" }
+
+        $expected = ((Get-Content -LiteralPath $expectedPath -Raw) -replace "`r`n", "`n" -replace "`r", "`n").Trim()
+        if ($actual -ne $expected) {
+            throw "Output mismatch: $($test.Name)`nExpected:`n$expected`nActual:`n$actual"
+        }
+
+        Write-Host "PASS $($test.Name)"
+    }
+}
+finally {
+    Pop-Location
+    if (-not $KeepArtifacts -and (Test-Path -LiteralPath $buildDir)) {
+        Remove-Item -LiteralPath $buildDir -Recurse -Force
+    }
+}
+
+Write-Host 'All x86 tests passed.'

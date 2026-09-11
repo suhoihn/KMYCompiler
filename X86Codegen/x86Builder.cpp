@@ -83,7 +83,7 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
         case MIROp::DIV:
             emit("mov rax, " + loc(instr.args[0]));
             emit("cqo");
-            emit("idiv " + loc(instr.args[1]));
+            emit("idiv qword ptr " + loc(instr.args[1]));
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
 
@@ -91,7 +91,7 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
         case MIROp::MOD:
             emit("mov rax, " + loc(instr.args[0]));
             emit("cqo");
-            emit("idiv " + loc(instr.args[1]));
+            emit("idiv qword ptr " + loc(instr.args[1]));
             emit("mov " + loc(instr.dst.value()) + ", rdx");
             break;
 
@@ -352,6 +352,7 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
         case MIROp::MOVE: {
             emit("mov rax, " + loc(instr.args[0]));
             emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
         }
 
 

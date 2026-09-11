@@ -602,15 +602,54 @@ static void printFunctionContext(FunctionContext* fnCtx) {
 }
 
 void IRBuilder::visit(FunctionExpr& e) {
-    
-    IRValue fnValue;
-    
     std::cout << "NEW FUNC " << e.functionId << "\n";
     printFunctionContext(e.functionContext);
 
     // Context switch to a new function.
     auto oldCtx = currCtx;
     HIRFunction* oldFn = currFunc;
+
+    // Named function declarations already have a closure emitted by the
+    // enclosing function's hoisting pass. Function expressions, however,
+    // must materialize a closure at their evaluation site so their value can
+    // be returned, stored, or called.
+    bool isHoistedDeclaration = false;
+    std::optional<IRValue> expressionValue;
+    if (oldCtx) {
+        for (const auto& [symbol, declaration] : oldCtx->fnCtx->funcDecls) {
+            (void)symbol;
+            if (declaration.get() == &e) {
+                isHoistedDeclaration = true;
+                break;
+            }
+        }
+
+        if (!isHoistedDeclaration) {
+            IRValue fnValue = makeValue(e.type);
+            std::vector<HIROperand> args;
+
+            if (oldCtx->env.has_value()) {
+                args.push_back(oldCtx->env.value());
+            } else {
+                IRValue nullEnv = makeValue(new PointerType(&Types::VOID_TYPE));
+                emit({
+                    .op = IROp::CONST_INT,
+                    .dst = nullEnv,
+                    .imm = 0
+                });
+                args.push_back(nullEnv);
+            }
+
+            emit({
+                .op = IROp::FUNC_LABEL,
+                .dst = fnValue,
+                .args = std::move(args),
+                .imm = e.functionId
+            });
+
+            expressionValue = fnValue;
+        }
+    }
 
     currCtx = new IRCodegenFnCtx{};
     currCtx->parent = oldCtx;   
@@ -789,7 +828,7 @@ void IRBuilder::visit(FunctionExpr& e) {
 
     // Hoist function declarations (in opposite order?)
     for (auto& [funcDeclSym, funcDeclExpr] : e.functionContext->funcDecls) {
-        fnValue = makeValue(e.type);
+        IRValue fnValue = makeValue(funcDeclExpr->type);
         //assert(currCtx->env.has_value());
 
         std::vector<HIROperand> arg = {};
@@ -882,7 +921,9 @@ void IRBuilder::visit(FunctionExpr& e) {
     if (oldCtx) {
         currFunc = oldFn;
         currCtx = oldCtx;
-        setLastValue(fnValue);
+        if (expressionValue.has_value()) {
+            setLastValue(expressionValue.value());
+        }
     }
 }
 
