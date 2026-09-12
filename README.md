@@ -21,6 +21,14 @@ conditionals, `while`, parser-lowered `for`, `break`, and `continue`. Arrays,
 records/classes, and several type-system features are still incomplete in the
 native backend.
 
+Enum variants are represented as ordinal integer constants on x86, matching
+the VM behavior; enum payloads and pattern matching are not implemented yet.
+
+Rust-style native-width aliases are accepted: `i64` and `u64` currently map to
+KMY's existing integer representation, `f64` maps to `double`, and `byte` maps
+to the current integer representation. True width-specific and unsigned
+arithmetic will require a later backend/layout update.
+
 ## Prerequisites
 
 - A C++20-capable `g++`

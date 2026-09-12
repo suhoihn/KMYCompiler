@@ -57,6 +57,16 @@ inline std::ostream& operator<<(
             break;
         }
 
+        case IROp::CONST_STRING: {
+            os << instr.dst.value();
+            printDefSym(os, instr);
+
+            os << " = const_string #"
+               << instr.imm.value();
+
+            break;
+        }
+
         case IROp::PHI: {
             os << instr.dst.value();
             printDefSym(os, instr);

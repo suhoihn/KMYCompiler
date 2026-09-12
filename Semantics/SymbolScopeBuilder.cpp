@@ -16,14 +16,18 @@ SymbolScopeBuilder::SymbolScopeBuilder(
     globalScope = new Scope();
     currScope = globalScope;
 
-    // Build native functions HERE(?)
-    return;
-    for (auto& [name, info] : nativeFnTypes) {
+    // Register string intrinsics as ordinary built-in function identifiers.
+    for (const auto& name : {std::string("streq"), std::string("strconcat"),
+                             std::string("strlen"), std::string("strByteAt"),
+                             std::string("strFromByte"), std::string("readFile"),
+                             std::string("writeFile")}) {
+        auto& info = nativeFnTypes.at(name);
         VarSymbol* sym = declareVar(name, false);
 
         sym->type = info.type;
         sym->nativeFnPtr = info.fn;
         sym->globalSlot = info.globalSlot; // Hacky?
+        sym->available = true;
     }
 }
 

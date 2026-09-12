@@ -235,6 +235,13 @@ Type* testBinary(BinaryOp op, Type* leftType, Type* rightType) {
         case BinaryOp::LogicalOr:
             return &Types::BOOL_TYPE;
 
+        case BinaryOp::NullCoalesce:
+            if (!leftType || leftType->kind != TypeKind::NULLABLE)
+                throw KMYCompileError("Left operand of ?? must be nullable.");
+            if (rightType != static_cast<NullableType*>(leftType)->innerType)
+                throw KMYCompileError("Null-coalescing fallback has incompatible type.");
+            return static_cast<NullableType*>(leftType)->innerType;
+
         // ========================
         // COMPARISON
         // ========================
@@ -276,6 +283,13 @@ void Resolver::visit(BinaryExpr& e) {
 void Resolver::visit(UnaryExpr& e) {
     e.operand->accept(*this);
 
+    if (e.op == UnaryOp::ForceUnwrap) {
+        if (!e.operand->type || e.operand->type->kind != TypeKind::NULLABLE)
+            throw KMYCompileError("!! requires a nullable operand.");
+        e.type = static_cast<NullableType*>(e.operand->type)->innerType;
+        return;
+    }
+
     if (e.operand->type != &Types::INT_TYPE) {
         throw std::runtime_error("Unary operator only supports int operand... for now.");
     }
@@ -294,6 +308,19 @@ static bool isAssignable(Type* from, Type* to) {
     
     if (from == &Types::INT_TYPE && to == &Types::DOUBLE_TYPE) {
         return true; // int can be assigned to double.
+    }
+
+    if (to && to->kind == TypeKind::NULLABLE) {
+        // Nullable targets accept either null or the wrapped value type.
+        // A nullable source is compatible only when its inner type can be
+        // assigned to this target's inner type; null never flows into a
+        // non-nullable target through this rule.
+        auto* nullableTo = static_cast<NullableType*>(to);
+        if (from == &Types::NULL_TYPE) return true;
+        if (from && from->kind == TypeKind::NULLABLE) {
+            return isAssignable(static_cast<NullableType*>(from)->innerType, nullableTo->innerType);
+        }
+        return isAssignable(from, nullableTo->innerType);
     }
 
     return from == to;
@@ -579,8 +606,14 @@ void Resolver::visit(NewExpr& e) {
             throw KMYCompileError("Array allocation requires an array type.");
         }
         auto* arrayType = static_cast<ArrayType*>(e.type);
-        if (!arrayType->fixedLength.has_value()) {
-            throw KMYCompileError("Array allocation requires a fixed length, e.g. new int[5].");
+        if (!arrayType->fixedLength.has_value() && !e.arraySize) {
+            throw KMYCompileError("Array allocation requires a size, e.g. new int[5] or new int[count].");
+        }
+        if (e.arraySize) {
+            e.arraySize->accept(*this);
+            if (!e.arraySize->type || e.arraySize->type->kind != TypeKind::INT) {
+                throw KMYCompileError("Array size expression must have type int.");
+            }
         }
         return;
     }

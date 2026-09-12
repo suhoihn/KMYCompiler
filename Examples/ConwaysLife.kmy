@@ -1,0 +1,126 @@
+// Conway's Game of Life on a fixed 5x5 heap-allocated grid.
+//
+// The display is numeric: each row is printed as a 5-bit mask.  Bit 0 is the
+// leftmost cell, so a row value of 5 means ##... (cells 0 and 2 are alive).
+// This keeps the example runnable on the native x86 backend, which currently
+// has integer/bool output but no native string formatting.
+class Life {
+    let cells: int[25] = new int[25];
+    let generation: int = 0;
+
+    init() {
+        // A glider, which moves diagonally as the simulation advances.
+        this.cells[1] = 1;
+        this.cells[7] = 1;
+        this.cells[10] = 1;
+        this.cells[11] = 1;
+        this.cells[12] = 1;
+    }
+
+    fun at(x: int, y: int): int {
+        if (x < 0 || x >= 5 || y < 0 || y >= 5) {
+            return 0;
+        }
+        return this.cells[y * 5 + x];
+    }
+
+    fun neighbors(x: int, y: int): int {
+        let total: int = 0;
+        let dy: int = -1;
+
+        while (dy <= 1) {
+            let dx: int = -1;
+            while (dx <= 1) {
+                if (dx != 0 || dy != 0) {
+                    total += this.at(x + dx, y + dy);
+                }
+                dx += 1;
+            }
+            dy += 1;
+        }
+
+        return total;
+    }
+
+    fun step() {
+        let next: int[25] = new int[25];
+        let y: int = 0;
+
+        while (y < 5) {
+            let x: int = 0;
+            while (x < 5) {
+                let here: int = this.at(x, y);
+                let nearby: int = this.neighbors(x, y);
+
+                if ((here == 1 && (nearby == 2 || nearby == 3)) ||
+                    (here == 0 && nearby == 3)) {
+                    next[y * 5 + x] = 1;
+                }
+                x += 1;
+            }
+            y += 1;
+        }
+
+        this.cells = next;
+        this.generation += 1;
+    }
+
+    fun rowBits(row: int): int {
+        let bits: int = 0;
+        let x: int = 0;
+
+        while (x < 5) {
+            if (this.cells[row * 5 + x] == 1) {
+                bits += 1 << x;
+            }
+            x += 1;
+        }
+
+        return bits;
+    }
+
+    fun population(): int {
+        let total: int = 0;
+        let i: int = 0;
+        while (i < 25) {
+            total += this.cells[i];
+            i += 1;
+        }
+        return total;
+    }
+};
+
+let world: Life = new Life();
+
+// Print generation 0, then three successive generations.  Each group is the
+// five row masks followed by the live-cell count.
+print(world.rowBits(0));
+print(world.rowBits(1));
+print(world.rowBits(2));
+print(world.rowBits(3));
+print(world.rowBits(4));
+print(world.population());
+
+world.step();
+print(world.rowBits(0));
+print(world.rowBits(1));
+print(world.rowBits(2));
+print(world.rowBits(3));
+print(world.rowBits(4));
+print(world.population());
+
+world.step();
+print(world.rowBits(0));
+print(world.rowBits(1));
+print(world.rowBits(2));
+print(world.rowBits(3));
+print(world.rowBits(4));
+print(world.population());
+
+world.step();
+print(world.rowBits(0));
+print(world.rowBits(1));
+print(world.rowBits(2));
+print(world.rowBits(3));
+print(world.rowBits(4));
+print(world.population());

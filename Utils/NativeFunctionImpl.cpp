@@ -1,6 +1,7 @@
 #include "NativeFunctionImpl.hpp"
 
 #include "variant"
+#include <fstream>
 #include "../Core/type.hpp"
 #include "../Core/Value.hpp"
 #include "../Semantics/TypeInterner.hpp"
@@ -125,7 +126,149 @@ Value len(int argc, Value* args) {
     throw std::runtime_error("len expects array or string");
 }
 
+Value streq(int argc, Value* args) {
+    if (argc != 2 || !std::holds_alternative<std::string>(args[0].data) ||
+        !std::holds_alternative<std::string>(args[1].data)) {
+        throw std::runtime_error("streq expects two strings");
+    }
+    return Value(std::get<std::string>(args[0].data) ==
+                 std::get<std::string>(args[1].data));
+}
+
+Value strconcat(int argc, Value* args) {
+    if (argc != 2 || !std::holds_alternative<std::string>(args[0].data) ||
+        !std::holds_alternative<std::string>(args[1].data)) {
+        throw std::runtime_error("strconcat expects two strings");
+    }
+    return Value(std::get<std::string>(args[0].data) +
+                 std::get<std::string>(args[1].data));
+}
+
+Value strlenNative(int argc, Value* args) {
+    if (argc != 1 || !std::holds_alternative<std::string>(args[0].data)) {
+        throw std::runtime_error("strlen expects one string");
+    }
+    return Value(static_cast<int>(std::get<std::string>(args[0].data).size()));
+}
+
+Value strByteAt(int argc, Value* args) {
+    if (argc != 2 || !std::holds_alternative<std::string>(args[0].data) ||
+        !std::holds_alternative<int>(args[1].data)) {
+        throw std::runtime_error("strByteAt expects a string and an integer index");
+    }
+    const auto& value = std::get<std::string>(args[0].data);
+    int index = std::get<int>(args[1].data);
+    if (index < 0 || static_cast<size_t>(index) >= value.size()) return Value(-1);
+    return Value(static_cast<int>(static_cast<unsigned char>(value[index])));
+}
+
+Value strFromByte(int argc, Value* args) {
+    if (argc != 1 || !std::holds_alternative<int>(args[0].data)) {
+        throw std::runtime_error("strFromByte expects one integer");
+    }
+    int value = std::get<int>(args[0].data);
+    if (value < 0 || value > 255) return Value(std::string());
+    return Value(std::string(1, static_cast<char>(static_cast<unsigned char>(value))));
+}
+
+Value readFile(int argc, Value* args) {
+    if (argc != 1 || !std::holds_alternative<std::string>(args[0].data)) {
+        throw std::runtime_error("readFile expects one path string");
+    }
+    std::ifstream file(std::get<std::string>(args[0].data), std::ios::binary);
+    if (!file) return Value(std::string());
+    return Value(std::string(
+        std::istreambuf_iterator<char>(file),
+        std::istreambuf_iterator<char>()
+    ));
+}
+
+Value writeFile(int argc, Value* args) {
+    if (argc != 2 || !std::holds_alternative<std::string>(args[0].data) ||
+        !std::holds_alternative<std::string>(args[1].data)) {
+        throw std::runtime_error("writeFile expects path and contents strings");
+    }
+    std::ofstream file(std::get<std::string>(args[0].data), std::ios::binary);
+    if (!file) return Value(false);
+    file << std::get<std::string>(args[1].data);
+    return Value(static_cast<bool>(file.good()));
+}
+
 std::unordered_map<std::string, NativeEntry> nativeFnTypes = {
+    {
+        "streq",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::STRING_TYPE, &Types::STRING_TYPE},
+                &Types::BOOL_TYPE
+            ),
+            &streq,
+            4
+        }
+    },
+    {
+        "strconcat",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::STRING_TYPE, &Types::STRING_TYPE},
+                &Types::STRING_TYPE
+            ),
+            &strconcat,
+            5
+        }
+    },
+    {
+        "strlen",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::STRING_TYPE},
+                &Types::INT_TYPE
+            ),
+            &strlenNative,
+            6
+        }
+    },
+    {
+        "strByteAt",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::STRING_TYPE, &Types::INT_TYPE},
+                &Types::INT_TYPE
+            ),
+            &strByteAt,
+            7
+        }
+    },
+    {
+        "readFile",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::STRING_TYPE},
+                &Types::STRING_TYPE
+            ),
+            &readFile,
+            8
+        }
+    },
+    {
+        "strFromByte",
+        {
+            TypeInterner::getFunctionType({&Types::INT_TYPE}, &Types::STRING_TYPE),
+            &strFromByte,
+            10
+        }
+    },
+    {
+        "writeFile",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::STRING_TYPE, &Types::STRING_TYPE},
+                &Types::BOOL_TYPE
+            ),
+            &writeFile,
+            9
+        }
+    },
     {
         "isAlpha",
         {

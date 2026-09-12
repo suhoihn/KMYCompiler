@@ -92,6 +92,10 @@ static std::unordered_map<std::string, TokenType> keywords = {
     {"string", TokenType::KeywordString},
     {"void", TokenType::KeywordVoid},
     {"any", TokenType::KeywordAny},
+    {"i64", TokenType::KeywordI64},
+    {"u64", TokenType::KeywordU64},
+    {"f64", TokenType::KeywordF64},
+    {"byte", TokenType::KeywordByte},
 };
 
 Token Lexer::read_identifier_or_keyword() {
@@ -127,6 +131,8 @@ static std::unordered_map<std::string, TokenType> symbols = {
     
     {"&&", TokenType::LogicalAnd},
     {"||", TokenType::LogicalOr},
+    {"??", TokenType::NullCoalesce},
+    {"?", TokenType::Nullable},
 
     {"=", TokenType::Assign},
     {"+=", TokenType::PlusAssign},
@@ -155,6 +161,7 @@ static std::unordered_map<std::string, TokenType> symbols = {
     {"}", TokenType::RightBrace},
     {";", TokenType::Semicolon},
     {"!", TokenType::Bang},
+    {"!!", TokenType::ForceUnwrap},
     {"[", TokenType::LeftBracket},
     {"]", TokenType::RightBracket},
     {",", TokenType::Comma},

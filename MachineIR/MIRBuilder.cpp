@@ -49,6 +49,75 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         case IROp::CONST_INT:
             return { make(MIROp::CONST) };
 
+        case IROp::CONST_STRING:
+            return { make(MIROp::CONST_STRING) };
+
+        case IROp::STRING_EQUAL: {
+            MIRInstr call;
+            call.op = MIROp::RUNTIME_CALL;
+            call.dst = instr.dst;
+            call.args = convertHIRargs(instr.args);
+            call.imm = 2;
+            return { call };
+        }
+
+        case IROp::STRING_CONCAT: {
+            MIRInstr call;
+            call.op = MIROp::RUNTIME_CALL;
+            call.dst = instr.dst;
+            call.args = convertHIRargs(instr.args);
+            call.imm = 3;
+            return { call };
+        }
+
+        case IROp::STRING_LENGTH: {
+            MIRInstr call;
+            call.op = MIROp::RUNTIME_CALL;
+            call.dst = instr.dst;
+            call.args = convertHIRargs(instr.args);
+            call.imm = 4;
+            return { call };
+        }
+
+        case IROp::STRING_BYTE_AT: {
+            MIRInstr call;
+            call.op = MIROp::RUNTIME_CALL;
+            call.dst = instr.dst;
+            call.args = convertHIRargs(instr.args);
+            call.imm = 5;
+            return { call };
+        }
+
+        case IROp::STRING_FROM_BYTE: {
+            MIRInstr call;
+            call.op = MIROp::RUNTIME_CALL;
+            call.dst = instr.dst;
+            call.args = convertHIRargs(instr.args);
+            call.imm = 8;
+            return { call };
+        }
+
+        case IROp::FORCE_UNWRAP:
+            return { make(MIROp::FORCE_UNWRAP) };
+
+        case IROp::FILE_READ: {
+            MIRInstr call;
+            call.op = MIROp::RUNTIME_CALL;
+            call.dst = instr.dst;
+            call.args = convertHIRargs(instr.args);
+            call.imm = 6;
+            return { call };
+        }
+
+        case IROp::FILE_WRITE: {
+            MIRInstr call;
+            call.op = MIROp::RUNTIME_CALL;
+            call.dst = instr.dst;
+            call.args = convertHIRargs(instr.args);
+            call.imm = 7;
+            return { call };
+        }
+
         case IROp::CONST_NULL: {
             MIRInstr constant = make(MIROp::CONST);
             constant.imm = 0;
@@ -175,6 +244,15 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             return { alloc };
         }
 
+        case IROp::ALLOC_ARRAY_DYNAMIC: {
+            MIRInstr alloc;
+            alloc.op = MIROp::ALLOC_DYNAMIC;
+            alloc.dst = instr.dst;
+            alloc.args = convertHIRargs(instr.args); // [element_count]
+            alloc.imm = instr.imm.value(); // element size
+            return { alloc };
+        }
+
         case IROp::LOAD_FIELD:
             return {
                 MIRInstr {
@@ -253,7 +331,9 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             MIRInstr call;
             call.op = MIROp::RUNTIME_CALL;
             call.args = convertHIRargs(instr.args);
-            call.imm = /* runtime_print id */ 0;
+            call.imm = instr.args[0].index() == 0 &&
+                       std::get<IRValue>(instr.args[0]).type == &Types::STRING_TYPE
+                       ? 1 : 0;
 
             return {
                 call

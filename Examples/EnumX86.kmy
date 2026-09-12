@@ -1,0 +1,15 @@
+// Native x86 enum support: variants lower to stable integer ordinals.
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+let first: Color = Color::RED;
+let second: Color = Color::GREEN;
+
+print(first);
+print(second);
+print(Color::BLUE);
+print(first == Color::RED);
+print(second == Color::BLUE);

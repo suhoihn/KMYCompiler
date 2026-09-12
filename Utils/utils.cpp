@@ -122,6 +122,10 @@ static const std::unordered_map<TokenType, std::string> tokenTypeNames = {
     {TokenType::KeywordString, "KeywordString"},
     {TokenType::KeywordVoid, "KeywordVoid"},
     {TokenType::KeywordAny, "KeywordAny"},
+    {TokenType::KeywordI64, "KeywordI64"},
+    {TokenType::KeywordU64, "KeywordU64"},
+    {TokenType::KeywordF64, "KeywordF64"},
+    {TokenType::KeywordByte, "KeywordByte"},
 
     // Symbols
     {TokenType::LeftParen, "LeftParen"},

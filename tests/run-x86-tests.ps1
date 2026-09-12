@@ -32,6 +32,7 @@ $compilerSources = @(
     'Core/newParser.cpp',
     'Core/Ast.cpp',
     'Core/value.cpp',
+    'CodegenIR/StringPool.cpp',
     'CodegenIR/IRBuilder.cpp',
     'SSA/SSABuilder.cpp',
     'MachineIR/MIRBuilder.cpp',
@@ -53,7 +54,13 @@ try {
         @{ Name = 'closures'; Source = 'tests/x86/closures.kmy'; Expected = 'tests/x86/closures.expected' },
         @{ Name = 'aggregates'; Source = 'tests/x86/aggregates.kmy'; Expected = 'tests/x86/aggregates.expected' },
         @{ Name = 'arrays'; Source = 'tests/x86/arrays.kmy'; Expected = 'tests/x86/arrays.expected' },
-        @{ Name = 'arraylist'; Source = 'Examples/ArrayList.kmy'; Expected = 'tests/x86/arraylist.expected' }
+        @{ Name = 'dynamic_array'; Source = 'Examples/DynamicArray.kmy'; Expected = 'tests/x86/dynamic_array.expected' },
+        @{ Name = 'data_structures'; Source = 'Examples/DataStructures.kmy'; Expected = 'tests/x86/data_structures.expected' },
+        @{ Name = 'arraylist'; Source = 'Examples/ArrayList.kmy'; Expected = 'tests/x86/arraylist.expected' },
+        @{ Name = 'conways_life'; Source = 'Examples/ConwaysLife.kmy'; Expected = 'tests/x86/conways_life.expected' },
+        @{ Name = 'string_ops'; Source = 'Examples/StringOps.kmy'; Expected = 'tests/x86/string_ops.expected' },
+        @{ Name = 'file_io'; Source = 'Examples/FileIO.kmy'; Expected = 'tests/x86/file_io.expected' },
+        @{ Name = 'enum_x86'; Source = 'Examples/EnumX86.kmy'; Expected = 'tests/x86/enum_x86.expected' }
     )
 
     foreach ($test in $tests) {

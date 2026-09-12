@@ -27,6 +27,8 @@ FunctionExpr::FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, T
 // Nothing for ThisLiteral.
 NewExpr::NewExpr(std::string typeName, std::vector<ExprPtr> args) : typeName(move(typeName)), args(move(args)) {}
 NewExpr::NewExpr(TypeNodePtr arrayType) : arrayType(move(arrayType)) {}
+NewExpr::NewExpr(TypeNodePtr arrayType, ExprPtr arraySize)
+    : arrayType(move(arrayType)), arraySize(move(arraySize)) {}
 
 // -----Statements
 Print::Print(ExprPtr expr) : expr(move(expr)) {}

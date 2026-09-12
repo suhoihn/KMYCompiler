@@ -285,7 +285,7 @@ int main(int argc, char *argv[]) {
             
             std::ostringstream buffer;
 
-            X86Builder x86Builder(mirFuncs, buffer);
+            X86Builder x86Builder(mirFuncs, buffer, builder.getStringPool());
             x86Builder.build();
 
             std::string assembly = buffer.str();

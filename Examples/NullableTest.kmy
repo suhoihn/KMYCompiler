@@ -1,0 +1,6 @@
+let value: int? = null;
+value = 3;
+let fallback: int = value ?? 7;
+let required: int = value!!;
+print(fallback);
+print(required);

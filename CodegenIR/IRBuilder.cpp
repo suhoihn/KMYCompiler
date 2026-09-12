@@ -71,15 +71,34 @@ void IRBuilder::connectBlock(HIRBlock* from, HIRBlock* to) {
 // ======================================================
 
 void IRBuilder::visit(Literal& e) {
+    if (std::holds_alternative<std::nullptr_t>(e.value)) {
+        IRValue dst = makeValue(e.type);
+        emit({ .op = IROp::CONST_NULL, .dst = dst });
+        setLastValue(dst);
+        return;
+    }
+
     ConstValue v = std::visit([](auto&& arg) -> ConstValue {
         return ConstValue(arg);
     }, e.value);
+
+    if (std::holds_alternative<std::string>(e.value)) {
+        IRValue dst = makeValue(e.type);
+        StringId stringId = stringPool.intern(std::get<std::string>(e.value));
+        emit({
+            .op = IROp::CONST_STRING,
+            .dst = dst,
+            .imm = static_cast<int64_t>(stringId)
+        });
+        setLastValue(dst);
+        return;
+    }
 
     if (
         !std::holds_alternative<int>(e.value) &&
         !std::holds_alternative<bool>(e.value)
     ) {
-        throw KMYCompileError("Only bool and int yet sorry.");
+        throw KMYCompileError("Only string, bool and int yet sorry.");
     }
 
     int val;
@@ -191,6 +210,9 @@ static IROp binaryOpToIROp(BinaryOp op) {
 
         case BinaryOp::LogicalAnd:    return IROp::LOGICAL_AND;
         case BinaryOp::LogicalOr:     return IROp::LOGICAL_OR;
+        // Null-coalescing is lowered by visit(BinaryExpr) into CFG blocks;
+        // this mapper is only for single-instruction binary operations.
+        case BinaryOp::NullCoalesce:  return IROp::GARBAGE;
 
         case BinaryOp::BitAnd:        return IROp::BIT_AND;
         case BinaryOp::BitOr:         return IROp::BIT_OR;
@@ -207,13 +229,17 @@ static IROp unaryOpToIROp(UnaryOp op) {
         case UnaryOp::Minus:      return IROp::NEG;
         case UnaryOp::BitNot:     return IROp::BIT_NOT;
         case UnaryOp::LogicalNot: return IROp::LOGICAL_NOT;
+        // Force-unwrapping is emitted directly by visit(UnaryExpr) so it can
+        // retain its explicit null-trap machine instruction.
+        case UnaryOp::ForceUnwrap: return IROp::FORCE_UNWRAP;
     }
 
     throw KMYCompileError("Unknown UnaryOp");
 }
 
 void IRBuilder::visit(BinaryExpr& e) {
-    if (e.op != BinaryOp::LogicalAnd && e.op != BinaryOp::LogicalOr) {
+    if (e.op != BinaryOp::LogicalAnd && e.op != BinaryOp::LogicalOr &&
+        e.op != BinaryOp::NullCoalesce) {
         // Simple case
         e.left->accept(*this);
         HIROperand lhs = getLastValue();
@@ -308,7 +334,10 @@ void IRBuilder::visit(BinaryExpr& e) {
         });
 
         setLastValue(result);
-    } else if (e.op == BinaryOp::LogicalOr) {
+    } else if (e.op == BinaryOp::LogicalOr || e.op == BinaryOp::NullCoalesce) {
+        // `??` is not rewritten into an If AST node. It is represented
+        // directly as CFG blocks: branch on the left value, evaluate the
+        // fallback only on the null edge, then merge with a PHI.
         /*
         Format for ||
         -----------
@@ -350,12 +379,21 @@ void IRBuilder::visit(BinaryExpr& e) {
 
         // True block
         currCtx->currBlock = trueBlock;
-        IRValue trueConst = makeValue(&Types::BOOL_TYPE);
-        emit({
-            .op = IROp::CONST_INT,
-            .dst = trueConst,
-            .imm = 1
-        });
+
+        // This logic is used with ?? short circuiting.
+        // A (??, ||) B -> eval A first (lhs)
+        // For ||, use true as the value for phi (trueValue = trueConst)
+        // For ??, use that A as the value for phi before evaluating B (trueValue = lhs)
+        HIROperand trueValue = lhs;
+        if (e.op == BinaryOp::LogicalOr) {
+            IRValue trueConst = makeValue(&Types::BOOL_TYPE);
+            emit({
+                .op = IROp::CONST_INT,
+                .dst = trueConst,
+                .imm = 1
+            });
+            trueValue = trueConst;
+        }
 
         // Since the block is just a statement, there is only this terminator.
         currCtx->currBlock->term = JumpTerm<IRInstr>{mergeBlock};
@@ -377,7 +415,7 @@ void IRBuilder::visit(BinaryExpr& e) {
             .op = IROp::PHI,
             .dst = result,
             .phis = {
-                {trueBlock, trueConst},
+                {trueBlock, trueValue},
                 {falseBlock, rhs}
             }
         });
@@ -389,6 +427,13 @@ void IRBuilder::visit(BinaryExpr& e) {
 void IRBuilder::visit(UnaryExpr& e) {
     e.operand->accept(*this);
     HIROperand v = getLastValue();
+
+    if (e.op == UnaryOp::ForceUnwrap) {
+        IRValue dst = makeValue(e.type);
+        emit({ .op = IROp::FORCE_UNWRAP, .dst = dst, .args = { v } });
+        setLastValue(dst);
+        return;
+    }
 
     IRValue dst = makeValue(e.type);
 
@@ -627,6 +672,36 @@ void IRBuilder::visit(Index& e) {
 }
 
 void IRBuilder::visit(Call& e) {
+    if (e.func->kind == ExprKind::Variable) {
+        auto builtin = std::static_pointer_cast<Variable>(e.func);
+        if (builtin->name == "streq" || builtin->name == "strconcat" ||
+            builtin->name == "strlen" || builtin->name == "strByteAt" ||
+            builtin->name == "strFromByte" || builtin->name == "readFile" ||
+            builtin->name == "writeFile") {
+            std::vector<HIROperand> args;
+            for (const auto& arg : e.args) {
+                arg->accept(*this);
+                args.push_back(getLastValue());
+            }
+
+            IRValue result = makeValue(e.type);
+            IROp op = IROp::STRING_EQUAL;
+            if (builtin->name == "strconcat") op = IROp::STRING_CONCAT;
+            if (builtin->name == "strlen") op = IROp::STRING_LENGTH;
+            if (builtin->name == "strByteAt") op = IROp::STRING_BYTE_AT;
+            if (builtin->name == "strFromByte") op = IROp::STRING_FROM_BYTE;
+            if (builtin->name == "readFile") op = IROp::FILE_READ;
+            if (builtin->name == "writeFile") op = IROp::FILE_WRITE;
+            emit({
+                .op = op,
+                .dst = result,
+                .args = std::move(args)
+            });
+            setLastValue(result);
+            return;
+        }
+    }
+
     std::optional<IRValue> v = std::nullopt;
     e.func->accept(*this);
 
@@ -717,7 +792,16 @@ void IRBuilder::visit(Get& e) {
 }
 
 void IRBuilder::visit(ScopeAccessExpr& e) {
-    throw KMYCompileError("scope acc Not yet");
+    // Enum variants are compile-time ordinal constants (RED = 0, GREEN = 1,
+    // ...).  Keep the enum type on the IR value while using the native integer
+    // representation for MIR/x86 storage and comparisons.
+    IRValue value = makeValue(e.type);
+    emit({
+        .op = IROp::CONST_INT,
+        .dst = value,
+        .imm = e.accessIdx
+    });
+    setLastValue(value);
 }
 
 static void printFunctionContext(FunctionContext* fnCtx) {
@@ -1183,16 +1267,26 @@ void IRBuilder::visit(ThisExpr& e) {
 void IRBuilder::visit(NewExpr& e) {
     if (e.arrayType) {
         auto* arrayType = static_cast<ArrayType*>(e.type);
-        if (!arrayType->fixedLength.has_value()) {
-            throw KMYCompileError("Native array allocation requires a fixed length.");
-        }
-
         size_t elementSize = TypeLayout::sizeOf(arrayType->elementType);
         if (elementSize != PTR_SIZE) {
             throw KMYCompileError("Native array elements must fit in one machine word.");
         }
 
         IRValue array = makeValue(e.type);
+        if (e.arraySize) {
+            e.arraySize->accept(*this);
+            emit({
+                .op = IROp::ALLOC_ARRAY_DYNAMIC,
+                .dst = array,
+                .args = { getLastValue() },
+                .imm = static_cast<int64_t>(elementSize)
+            });
+            setLastValue(array);
+            return;
+        }
+        if (!arrayType->fixedLength.has_value()) {
+            throw KMYCompileError("Native array allocation requires a size.");
+        }
         emit({
             .op = IROp::ALLOC_ARRAY,
             .dst = array,

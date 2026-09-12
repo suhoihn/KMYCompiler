@@ -15,7 +15,8 @@ enum class TypeNodeKind {
     FUNCTION,
     ARRAY,
     RECORD, // Annonymous records ({x: int} forms). Will eventually be StructualType
-    SCOPED // For types with a scope (e.g., Foo::Bar. Notice that this is different from enum access like Color::Black)
+    SCOPED, // For types with a scope (e.g., Foo::Bar. Notice that this is different from enum access like Color::Black)
+    NULLABLE
 };
 
 struct TypeNode {
@@ -88,7 +89,8 @@ enum class TypeKind {
     ENUM,
     ANY,
     UNKNOWN,
-    UNINITIALISED // TODO: not rly a type, should be separate bool flag?
+    UNINITIALISED, // TODO: not rly a type, should be separate bool flag?
+    NULLABLE
 };
 
 struct Type {
@@ -149,6 +151,17 @@ struct ArrayType : Type {
 
     ArrayType(Type* elementType, std::optional<size_t> fixedLength = std::nullopt)
         : Type(TypeKind::ARRAY), elementType(elementType), fixedLength(fixedLength) {}
+};
+
+struct NullableType : Type {
+    Type* innerType;
+    explicit NullableType(Type* inner) : Type(TypeKind::NULLABLE), innerType(inner) {}
+};
+
+struct NullableTypeNode : TypeNode {
+    TypeNodePtr innerType;
+    explicit NullableTypeNode(TypeNodePtr inner)
+        : TypeNode(TypeNodeKind::NULLABLE), innerType(std::move(inner)) {}
 };
 
 

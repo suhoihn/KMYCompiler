@@ -28,6 +28,8 @@ enum class TokenType {
     // Logical Operators
     LogicalAnd, 
     LogicalOr,
+    NullCoalesce,
+    Nullable,
     
     // Assignment Operators
     Assign, // = (overloaded with declaration as well)
@@ -82,6 +84,10 @@ enum class TokenType {
     KeywordString,
     KeywordVoid,
     KeywordAny,
+    KeywordI64,
+    KeywordU64,
+    KeywordF64,
+    KeywordByte,
 
     // Symbols
     LeftParen,
@@ -90,6 +96,7 @@ enum class TokenType {
     RightBrace,
     Semicolon,
     Bang,
+    ForceUnwrap,
     LeftBracket,
     RightBracket,
     Comma,

@@ -9,6 +9,15 @@ enum class MIROp {
 
     // Constants
     CONST,
+    CONST_STRING,
+    STRING_EQUAL,
+    STRING_CONCAT,
+    STRING_LENGTH,
+    STRING_BYTE_AT,
+    STRING_FROM_BYTE,
+    FILE_READ,
+    FILE_WRITE,
+    FORCE_UNWRAP,
 
     // Arithmetic
     ADD,
@@ -43,6 +52,7 @@ enum class MIROp {
     STORE_INDEX,
     LEA,
     ALLOC, // Allocates zero-initialized heap memory with a given size
+    ALLOC_DYNAMIC, // Allocates zeroed memory for runtime count * element size
 
     // Stack / calling convention
     PARAM,
@@ -71,6 +81,15 @@ inline const char* toString(MIROp op) {
 
         case MIROp::NOP: return "NOP";
         case MIROp::CONST: return "CONST";
+        case MIROp::CONST_STRING: return "CONST_STRING";
+        case MIROp::STRING_EQUAL: return "STRING_EQUAL";
+        case MIROp::STRING_CONCAT: return "STRING_CONCAT";
+        case MIROp::STRING_LENGTH: return "STRING_LENGTH";
+        case MIROp::STRING_BYTE_AT: return "STRING_BYTE_AT";
+        case MIROp::STRING_FROM_BYTE: return "STRING_FROM_BYTE";
+        case MIROp::FILE_READ: return "FILE_READ";
+        case MIROp::FILE_WRITE: return "FILE_WRITE";
+        case MIROp::FORCE_UNWRAP: return "FORCE_UNWRAP";
 
         case MIROp::ADD: return "ADD";
         case MIROp::SUB: return "SUB";
@@ -104,6 +123,7 @@ inline const char* toString(MIROp op) {
         case MIROp::STORE_INDEX: return "STORE_INDEX";
         case MIROp::LEA: return "LEA";
         case MIROp::ALLOC: return "ALLOC";
+        case MIROp::ALLOC_DYNAMIC: return "ALLOC_DYNAMIC";
 
 
         case MIROp::PARAM: return "PARAM";

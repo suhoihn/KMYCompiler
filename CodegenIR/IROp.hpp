@@ -5,7 +5,16 @@
 enum class IROp {
     GARBAGE,
     CONST_INT,
+    CONST_STRING,
     CONST_NULL,
+    STRING_EQUAL,
+    STRING_CONCAT,
+    STRING_LENGTH,
+    STRING_BYTE_AT,
+    STRING_FROM_BYTE,
+    FILE_READ,
+    FILE_WRITE,
+    FORCE_UNWRAP,
 
     ADD,
     SUB,
@@ -54,6 +63,7 @@ enum class IROp {
     GET_ADDR, // Gets an address of a value (UNUSED)
     ALLOC_HEAP, // Allocate imm bytes and return a pointer
     ALLOC_ARRAY, // Allocate and zero imm bytes for a fixed-size array
+    ALLOC_ARRAY_DYNAMIC, // Allocate zeroed elementSize * count bytes
     LOAD_FIELD, // Load a pointer-sized aggregate field at byte offset imm
     STORE_FIELD, // Store a pointer-sized aggregate field at byte offset imm
     STORE_ARRAY, // Store an array element at byte offset imm
@@ -68,7 +78,16 @@ enum class IROp {
 inline const char* toString(IROp op) {
     switch (op) {
         case IROp::CONST_INT:           return "CONST_INT";
+        case IROp::CONST_STRING:        return "CONST_STRING";
         case IROp::CONST_NULL:          return "CONST_NULL";
+        case IROp::STRING_EQUAL:        return "STRING_EQUAL";
+        case IROp::STRING_CONCAT:      return "STRING_CONCAT";
+        case IROp::STRING_LENGTH:      return "STRING_LENGTH";
+        case IROp::STRING_BYTE_AT:     return "STRING_BYTE_AT";
+        case IROp::STRING_FROM_BYTE:   return "STRING_FROM_BYTE";
+        case IROp::FILE_READ:          return "FILE_READ";
+        case IROp::FILE_WRITE:         return "FILE_WRITE";
+        case IROp::FORCE_UNWRAP:       return "FORCE_UNWRAP";
 
         case IROp::ADD:                 return "ADD";
         case IROp::SUB:                 return "SUB";
@@ -111,6 +130,7 @@ inline const char* toString(IROp op) {
         case IROp::GET_ADDR:            return "GET_ADDR";
         case IROp::ALLOC_HEAP:          return "ALLOC_HEAP";
         case IROp::ALLOC_ARRAY:         return "ALLOC_ARRAY";
+        case IROp::ALLOC_ARRAY_DYNAMIC: return "ALLOC_ARRAY_DYNAMIC";
         case IROp::LOAD_FIELD:          return "LOAD_FIELD";
         case IROp::STORE_FIELD:         return "STORE_FIELD";
         case IROp::STORE_ARRAY:         return "STORE_ARRAY";

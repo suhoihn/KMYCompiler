@@ -1,6 +1,7 @@
 {
   "scopeName": "source.kmy",
   "patterns": [
+    { "include": "#comments" },
     { "include": "#keywords" },
     { "include": "#types" },
     { "include": "#constants" },
@@ -10,10 +11,19 @@
   ],
 
   "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "match": "//.*$",
+          "name": "comment.line.double-slash.kmy"
+        }
+      ]
+    },
+
     "keywords": {
       "patterns": [
         {
-          "match": "\\b(if|else|while|for|break|continue|return|let|const|fun|class|new|this|record|typealias)\\b",
+          "match": "\\b(if|else|while|for|break|continue|return|let|const|fun|class|init|new|this|record|typealias)\\b",
           "name": "keyword.control.kmy"
         }
       ]
@@ -31,7 +41,7 @@
     "types": {
       "patterns": [
         {
-          "match": "\\b(int|double|bool|string|void|array|object|any)\\b",
+          "match": "\\b(int|i64|u64|byte|double|f64|bool|string|void|array|object|any)\\b",
           "name": "support.type.kmy"
         }
       ]
@@ -51,7 +61,13 @@
         {
           "begin": "\"",
           "end": "\"",
-          "name": "string.quoted.double.kmy"
+          "name": "string.quoted.double.kmy",
+          "patterns": [
+            {
+              "match": "\\\\(?:[\\\\\"nrt]|u[0-9a-fA-F]{4})",
+              "name": "constant.character.escape.kmy"
+            }
+          ]
         }
       ]
     },

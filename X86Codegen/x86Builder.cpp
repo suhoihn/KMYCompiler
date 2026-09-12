@@ -2,12 +2,14 @@
 
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 
 #include "../Core/errorhandler.hpp"
 X86Builder::X86Builder(
     std::vector<MIRFunction*> mirFunctions, 
-    std::ostream& out
-) : mirFunctions(mirFunctions), out(out) {}
+    std::ostream& out,
+    const StringPool& stringPool
+) : mirFunctions(mirFunctions), stringPool(stringPool), out(out) {}
 
 static const std::vector<std::string> argRegs_linux = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 
@@ -22,6 +24,8 @@ static int mirValToStackPos(int id) {
 static std::string loc(const IRValue& v) {
     return "[rbp-" + std::to_string(mirValToStackPos(v.id)) + "]";
 }
+
+static std::string escapeAsmString(const std::string& value);
 
 void X86Builder::emitIndent() {
     out << std::string(indent * 4, ' ');
@@ -53,6 +57,19 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             emit("mov rax, " + std::to_string(instr.imm.value()));
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
+
+        case MIROp::CONST_STRING: {
+            const int stringId = instr.imm.value();
+            // RIP-relative displacement resolves to the static string address.
+            emit("lea rax, [rip + kmy_str_" + std::to_string(stringId) + "]");
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
+        case MIROp::STRING_EQUAL:
+        case MIROp::STRING_CONCAT:
+            // Lowered to RUNTIME_CALL by MIRBuilder.
+            throw KMYCompileError("String operation reached x86 directly instead of runtime lowering");
 
 
         // =========================
@@ -236,9 +253,10 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             // calloc(1, size) gives deterministic zeroed storage.
             emit("mov rcx, 1");
             emit("mov rdx, " + std::to_string(instr.imm.value()));
-            emit("sub rsp, 40");
+            // Windows x64 requires 32 bytes of caller-provided shadow space.
+            emit("sub rsp, 32");
             emit("call calloc");
-            emit("add rsp, 40");
+            emit("add rsp, 32");
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
 
@@ -301,10 +319,10 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             // For linux
             // emit("call qword [rax]"); // Offset 0 is code ptr from closure*
 
-            emit("sub rsp, 40");
+            emit("sub rsp, 32");
             emit("mov r11, [rax]");
             emit("call r11");
-            emit("add rsp, 40");
+            emit("add rsp, 32");
 
             // Return value.
             if (instr.dst.has_value()) {
@@ -342,9 +360,13 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
                 emit("mov " + argRegs[i] + ", " + loc(instr.args[i]));
             }
 
-            emit("sub rsp, 40");
+            emit("sub rsp, 32");
             emit("call runtime_" + std::to_string(instr.imm.value()));
-            emit("add rsp, 40");
+            emit("add rsp, 32");
+
+            if (instr.dst.has_value()) {
+                emit("mov " + loc(instr.dst.value()) + ", rax");
+            }
 
             // For linux
             // emit("call runtime_" + std::to_string(instr.imm.value()));
@@ -353,6 +375,34 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
 
         case MIROp::MOVE: {
             emit("mov rax, " + loc(instr.args[0]));
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
+        case MIROp::FORCE_UNWRAP: {
+            // `expr!!` is an unchecked programmer assertion. Its semantic
+            // type changes from T? to T, but x86 performs only a copy: a null
+            // value is allowed to continue and may fail later if dereferenced.
+            emit("mov rax, " + loc(instr.args[0]));
+            // To enable explicit trapping instead, uncomment this block:
+            // emit("cmp rax, 0");
+            // emit("jne 1f");
+            // emit("ud2");
+            // emit("1:");
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
+        case MIROp::ALLOC_DYNAMIC: {
+            // calloc(1, count * element_size) for runtime-sized arrays.
+            emit("mov rax, " + loc(instr.args[0]));
+            emit("imul rax, " + std::to_string(instr.imm.value()));
+            emit("mov rcx, 1");
+            emit("mov rdx, rax");
+            // Windows x64 requires 32 bytes of caller-provided shadow space.
+            emit("sub rsp, 32");
+            emit("call calloc");
+            emit("add rsp, 32");
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
         }
@@ -403,6 +453,9 @@ void X86Builder::lowerMIRTerm(const MIRTerm& term) {
         } 
         else if constexpr (std::is_same_v<T, BranchTerm<MIRInstr>>) {
 
+            // HIR/SSA branches (including `??`) become labels and jumps.
+            // These are the assembly-level equivalent of if/else control
+            // flow, not a second source-level AST rewrite.
             // Move condition value to rax for comparison
             emit("mov rax, " + loc(std::get<IRValue>(t.cond)));
             // Compare it with 0 (Extract only the flags)
@@ -515,9 +568,37 @@ void X86Builder::lowerMIRFunc(MIRFunction* mirFunc) {
 
 void X86Builder::build() {
     emit(".intel_syntax noprefix");
+    emit(".section .rdata");
+    for (size_t i = 0; i < stringPool.size(); ++i) {
+        emit("kmy_str_" + std::to_string(i) + ":");
+        emit(".asciz \"" + escapeAsmString(stringPool.get(static_cast<StringId>(i))) + "\"");
+    }
+    emit(".text");
     emit(".globl main");
     for (const auto& mirFunc : mirFunctions) {
         currFunc = mirFunc;
         lowerMIRFunc(mirFunc);
     }
+}
+
+static std::string escapeAsmString(const std::string& value) {
+    std::ostringstream escaped;
+    for (unsigned char c : value) {
+        switch (c) {
+            case '\\': escaped << "\\\\"; break;
+            case '"':  escaped << "\\\""; break;
+            case '\n': escaped << "\\n"; break;
+            case '\r': escaped << "\\r"; break;
+            case '\t': escaped << "\\t"; break;
+            default:
+                if (c >= 32 && c <= 126) {
+                    escaped << static_cast<char>(c);
+                } else {
+                    escaped << "\\" << std::oct << std::setw(3)
+                            << std::setfill('0') << static_cast<int>(c)
+                            << std::dec << std::setfill(' ');
+                }
+        }
+    }
+    return escaped.str();
 }

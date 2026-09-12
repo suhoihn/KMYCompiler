@@ -63,6 +63,11 @@ static std::unordered_map<std::string, Type*> primitiveToType = {
     {"null", &Types::NULL_TYPE},
     {"void", &Types::VOID_TYPE},
     {"any", &Types::ANY_TYPE},
+    // Native-width aliases until narrower integer/float layouts are added.
+    {"i64", &Types::INT_TYPE},
+    {"u64", &Types::INT_TYPE},
+    {"f64", &Types::DOUBLE_TYPE},
+    {"byte", &Types::INT_TYPE},
 };
 
 // Converts TypeNodePtr to Type*
@@ -96,6 +101,11 @@ inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
                 );
             }
             return TypeInterner::getArrayType(elementType);
+        }
+
+        case TypeNodeKind::NULLABLE: {
+            const auto& nullable = static_cast<NullableTypeNode&>(*type);
+            return new NullableType(typeSigToType(currScope, nullable.innerType));
         }
 
         case TypeNodeKind::FUNCTION: {

@@ -4,11 +4,13 @@
 #include "../CodegenIR/IRFunction.hpp"
 #include "../MachineIR/MIRInstr.hpp"
 #include "../MachineIR/MIRBuilder.hpp"
+#include "../CodegenIR/StringPool.hpp"
 
 class X86Builder {
 private:
     std::ostream& out;
     std::vector<MIRFunction*> mirFunctions;
+    const StringPool& stringPool;
     int indent = 0;
     MIRFunction* currFunc = nullptr;
     // std::unordered_map<int, int> stackOffset;
@@ -23,7 +25,11 @@ private:
     void lowerMIRInstr(const MIRInstr& mirInstr);
     
 public:
-    X86Builder(std::vector<MIRFunction*> mirFunctions, std::ostream& out);
+    X86Builder(
+        std::vector<MIRFunction*> mirFunctions,
+        std::ostream& out,
+        const StringPool& stringPool
+    );
 
     void build();
 };

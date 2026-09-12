@@ -28,6 +28,8 @@ std::string typeToString(Type* type) {
         case TypeKind::ANY: return "any";
         case TypeKind::UNKNOWN: return "unknown";
         case TypeKind::UNINITIALISED: return "uninitialised";
+        case TypeKind::NULLABLE:
+            return typeToString(static_cast<const NullableType*>(type)->innerType) + "?";
 
         case TypeKind::ARRAY: {
             auto arr = static_cast<const ArrayType*>(type);

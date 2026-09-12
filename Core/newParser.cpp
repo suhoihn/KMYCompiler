@@ -507,6 +507,7 @@ int Parser::get_binding_power(TokenType type) {
             return BP_ASSIGNMENT;
 
         case TokenType::LogicalOr: return BP_LOGICAL_OR;
+        case TokenType::NullCoalesce: return BP_NULL_COALESCE;
         case TokenType::LogicalAnd: return BP_LOGICAL_AND;
 
         case TokenType::BitOr: return BP_BITWISE_OR;
@@ -539,6 +540,7 @@ int Parser::get_binding_power(TokenType type) {
         case TokenType::LeftParen:
         case TokenType::LeftBracket:
         case TokenType::Dot:
+        case TokenType::ForceUnwrap:
             return BP_POSTFIX;
 
         default:
@@ -717,6 +719,11 @@ ExprPtr Parser::parse_expression(int minBP) {
             continue;
         }
 
+        if (op == TokenType::ForceUnwrap) {
+            left = std::make_shared<UnaryExpr>(UnaryOp::ForceUnwrap, std::move(left));
+            continue;
+        }
+
         // For left-associative operators, increasing minBP prevents
         // equal-precedence operators from binding on the right.
         int nextMinBP = bp + (is_right_associative(op) ? 0 : 1);
@@ -892,6 +899,18 @@ TypeNodePtr Parser::parseTypeToken(Token t) {
 
         case TokenType::KeywordVoid:
             return std::make_shared<NamedTypeNode>("void");
+
+        case TokenType::KeywordI64:
+            return std::make_shared<NamedTypeNode>("i64");
+
+        case TokenType::KeywordU64:
+            return std::make_shared<NamedTypeNode>("u64");
+
+        case TokenType::KeywordF64:
+            return std::make_shared<NamedTypeNode>("f64");
+
+        case TokenType::KeywordByte:
+            return std::make_shared<NamedTypeNode>("byte");
         
         default: 
             // TODO: previous() here gets the invalid token, not ':'
@@ -956,7 +975,11 @@ TypeNodePtr Parser::parse_scopedType() {
     return std::make_shared<ScopedTypeNode>(std::move(parts));
 }
 
-TypeNodePtr Parser::parse_type() {
+// type -> baseType arraySuffix* '?'?
+// A trailing '?' wraps the complete type, so `int[]?` means a nullable array
+// reference while `int?[4]` remains invalid until nullable element syntax is
+// explicitly introduced.
+TypeNodePtr Parser::parse_type(bool parseArraySuffix) {
     TypeNodePtr result = nullptr;
     if (check(TokenType::LeftParen)) {
         result = parse_functionType();
@@ -970,9 +993,11 @@ TypeNodePtr Parser::parse_type() {
         advance(); // It is like this due to proper usage of previous() in parseTypeToken() error
     }
 
-    while (match(TokenType::LeftBracket)) {
+    // parseArraySuffix is false if we need to parse in a form of T[expr]
+    // for something like new int[n * 5];
+    while (parseArraySuffix && match(TokenType::LeftBracket)) {
         if (match(TokenType::RightBracket)) {
-            // Static array, e.g., int[]
+            // Unsized array type, e.g., int[] (used with runtime-sized new).
             result = std::make_shared<ArrayTypeNode>(result, -1, false, false);
         } else if (false) {
             // TODO: Dynamic array will have diff expr...
@@ -994,6 +1019,9 @@ TypeNodePtr Parser::parse_type() {
         }
     }
 
+    if (parseArraySuffix && match(TokenType::Nullable)) {
+        result = std::make_shared<NullableTypeNode>(std::move(result));
+    }
     return result;
 }
 
@@ -1104,11 +1132,30 @@ ExprPtr Parser::parse_recordExpr() {
 
 
 /*
-newExpr → "new" type '(' args? ')' | "new" arrayType
+newExpr → "new" type '(' args? ')' | "new" type '[' expression ']'
 args    → expression ("," expression)*
 */
 ExprPtr Parser::parse_newExpr() {
-    TypeNodePtr allocatedType = parse_type();
+    // Parse the base type first so a runtime expression can appear in []
+    // (for example, `new int[count + 1]`).
+    TypeNodePtr allocatedType = parse_type(false);
+
+    if (match(TokenType::LeftBracket)) {
+        ExprPtr sizeExpr = parse_expression();
+        consume(TokenType::RightBracket, "Expected ']' after array size expression");
+
+        // Preserve the fixed-array representation for a bare integer literal.
+        auto literalSize = std::dynamic_pointer_cast<Literal>(sizeExpr);
+        if (literalSize && std::holds_alternative<int>(literalSize->value)) {
+            allocatedType = std::make_shared<ArrayTypeNode>(
+                std::move(allocatedType), std::get<int>(literalSize->value), true, false);
+            return std::make_shared<NewExpr>(std::move(allocatedType));
+        }
+
+        allocatedType = std::make_shared<ArrayTypeNode>(
+            std::move(allocatedType), -1, false, true);
+        return std::make_shared<NewExpr>(std::move(allocatedType), std::move(sizeExpr));
+    }
 
     if (allocatedType->kind == TypeNodeKind::ARRAY && !check(TokenType::LeftParen)) {
         return std::make_shared<NewExpr>(std::move(allocatedType));

@@ -1,0 +1,68 @@
+// Basic data structures implemented entirely in KMY.
+class IntStack {
+    let data: int[] = new int[4 + 0];
+    let size: int = 0;
+    let capacity: int = 4;
+
+    init() {}
+
+    fun push(value: int) {
+        if (this.size >= this.capacity) {
+            let newCapacity: int = this.capacity * 2;
+            let expanded: int[] = new int[newCapacity];
+            let i: int = 0;
+            while (i < this.size) {
+                expanded[i] = this.data[i];
+                i += 1;
+            }
+            this.data = expanded;
+            this.capacity = newCapacity;
+        }
+        this.data[this.size] = value;
+        this.size += 1;
+    }
+
+    fun pop(): int {
+        if (this.size == 0) { return -1; }
+        this.size -= 1;
+        return this.data[this.size];
+    }
+};
+
+class IntQueue {
+    let data: int[] = new int[4 + 0];
+    let head: int = 0;
+    let tail: int = 0;
+    let size: int = 0;
+    let capacity: int = 4;
+
+    init() {}
+
+    fun enqueue(value: int) {
+        if (this.size >= this.capacity) { return; }
+        this.data[this.tail] = value;
+        this.tail = (this.tail + 1) % this.capacity;
+        this.size += 1;
+    }
+
+    fun dequeue(): int {
+        if (this.size == 0) { return -1; }
+        let value: int = this.data[this.head];
+        this.head = (this.head + 1) % this.capacity;
+        this.size -= 1;
+        return value;
+    }
+};
+
+let stack: IntStack = new IntStack();
+stack.push(10);
+stack.push(20);
+stack.push(30);
+print(stack.pop());
+print(stack.pop());
+
+let queue: IntQueue = new IntQueue();
+queue.enqueue(7);
+queue.enqueue(8);
+print(queue.dequeue());
+print(queue.dequeue());

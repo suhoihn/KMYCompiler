@@ -8,6 +8,7 @@
 #include "../Core/visitor.hpp"
 #include "../Core/Ast.hpp"
 #include "CommonDef.hpp"
+#include "StringPool.hpp"
 
 struct LoopContext {
     BasicBlock<IRInstr>* continueTarget;
@@ -60,9 +61,12 @@ public:
 
     std::vector<IRFunction<IRInstr>*> compile();
 
+    const StringPool& getStringPool() const { return stringPool; }
+
 private:
     // Readonly AST
     const FunctionExprPtr program;
+    StringPool stringPool;
 
     void emit(const IRInstr& instr);
 

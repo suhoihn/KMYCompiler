@@ -1,0 +1,200 @@
+// A small self-hosted KMY lexer. It prints one token per line.
+class TokenBuffer {
+    let kinds: string[] = new string[4 + 0];
+    let lexemes: string[] = new string[4 + 0];
+    let size: int = 0;
+    let capacity: int = 4;
+
+    init() {}
+
+    fun add(kind: string, lexeme: string) {
+        if (this.size >= this.capacity) {
+            let newCapacity: int = this.capacity * 2;
+            let newKinds: string[] = new string[newCapacity];
+            let newLexemes: string[] = new string[newCapacity];
+            let i: int = 0;
+            while (i < this.size) {
+                newKinds[i] = this.kinds[i];
+                newLexemes[i] = this.lexemes[i];
+                i += 1;
+            }
+            this.kinds = newKinds;
+            this.lexemes = newLexemes;
+            this.capacity = newCapacity;
+        }
+        this.kinds[this.size] = kind;
+        this.lexemes[this.size] = lexeme;
+        this.size += 1;
+    }
+
+    fun dump() {
+        let i: int = 0;
+        while (i < this.size) {
+            print(strconcat(strconcat(this.kinds[i], " "), this.lexemes[i]));
+            i += 1;
+        }
+    }
+};
+
+class Lexer {
+    let source: string;
+    let position: int = 0;
+    let tokens: TokenBuffer;
+
+    init(input: string) {
+        this.source = input;
+        this.tokens = new TokenBuffer();
+    }
+
+    fun isDigit(value: int): bool {
+        return value >= 48 && value <= 57;
+    }
+
+    fun isLetter(value: int): bool {
+        return (value >= 65 && value <= 90) ||
+               (value >= 97 && value <= 122) || value == 95;
+    }
+
+    fun add(kind: string, lexeme: string) {
+        this.tokens.add(kind, lexeme);
+    }
+
+    fun keyword(text: string): string {
+        if (streq(text, "let")) { return "LET"; }
+        if (streq(text, "const")) { return "CONST"; }
+        if (streq(text, "fun")) { return "FUN"; }
+        if (streq(text, "class")) { return "CLASS"; }
+        if (streq(text, "if")) { return "IF"; }
+        if (streq(text, "else")) { return "ELSE"; }
+        if (streq(text, "while")) { return "WHILE"; }
+        if (streq(text, "for")) { return "FOR"; }
+        if (streq(text, "return")) { return "RETURN"; }
+        if (streq(text, "new")) { return "NEW"; }
+        if (streq(text, "true")) { return "TRUE"; }
+        if (streq(text, "false")) { return "FALSE"; }
+        return "IDENT";
+    }
+
+    fun scanIdentifier() {
+        let start: int = this.position;
+        while (this.position < strlen(this.source) &&
+               (this.isLetter(strByteAt(this.source, this.position)) ||
+                this.isDigit(strByteAt(this.source, this.position)))) {
+            this.position += 1;
+        }
+        let text: string = "";
+        let i: int = start;
+        while (i < this.position) {
+            text = strconcat(text, strFromByte(strByteAt(this.source, i)));
+            i += 1;
+        }
+        this.add(this.keyword(text), text);
+    }
+
+    fun scanNumber() {
+        let start: int = this.position;
+        while (this.position < strlen(this.source) &&
+               this.isDigit(strByteAt(this.source, this.position))) {
+            this.position += 1;
+        }
+        let text: string = "";
+        let i: int = start;
+        while (i < this.position) {
+            text = strconcat(text, strFromByte(strByteAt(this.source, i)));
+            i += 1;
+        }
+        this.add("INT", text);
+    }
+
+    fun scan() {
+        while (this.position < strlen(this.source)) {
+            let value: int = strByteAt(this.source, this.position);
+
+            if (value == 32 || value == 9 || value == 10 || value == 13) {
+                this.position += 1;
+            } else if (value == 47 && this.position + 1 < strlen(this.source) &&
+                       strByteAt(this.source, this.position + 1) == 47) {
+                while (this.position < strlen(this.source) &&
+                       strByteAt(this.source, this.position) != 10) {
+                    this.position += 1;
+                }
+            } else if (this.isLetter(value)) {
+                this.scanIdentifier();
+            } else if (this.isDigit(value)) {
+                this.scanNumber();
+            } else if (value == 61 && this.position + 1 < strlen(this.source) &&
+                       strByteAt(this.source, this.position + 1) == 61) {
+                this.add("EQEQ", "==");
+                this.position += 2;
+            } else if (value == 33 && this.position + 1 < strlen(this.source) &&
+                       strByteAt(this.source, this.position + 1) == 61) {
+                this.add("NE", "!=");
+                this.position += 2;
+            } else if (value == 60 && this.position + 1 < strlen(this.source) &&
+                       strByteAt(this.source, this.position + 1) == 61) {
+                this.add("LE", "<=");
+                this.position += 2;
+            } else if (value == 62 && this.position + 1 < strlen(this.source) &&
+                       strByteAt(this.source, this.position + 1) == 61) {
+                this.add("GE", ">=");
+                this.position += 2;
+            } else if (value == 38 && this.position + 1 < strlen(this.source) &&
+                       strByteAt(this.source, this.position + 1) == 38) {
+                this.add("AND", "&&");
+                this.position += 2;
+            } else if (value == 124 && this.position + 1 < strlen(this.source) &&
+                       strByteAt(this.source, this.position + 1) == 124) {
+                this.add("OR", "||");
+                this.position += 2;
+            } else if (value == 61) {
+                this.add("ASSIGN", "=");
+                this.position += 1;
+            } else if (value == 43) {
+                this.add("PLUS", "+");
+                this.position += 1;
+            } else if (value == 45) {
+                this.add("MINUS", "-");
+                this.position += 1;
+            } else if (value == 42) {
+                this.add("STAR", "*");
+                this.position += 1;
+            } else if (value == 47) {
+                this.add("SLASH", "/");
+                this.position += 1;
+            } else if (value == 59) {
+                this.add("SEMICOLON", ";");
+                this.position += 1;
+            } else if (value == 44) {
+                this.add("COMMA", ",");
+                this.position += 1;
+            } else if (value == 40) {
+                this.add("LEFT_PAREN", "(");
+                this.position += 1;
+            } else if (value == 41) {
+                this.add("RIGHT_PAREN", ")");
+                this.position += 1;
+            } else if (value == 123) {
+                this.add("LEFT_BRACE", "{");
+                this.position += 1;
+            } else if (value == 125) {
+                this.add("RIGHT_BRACE", "}");
+                this.position += 1;
+            } else {
+                this.add("UNKNOWN", strFromByte(value));
+                this.position += 1;
+            }
+        }
+        this.add("EOF", "");
+    }
+
+    fun dump() {
+        this.tokens.dump();
+    }
+};
+
+let path: string = "build/kmy_lexer_input.kmy";
+let sample: string = "let total = 3 + 4; // comment\nif (total >= 7) { return total; }";
+writeFile(path, sample);
+let lexer: Lexer = new Lexer(readFile(path));
+lexer.scan();
+lexer.dump();

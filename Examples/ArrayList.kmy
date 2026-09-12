@@ -1,19 +1,27 @@
-// Fixed-capacity integer ArrayList for the native x86 backend.
-// The backing array never resizes; size tracks the live prefix.
+// Resizable integer ArrayList for the native x86 backend.
+// Growth uses allocate-copy-replace with a doubling capacity.
 class ArrayList {
-    let data: int[16] = new int[16];
+    let data: int[] = new int[4 + 0];
     let size: int = 0;
-    let capacity: int = 16;
+    let capacity: int = 4;
 
     init() {}
 
     fun add(value: int): bool {
         if (this.size >= this.capacity) {
-            return false;
+            let newCapacity: int = this.capacity * 2;
+            let newData: int[] = new int[newCapacity];
+            let i: int = 0;
+            while (i < this.size) {
+                newData[i] = this.data[i];
+                i = i + 1;
+            }
+            this.data = newData;
+            this.capacity = newCapacity;
         }
 
         this.data[this.size] = value;
-        this.size = this.size + 1;
+        this.size += 1;
         return true;
     }
 
@@ -90,6 +98,8 @@ let list: ArrayList = new ArrayList();
 list.add(10);
 list.add(20);
 list.add(30);
+list.add(40);
+list.add(50);
 
 print(list.get(1));
 print(list.remove(1));

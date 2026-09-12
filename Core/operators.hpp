@@ -22,6 +22,7 @@ enum class BinaryOp {
     // Logical
     LogicalAnd,
     LogicalOr,
+    NullCoalesce,
 
     // Comparison
     Greater,
@@ -42,6 +43,7 @@ enum class UnaryOp {
 
     // Bitwise
     BitNot, // ~
+    ForceUnwrap, // !!
 
     // TODO: Optional future additions:
     // PreIncrement,   // ++x
@@ -112,6 +114,7 @@ inline BinaryOp toBinaryOp(TokenType t) {
         case TokenType::LessEqual:     return BinaryOp::LessEqual;
         case TokenType::EqualEqual:    return BinaryOp::EqualEqual;
         case TokenType::NotEqual:      return BinaryOp::NotEqual;
+        case TokenType::NullCoalesce:  return BinaryOp::NullCoalesce;
 
         default:
             throw std::runtime_error("Invalid TokenType for BinaryOp");
@@ -124,6 +127,7 @@ inline UnaryOp toUnaryOp(TokenType t) {
         case TokenType::Minus: return UnaryOp::Minus;
         case TokenType::Bang:  return UnaryOp::LogicalNot;
         case TokenType::BitNot:return UnaryOp::BitNot;
+        case TokenType::ForceUnwrap:return UnaryOp::ForceUnwrap;
 
         default:
             throw std::runtime_error("Invalid TokenType for UnaryOp");

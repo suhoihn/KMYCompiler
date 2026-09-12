@@ -15,6 +15,7 @@ enum BindingPower {
 
     BP_ASSIGNMENT = 10,     // = += -= ...
     BP_LOGICAL_OR = 20,     // ||
+    BP_NULL_COALESCE = 25,  // ??
     BP_LOGICAL_AND = 30,    // &&
     BP_BITWISE_OR = 40,     // |
     BP_BITWISE_XOR = 50,    // ^
@@ -25,7 +26,7 @@ enum BindingPower {
     BP_TERM = 100,          // + -
     BP_FACTOR = 110,        // * / %
     BP_UNARY = 120,         // ! - + ~
-    BP_POSTFIX = 130        // (), [], .
+    BP_POSTFIX = 130        // (), [], ., !!
 };
 
 class Parser {
@@ -59,7 +60,7 @@ private:
     ExprPtr parse_prefix();
 
     TypeNodePtr parseTypeToken(Token t);
-    TypeNodePtr parse_type();
+    TypeNodePtr parse_type(bool parseArraySuffix = true);
     TypeNodePtr parse_functionType();
     TypeNodePtr parse_arraySuffix();
     TypeNodePtr parse_recordType();
