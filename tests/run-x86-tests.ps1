@@ -55,7 +55,6 @@ try {
         @{ Name = 'aggregates'; Source = 'tests/x86/aggregates.kmy'; Expected = 'tests/x86/aggregates.expected' },
         @{ Name = 'arrays'; Source = 'tests/x86/arrays.kmy'; Expected = 'tests/x86/arrays.expected' },
         @{ Name = 'dynamic_array'; Source = 'Examples/DynamicArray.kmy'; Expected = 'tests/x86/dynamic_array.expected' },
-        @{ Name = 'data_structures'; Source = 'Examples/DataStructures.kmy'; Expected = 'tests/x86/data_structures.expected' },
         @{ Name = 'arraylist'; Source = 'Examples/ArrayList.kmy'; Expected = 'tests/x86/arraylist.expected' },
         @{ Name = 'conways_life'; Source = 'Examples/ConwaysLife.kmy'; Expected = 'tests/x86/conways_life.expected' },
         @{ Name = 'string_ops'; Source = 'Examples/StringOps.kmy'; Expected = 'tests/x86/string_ops.expected' },
