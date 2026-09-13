@@ -5,6 +5,7 @@
 
 #include "../Utils/utils.hpp"
 #include "../Utils/SymbolPrinter.hpp"
+#include "../Utils/FrontendJson.hpp"
 #include "../Core/lexer.hpp"
 #include "../Core/newParser.hpp"
 #include "../Core/Ast.hpp"
@@ -103,11 +104,17 @@ int main(int argc, char *argv[]) {
     bool debugOutput = false;
     bool strictTypes = false;
     bool isBuildingASM = false;
+    bool frontendJson = false;
     bool run = true;
     const char* output = nullptr;
 
     for (int i = 2; i < argc; i++) {
         char* str = argv[i];
+
+        if (strcmp(str, "--frontend-json") == 0) {
+            frontendJson = true;
+            run = false;
+        }
         
         if (strcmp(str, "-d") == 0) {
             if (debugOutput) {
@@ -148,7 +155,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printLog(LogLevel::INFO, "Reading file...\n");
+    if (!frontendJson) printLog(LogLevel::INFO, "Reading file...\n");
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Could not open file: " << filename << "\n";
@@ -158,22 +165,30 @@ int main(int argc, char *argv[]) {
     std::string source((std::istreambuf_iterator<char>(file)),
     std::istreambuf_iterator<char>());
     
-    printLog(LogLevel::INFO, "Reading done. Source file string created.\n");
+    if (!frontendJson) printLog(LogLevel::INFO, "Reading done. Source file string created.\n");
+
+    std::vector<Token> tokens;
+    std::vector<ParserTraceEvent> parserTrace;
 
     try {
         // 1. Tokenize
         Lexer lexer(source);
-        std::vector<Token> tokens = lexer.tokenise();
+        tokens = lexer.tokenise();
 
-        printLog(LogLevel::INFO, "Lexing finished. Ready to parse.\n");
+        if (!frontendJson) printLog(LogLevel::INFO, "Lexing finished. Ready to parse.\n");
         if (debugOutput) {
             printLog(LogLevel::INFO, "Tokens:\n");
             printTokens(tokens);
         }
 
         // 2. Parse
-        Parser parser(tokens);
+        Parser parser(tokens, frontendJson ? &parserTrace : nullptr);
         FunctionExprPtr program = parser.parse();
+        if (frontendJson) {
+            writeFrontendJson(std::cout, source, tokens, parserTrace, program);
+            std::cout << '\n';
+            return 0;
+        }
         if (debugOutput) {
             printLog(LogLevel::INFO, "AST:\n");
             // TODO: improve AST printing.
@@ -354,6 +369,14 @@ int main(int argc, char *argv[]) {
         return 0;
 
     } catch (const KMYParseError& e) {
+        if (frontendJson) {
+            writeFrontendErrorJson(
+                std::cout, source, tokens, parserTrace,
+                e.what(), e.line(), e.start(), e.end()
+            );
+            std::cout << '\n';
+            return 1;
+        }
         printDiagnostic(e, source);
         return 1;
     } catch (const KMYCompileError& e) {

@@ -38,11 +38,12 @@ class IntQueue {
 
     init() {}
 
-    fun enqueue(value: int) {
-        if (this.size >= this.capacity) { return; }
+    fun enqueue(value: int): bool {
+        if (this.size >= this.capacity) { return false; }
         this.data[this.tail] = value;
         this.tail = (this.tail + 1) % this.capacity;
         this.size += 1;
+        return true;
     }
 
     fun dequeue(): int {

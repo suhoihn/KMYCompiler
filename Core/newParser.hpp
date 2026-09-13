@@ -29,9 +29,19 @@ enum BindingPower {
     BP_POSTFIX = 130        // (), [], ., !!
 };
 
+struct ParserTraceEvent {
+    std::string kind;
+    size_t tokenIndex;
+    int minimumBindingPower = BP_NONE;
+    int bindingPower = BP_NONE;
+};
+
 class Parser {
 public:
-    explicit Parser(const std::vector<Token>& tokens);
+    explicit Parser(
+        const std::vector<Token>& tokens,
+        std::vector<ParserTraceEvent>* trace = nullptr
+    );
 
     // Entry point
     FunctionExprPtr parse();
@@ -86,5 +96,6 @@ private:
     StmtPtr parse_enum();
 
     const std::vector<Token> tokens;
+    std::vector<ParserTraceEvent>* trace;
     size_t current = 0;
 };

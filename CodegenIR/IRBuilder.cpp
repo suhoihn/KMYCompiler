@@ -262,8 +262,12 @@ void IRBuilder::visit(BinaryExpr& e) {
     // e.op is && or ||
     if (e.op == BinaryOp::LogicalAnd) {
         /*
-        Format for &&
+        Format for && (simple RHS)
         -----------
+        This compact diagram assumes the RHS fits in one block. A nested
+        short-circuit RHS may create additional blocks; in that case the
+        outer PHI predecessor is the nested RHS's final merge block.
+
         B0(currBlock):
             ...
             cond = <lhs eval>
@@ -304,9 +308,24 @@ void IRBuilder::visit(BinaryExpr& e) {
         currCtx->currBlock = trueBlock;
         e.right->accept(*this);
         HIROperand rhs = getLastValue();
+        /*
+        Nested short-circuit example:
+
+            a && (b || c)
+
+        The RHS does not necessarily finish in trueBlock. The inner `||`
+        creates its own true/false blocks and a merge block. Therefore:
+
+            WRONG: rhs predecessor = trueBlock
+            RIGHT: rhs predecessor = the actual currBlock after RHS lowering
+
+        The PHI must use the actual final RHS block, or it can read the result
+        before the nested expression has assigned it.
+        */
+        HIRBlock* rhsEndBlock = currCtx->currBlock;
         
-        currCtx->currBlock->term = JumpTerm<IRInstr>{mergeBlock};
-        connectBlock(trueBlock, mergeBlock);
+        rhsEndBlock->term = JumpTerm<IRInstr>{mergeBlock};
+        connectBlock(rhsEndBlock, mergeBlock);
         
         // False block
         currCtx->currBlock = falseBlock;
@@ -328,7 +347,7 @@ void IRBuilder::visit(BinaryExpr& e) {
             .op = IROp::PHI,
             .dst = result,
             .phis = {
-                {trueBlock, rhs},
+                {rhsEndBlock, rhs},
                 {falseBlock, falseConst}
             }
         });
@@ -339,22 +358,30 @@ void IRBuilder::visit(BinaryExpr& e) {
         // directly as CFG blocks: branch on the left value, evaluate the
         // fallback only on the null edge, then merge with a PHI.
         /*
-        Format for ||
+        Format for || and ?? (simple RHS)
         -----------
+        This compact diagram assumes the RHS fits in one block. Nested
+        short-circuit expressions can add blocks between B1/B2 and B3; the
+        implementation records those actual final blocks before forming PHI.
+
         B0(currBlock):
             ...
             cond = <lhs eval>
             branch cond B1 B2
         
-        B1(true):
-            ; Using property that true || A == true
-            result_B1 = <true const>
+        B1(true/non-null):
+            ; For ||: true || A == true, so result_B1 = true
+            ; For ??: non-null A ?? B == A, so result_B1 = lhs
+            result_B1 = true (||) or lhs (??)
             jump B3
         
-        B2(false):
-            ; Using property that false || A == A
+        B2(false/null):
+            ; For ||: false || A == A, so result_B2 = <rhs eval>
+            ; For ??: null ?? B == B, so result_B2 = <rhs eval>
             result_B2 = <rhs eval>
-            jump B3
+            ; Note that RHS may end in a different block (Say BX)
+            ; So we ensure we connect BX back to B3(merge)
+            jump B3 ; So this only occurs when <rhs eval> doesnt make a new block.
 
         B3(merge):
             result = phi(result_B1, result_B2)
@@ -403,10 +430,16 @@ void IRBuilder::visit(BinaryExpr& e) {
         currCtx->currBlock = falseBlock;
         e.right->accept(*this);
         HIROperand rhs = getLastValue();
+        /*
+        For `a || (b && c)` and `a ?? (b && c)`, the RHS may finish in a
+        nested merge block rather than falseBlock. Its jump and PHI incoming
+        edge must use that actual final block.
+        */
+        HIRBlock* rhsEndBlock = currCtx->currBlock;
 
         // Since the block is just a statement, there is only this terminator.
-        currCtx->currBlock->term = JumpTerm<IRInstr>{mergeBlock};
-        connectBlock(falseBlock, mergeBlock);
+        rhsEndBlock->term = JumpTerm<IRInstr>{mergeBlock};
+        connectBlock(rhsEndBlock, mergeBlock);
 
         // Merge block
         currCtx->currBlock = mergeBlock;
@@ -416,7 +449,7 @@ void IRBuilder::visit(BinaryExpr& e) {
             .dst = result,
             .phis = {
                 {trueBlock, trueValue},
-                {falseBlock, rhs}
+                {rhsEndBlock, rhs}
             }
         });
 
@@ -1502,11 +1535,22 @@ void IRBuilder::visit(While& s) {
     s.condition->accept(*this);
     HIROperand cond = getLastValue();
 
-    currCtx->currBlock->term =
+    /*
+    While-condition example:
+
+        while (x < n && (isLetter(ch) || isDigit(ch))) { ... }
+
+    Short-circuit lowering can leave currBlock at a nested merge block, not
+    condBB. The loop branch and its successor edges must start at that actual
+    final condition block; otherwise SSA records stale predecessors/values.
+    */
+    HIRBlock* conditionEndBB = currCtx->currBlock;
+
+    conditionEndBB->term =
         BranchTerm<IRInstr>{cond, bodyBB, exitBB};
 
-    connectBlock(condBB, bodyBB);
-    connectBlock(condBB, exitBB);
+    connectBlock(conditionEndBB, bodyBB);
+    connectBlock(conditionEndBB, exitBB);
 
     currCtx->loopStack.push_back({condBB, exitBB});
 

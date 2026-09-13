@@ -196,8 +196,9 @@ Token Lexer::read_operator_or_symbol() {
 }
 
 Token Lexer::read_string() {
+    int tokenStart = current;
     advance(); // Consume the opening quote
-    int start = current;
+    int contentStart = current;
     while (peek() != '"' && !is_at_end()) {
         if (peek() == '\n') {
             ++line;
@@ -207,12 +208,12 @@ Token Lexer::read_string() {
     }
 
     if (is_at_end()) {
-        return Token{TokenType::Unknown, "", line, column, start, current}; // Unterminated string
+        return Token{TokenType::Unknown, "", line, column, tokenStart, current}; // Unterminated string
     }
 
     advance(); // Consume the closing quote
-    std::string lexeme = source.substr(start, current - start - 1); // Exclude the closing quote
-    return Token{TokenType::StringLiteral, lexeme, line, column, start, current};
+    std::string lexeme = source.substr(contentStart, current - contentStart - 1); // Exclude quotes
+    return Token{TokenType::StringLiteral, lexeme, line, column, tokenStart, current};
 }
 
 std::vector<Token> Lexer::tokenise() {

@@ -8,7 +8,10 @@
 #include "type.hpp"
 #include "operators.hpp"
 
-Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens) {}
+Parser::Parser(
+    const std::vector<Token>& tokens,
+    std::vector<ParserTraceEvent>* trace
+) : tokens(tokens), trace(trace) {}
 
 // program → statement* EOF
 FunctionExprPtr Parser::parse() {
@@ -44,6 +47,9 @@ Token Parser::previous() const {
 // Advances current and returns the previous token.
 Token Parser::advance() {
     if (!is_at_end()) {
+        if (trace) {
+            trace->push_back(ParserTraceEvent{"consume", current});
+        }
         ++current;
     }
     return tokens[current - 1];
@@ -404,13 +410,10 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
                 )
             );
         } else if (match(TokenType::KeywordEnum)) {
-            std::cout << "Crash here 1\n";
             auto enumMember = std::static_pointer_cast<Enum>(parse_enum());
-            std::cout << "Crash here 2\n";
             enumMembers.push_back(
                 EnumMember( std::move(enumMember) )
             );
-            std::cout << "Crash here 3\n";
         } else {
             throw KMYParseError(
                 "Only field declarations (let), method declarations (fun), and enum declarations (enum) are allowed in aggregates... FOR NOW!!!!",
@@ -450,7 +453,6 @@ StmtPtr Parser::parse_typeAlias() {
     consume(TokenType::Assign, "Expected '='");
 
     TypeNodePtr type = parse_type();
-    std::cout << type << "\n";
 
     consumeSemicolon();
 
@@ -695,6 +697,12 @@ ExprPtr Parser::parse_expression(int minBP) {
 
         if (bp < minBP)
             break;
+
+        if (trace) {
+            trace->push_back(ParserTraceEvent{
+                "acceptOperator", current, minBP, bp
+            });
+        }
 
         advance();
 
