@@ -61,7 +61,10 @@ enum class IROp {
     CALL,
 
     GET_ADDR, // Gets an address of a value (UNUSED)
+    LOAD_INDIRECT, // Load one machine word through a pointer value
+    STORE_INDIRECT, // Store one machine word through a pointer value
     ALLOC_HEAP, // Allocate imm bytes and return a pointer
+    MALLOC_BYTES, // Allocate a runtime byte count without zero-initialization
     ALLOC_ARRAY, // Allocate and zero imm bytes for a fixed-size array
     ALLOC_ARRAY_DYNAMIC, // Allocate zeroed elementSize * count bytes
     LOAD_FIELD, // Load a pointer-sized aggregate field at byte offset imm
@@ -128,7 +131,10 @@ inline const char* toString(IROp op) {
         case IROp::CALL:                return "CALL";
 
         case IROp::GET_ADDR:            return "GET_ADDR";
+        case IROp::LOAD_INDIRECT:       return "LOAD_INDIRECT";
+        case IROp::STORE_INDIRECT:      return "STORE_INDIRECT";
         case IROp::ALLOC_HEAP:          return "ALLOC_HEAP";
+        case IROp::MALLOC_BYTES:        return "MALLOC_BYTES";
         case IROp::ALLOC_ARRAY:         return "ALLOC_ARRAY";
         case IROp::ALLOC_ARRAY_DYNAMIC: return "ALLOC_ARRAY_DYNAMIC";
         case IROp::LOAD_FIELD:          return "LOAD_FIELD";

@@ -43,6 +43,8 @@ enum class UnaryOp {
 
     // Bitwise
     BitNot, // ~
+    AddressOf, // &x
+    Dereference, // *x
     ForceUnwrap, // !!
 
     // TODO: Optional future additions:
@@ -127,6 +129,10 @@ inline UnaryOp toUnaryOp(TokenType t) {
         case TokenType::Minus: return UnaryOp::Minus;
         case TokenType::Bang:  return UnaryOp::LogicalNot;
         case TokenType::BitNot:return UnaryOp::BitNot;
+        // '&' and '*' share tokens with their binary operators; parse
+        // context determines whether they reach this unary conversion.
+        case TokenType::BitAnd: return UnaryOp::AddressOf;
+        case TokenType::Star:   return UnaryOp::Dereference;
         case TokenType::ForceUnwrap:return UnaryOp::ForceUnwrap;
 
         default:

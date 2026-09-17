@@ -51,6 +51,7 @@ struct ExprHelper : public BaseExpr {
     ExprHelper() : BaseExpr(k) {}
 
     void accept(Visitor& v) override {
+        traceAstVisit(astNodeName<Derived>);
         v.visit(static_cast<Derived&>(*this));
     }
 };
@@ -95,8 +96,8 @@ struct Variable : ExprHelper<Variable, ExprKind::Variable> {
 
     VarSymbol* symbol = nullptr; // Semantic info. Initially empty.
 
-    // Overriding this since variables are assignable.
-    virtual bool isLValue() const { return true; }
+    // A variable names a storage location, so it is addressable.
+    bool isLValue() const override { return true; }
     
     Variable(const std::string& name);
 
@@ -106,6 +107,10 @@ struct Variable : ExprHelper<Variable, ExprKind::Variable> {
 struct UnaryExpr : ExprHelper<UnaryExpr, ExprKind::UnaryExpr>{
     UnaryOp op;
     ExprPtr operand;   
+
+    // Dereferencing produces a storage location; other unary operators
+    // produce temporary values.
+    bool isLValue() const override { return op == UnaryOp::Dereference; }
 
     UnaryExpr(UnaryOp op, ExprPtr operand);
 
@@ -127,7 +132,8 @@ struct Index : ExprHelper<Index, ExprKind::Index> {
     ExprPtr obj;
     ExprPtr index; 
 
-    virtual bool isLValue() const { return true; }
+    // Indexing designates an element in the underlying array storage.
+    bool isLValue() const override { return true; }
 
     Index(ExprPtr obj, ExprPtr index);
 
@@ -156,7 +162,9 @@ struct Get : ExprHelper<Get, ExprKind::Get> {
     // For lowering. Check if its a form of obj.f (obj is aggregate, f is method)
     bool resolvedMethod = false;
 
-    virtual bool isLValue() const { return true; }
+    // Property access can designate a field storage location. Semantic
+    // analysis will reject method access when it is used as an lvalue.
+    bool isLValue() const override { return true; }
 
     Get(ExprPtr obj, const std::string& name);
 
@@ -265,6 +273,7 @@ struct BaseStmt : public ASTNode {
 template <typename Derived>
 struct StmtHelper : public BaseStmt {
     void accept(Visitor& v) override {
+        traceAstVisit(astNodeName<Derived>);
         v.visit(static_cast<Derived&>(*this));
     }
 };

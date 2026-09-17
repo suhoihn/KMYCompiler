@@ -103,6 +103,11 @@ inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
             return TypeInterner::getArrayType(elementType);
         }
 
+        case TypeNodeKind::POINTER: {
+            const auto& pointer = static_cast<PointerTypeNode&>(*type);
+            return TypeInterner::getPointerType(typeSigToType(currScope, pointer.pointee));
+        }
+
         case TypeNodeKind::NULLABLE: {
             const auto& nullable = static_cast<NullableTypeNode&>(*type);
             return new NullableType(typeSigToType(currScope, nullable.innerType));

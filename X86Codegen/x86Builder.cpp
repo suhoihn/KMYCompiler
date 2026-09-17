@@ -240,9 +240,57 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
         }
 
 
-        case MIROp::LEA:
-            emit("# TODO LEA");
+        case MIROp::LEA: {
+            if (instr.args.empty()) {
+                throw KMYCompileError("LEA requires an address operand");
+            }
+
+            if (instr.args.size() == 1 && !instr.imm.has_value()) {
+                // Compute the address of a local stack slot without loading
+                // the value stored in that slot.
+                emit("lea rax, " + loc(instr.args[0]));
+            } else if (instr.args.size() == 1) {
+                // Load the base object pointer before applying a field byte
+                // offset to form the field address.
+                emit("mov rax, " + loc(instr.args[0]));
+                emit("lea rax, [rax+" + std::to_string(instr.imm.value()) + "]");
+            } else if (instr.args.size() == 2) {
+                // Load the array base pointer used by an indexed lvalue.
+                emit("mov rax, " + loc(instr.args[0]));
+                // Load the element index used by an indexed lvalue.
+                emit("mov rcx, " + loc(instr.args[1]));
+                // Scale the index by the element size in bytes.
+                emit("imul rcx, " + std::to_string(instr.imm.value()));
+                // Add the scaled index to the base address.
+                emit("add rax, rcx");
+            } else {
+                throw KMYCompileError("LEA received an unsupported operand shape");
+            }
+
+            // Spill the computed address into the destination MIR slot.
+            emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
+        }
+
+        case MIROp::LOAD_INDIRECT: {
+            // Load the pointer value from its MIR stack slot.
+            emit("mov rcx, " + loc(instr.args[0]));
+            // Read one machine-word value through that pointer.
+            emit("mov rax, [rcx]");
+            // Store the loaded value in the destination MIR slot.
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
+        case MIROp::STORE_INDIRECT: {
+            // Load the destination pointer from its MIR stack slot.
+            emit("mov rcx, " + loc(instr.args[0]));
+            // Load the value that should be written through the pointer.
+            emit("mov rax, " + loc(instr.args[1]));
+            // Store the value at the pointed-to address.
+            emit("mov [rcx], rax");
+            break;
+        }
 
 
         // =========================
@@ -375,6 +423,18 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
 
         case MIROp::MOVE: {
             emit("mov rax, " + loc(instr.args[0]));
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
+        case MIROp::MALLOC_BYTES: {
+            // The byte count is evaluated by KMY and passed in the first
+            // Windows x64 argument register. Unlike ALLOC, this calls malloc:
+            // the returned bytes have no initialized value.
+            emit("mov rcx, " + loc(instr.args[0]));
+            emit("sub rsp, 32"); // Required Windows x64 shadow space.
+            emit("call malloc");
+            emit("add rsp, 32");
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
         }

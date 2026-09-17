@@ -5,6 +5,15 @@
 #include "../Core/type.hpp"
 #include "../Core/AstBaseForward.hpp"
 
+PointerType* TypeInterner::getPointerType(Type* pointee) {
+    auto it = pointerCache.find(pointee);
+    if (it != pointerCache.end()) return it->second;
+
+    auto* pointer = new PointerType(pointee);
+    pointerCache[pointee] = pointer;
+    return pointer;
+}
+
 ArrayType* TypeInterner::getArrayType(Type* elementType, std::optional<size_t> fixedLength) {
     ArrayKey key{elementType, fixedLength};
     auto it = arrayCache.find(key);

@@ -1,7 +1,7 @@
 // Resizable integer ArrayList for the native x86 backend.
 // Growth uses allocate-copy-replace with a doubling capacity.
 class ArrayList {
-    let data: int[] = new int[4 + 0];
+    let data: int[] = new int[4];
     let size: int = 0;
     let capacity: int = 4;
 

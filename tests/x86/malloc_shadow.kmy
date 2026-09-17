@@ -1,0 +1,5 @@
+// A local function named malloc is not the native allocation builtin.
+{
+    let malloc = fun(value: int): int { return value + 1; };
+    print(malloc(8));
+}

@@ -17,14 +17,11 @@ Resolver::Resolver(
 {}
 
 void Resolver::resolve() {
-    printLog(LogLevel::INFO, "Resolver pass started\n");
     program->accept(*this);
-    printLog(LogLevel::INFO, "Resolver pass ended.\n");
 }
 
 VarSymbol* Resolver::lookupVarSymbol(const std::string& name) {
     Scope* scope = currScope;
-    printLog(LogLevel::DEBUG, "Resolving var symbol: " + name + "\n");
 
     while (scope) {
         auto it = scope->values.find(name);
@@ -33,13 +30,11 @@ VarSymbol* Resolver::lookupVarSymbol(const std::string& name) {
             if (it->second->available) {
                 return it->second;
             }
-            printLog(LogLevel::DEBUG, "Var symbol used before let: " + name + "\n");
             return nullptr;
         }
 
         scope = scope->parent;
     }
-    printLog(LogLevel::DEBUG, "Var symbol not found: " + name + "\n");
     return nullptr; // Undefined variable.
 }
 
@@ -64,7 +59,6 @@ void Resolver::visit(Literal& e) {
 }   
 
 void Resolver::visit(ArrayLiteral& e) {
-    printLog(LogLevel::DEBUG, "Visiting array literal node\n");
 
     Type* baseType = &Types::ANY_TYPE;
     bool elementExists = false;
@@ -128,7 +122,6 @@ void Resolver::visit(RecordLiteral& e) {
     expectedType = oldET;
 
     for (auto& [name, slot] : e.layout) {
-        std::cout << "name: " << name << "slot: " << slot << std::endl;
     }
 
     e.type = TypeInterner::getStructualType(std::move(fieldTypes));
@@ -288,9 +281,22 @@ void Resolver::visit(UnaryExpr& e) {
             throw KMYCompileError("!! requires a nullable operand.");
         e.type = static_cast<NullableType*>(e.operand->type)->innerType;
         return;
-    }
-
-    if (e.operand->type != &Types::INT_TYPE) {
+    } else if (e.op == UnaryOp::AddressOf) {
+        if (!e.operand->isLValue())
+            throw KMYCompileError("Address-of requires an lvalue operand.");
+        e.type = TypeInterner::getPointerType(e.operand->type);
+        return;
+    } else if (e.op == UnaryOp::Dereference) {
+        if (!e.operand->type || e.operand->type->kind != TypeKind::POINTER)
+            throw KMYCompileError("Dereference applied to non-pointer!!!");
+        auto* ptrType = static_cast<PointerType*>(e.operand->type);
+        if (ptrType->pointee == &Types::ANY_TYPE)
+            throw KMYCompileError("Cannot dereference any*; first assign it to a typed pointer.");
+        if (ptrType->pointee == &Types::VOID_TYPE)
+            throw KMYCompileError("Cannot dereference void*.");
+        e.type = ptrType->pointee;
+        return;
+    } else if (e.operand->type != &Types::INT_TYPE) {
         throw std::runtime_error("Unary operator only supports int operand... for now.");
     }
     e.type = e.operand->type; // Int.
@@ -308,6 +314,36 @@ static bool isAssignable(Type* from, Type* to) {
     
     if (from == &Types::INT_TYPE && to == &Types::DOUBLE_TYPE) {
         return true; // int can be assigned to double.
+    }
+
+    if (from && to && from->kind == TypeKind::POINTER && to->kind == TypeKind::POINTER) {
+        auto* source = static_cast<PointerType*>(from);
+        auto* target = static_cast<PointerType*>(to);
+        // A malloc result is opaque until the programmer names the pointee.
+        // This is an unsafe conversion: the compiler cannot verify byte count.
+        return source->pointee == &Types::ANY_TYPE ||
+               target->pointee == &Types::ANY_TYPE ||
+               source->pointee == target->pointee;
+    }
+
+    // Arrays are pointer-backed at runtime, but their semantic type also
+    // carries an optional compile-time length.  An unsized T[] target accepts
+    // any fixed-length T[N] source; a fixed-length target requires the same
+    // length.  This keeps `int[4]` usable wherever `int[]` is expected.
+    if (from && to && from->kind == TypeKind::ARRAY && to->kind == TypeKind::ARRAY) {
+        auto* sourceArray = static_cast<ArrayType*>(from);
+        auto* targetArray = static_cast<ArrayType*>(to);
+
+        if (!isAssignable(sourceArray->elementType, targetArray->elementType)) {
+            return false;
+        }
+
+        if (!targetArray->fixedLength.has_value()) {
+            return true;
+        }
+
+        return sourceArray->fixedLength.has_value()
+            && sourceArray->fixedLength == targetArray->fixedLength;
     }
 
     if (to && to->kind == TypeKind::NULLABLE) {
@@ -341,7 +377,6 @@ void Resolver::visit(Assignment& e) {
 
     expectedType = oldET;
 
-    // std::cout << "In assign checking assignability of " << (int)(e.left->type->kind) << " and  " << (int)(e.right->type->kind) << "\n"; 
 
     if (!isAssignable(e.right->type, e.left->type)) {
         // TODO: Covariant and contravariant type checking.
@@ -384,13 +419,18 @@ void Resolver::visit(Call& e) {
 
     e.type = fnType->returnType;
 
-    // Call arity checks.
-    // If function type doesnt convey param info, no checks are done.
-    // Runtime checks will do that.
+    // Call arity checks. Plain function signatures (including builtins)
+    // still carry paramTypes even when they have no default/variadic metadata.
 
     if (!fnType->infoExists) {
+        if (e.args.size() != fnType->paramTypes.size()) {
+            throw KMYCompileError("Wrong number of arguments in function call.");
+        }
         for (size_t i = 0; i < e.args.size(); ++i) {
             e.args[i]->accept(*this);
+            if (!isAssignable(e.args[i]->type, fnType->paramTypes[i])) {
+                throw KMYCompileError("Argument type mismatch.");
+            }
         }
 
         return;
@@ -445,7 +485,6 @@ void Resolver::visit(Call& e) {
 void Resolver::visit(Get& e) {
     
     e.obj->accept(*this);
-    std::cout << "In get, this guy's type kind in int: " << (int)(e.obj->type->kind) << "\n";
     
     if (e.obj->type->kind != TypeKind::STRUCTUAL && e.obj->type->kind != TypeKind::INSTANCE && e.obj->type != &Types::ANY_TYPE) {
         throw KMYCompileError(
@@ -549,7 +588,6 @@ void Resolver::visit(ScopeAccessExpr& e) {
     if (typeSym->type->kind == TypeKind::ENUM) {
         auto enumType = static_cast<EnumType*>(typeSym->type);
 
-        std::cout << "Checking enum " << typeSym->name << "\n";
         auto it = enumType->variantMap.find(last);
         if (it == enumType->variantMap.end()) {
             throw KMYCompileError("Enum value not found: " + last);
@@ -591,8 +629,6 @@ void Resolver::visit(ThisExpr& e) {
     if (!currentThis) {
         throw KMYCompileError("\"this\" used outside of method... :(");
     }
-    std::cout << "Cthis is " << currentThis << std::endl;
-    std::cout << "which refers to " << static_cast<InstanceType*>(currentThis->type)->name<< std::endl;
 
     e.symbol = currentThis;
     e.type = currentThis->type;
@@ -676,10 +712,6 @@ void Resolver::visit(Continue&) {
 }
 
 void handleAnnotatedAndInferred(VarSymbol* sym, Type* annotated, Type* inferred) {
-    std::cout << "annotated: " << typeToString(annotated)<< std::endl;
-    std::cout << "inferred: " << typeToString(inferred) << std::endl;
-    std::cout << "sym:" << sym << std::endl;
-    printLog(LogLevel::DEBUG, "Handling annotated and inferred types\n");
 
     // CASE 1: annotated type exists
     if (annotated) {
@@ -713,7 +745,6 @@ void handleAnnotatedAndInferred(VarSymbol* sym, Type* annotated, Type* inferred)
 }
 
 void Resolver::visit(Let& s) {
-    printLog(LogLevel::DEBUG, "Visiting let node for " + s.name + "\n");
 
     // Check pass 1 did correct job.
     assert(s.symbol);
@@ -784,7 +815,6 @@ void Resolver::visit(Aggregate& s) {
         Type* inferred = nullptr;
 
         if (field.initialiser) {
-            std::cout << "currthis: " << currentThis << std::endl;
             field.initialiser->accept(*this);
         }
 
@@ -797,7 +827,6 @@ void Resolver::visit(Aggregate& s) {
         field.symbol->fieldOffset = offset++;
     }
 
-    std::cout << "Resolver: field np\n";
 
     
     int methodIdx = 0;
@@ -809,15 +838,10 @@ void Resolver::visit(Aggregate& s) {
 
         member.methodExpr->accept(*this);
         
-        std::cout << "fnexpr visit done in method\n";
         member.symbol->type = member.methodExpr->type; 
-        std::cout << "crash 1\n";
         member.symbol->methodIdx = methodIdx++;
-        std::cout << "crash 2\n";
-        std::cout << "???????\n";
     }
 
-    std::cout << "Resolver: method np\n";
 
     for (auto& member : s.constructorMembers) {
         currentThis = member.initFuncExpr->params[0].symbol;
@@ -826,17 +850,14 @@ void Resolver::visit(Aggregate& s) {
         member.initFuncExpr->accept(*this);
     }
 
-    std::cout << "Resolver: ctor np\n";
 
     
 
-    std::cout << currentAggregate->name << "\n";
     // Field initialiser
     currentThis = s.fieldInitFunc->params[0].symbol;
     currentThis->type = currentAggregate;
     s.fieldInitFunc->accept(*this);
 
-    std::cout << "Resolver: field init func np\n";
 
     currentThis = oldThis;
     currentAggregate = oldAgg;
@@ -844,13 +865,11 @@ void Resolver::visit(Aggregate& s) {
 }
 
 void Resolver::visit(TypeAlias& s) {
-    printLog(LogLevel::DEBUG, "Visiting typealias node for " + s.name + "\n");
     // In pass 2.
     // s.typeSymbol->type = typeSigToType(currScope, s.aliasingType);
 }
 
 void Resolver::visit(Enum& s) {
-    //printLog(LogLevel::DEBUG, "Visiting enum node for " + s.name + "\n");
     
     // Type already built in pass 2.
     /*
@@ -865,7 +884,6 @@ void Resolver::visit(Enum& s) {
     s.typeSymbol->type = enumType;
     */
 
-    //printLog(LogLevel::DEBUG, "Enum offset is " + std::to_string(offset) + " for " + s.name + "\n");
 }
 
 void Resolver::visit(ExprStmt& s) {

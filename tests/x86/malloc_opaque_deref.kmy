@@ -1,0 +1,2 @@
+let p = malloc(8);
+print(*p);

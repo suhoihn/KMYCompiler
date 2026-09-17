@@ -16,6 +16,7 @@ enum class TypeNodeKind {
     ARRAY,
     RECORD, // Annonymous records ({x: int} forms). Will eventually be StructualType
     SCOPED, // For types with a scope (e.g., Foo::Bar. Notice that this is different from enum access like Color::Black)
+    POINTER,
     NULLABLE
 };
 
@@ -73,11 +74,18 @@ struct ScopedTypeNode : TypeNode {
         : TypeNode(TypeNodeKind::SCOPED), scopeParts(std::move(scopeParts)) {}
 };
 
+struct PointerTypeNode : TypeNode {
+    TypeNodePtr pointee;
+
+    explicit PointerTypeNode(TypeNodePtr pointee)
+        : TypeNode(TypeNodeKind::POINTER), pointee(std::move(pointee)) {}
+};
+
 enum class TypeKind {
     INT,
     DOUBLE,
     BOOL,
-    POINTER, // NOTE: Only used in IR code gen! (TODO: Refactor to IRType or smth)
+    POINTER, // Source-level T* pointers and internal codegen pointers.
     CELL, // NOTE: Only used in IR code gen! (TODO: Refactor to IRType or smth)
     STRING,
     NULLTYPE,

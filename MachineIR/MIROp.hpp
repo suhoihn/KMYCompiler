@@ -48,10 +48,13 @@ enum class MIROp {
     // Memory
     LOAD,
     STORE,
+    LOAD_INDIRECT,
+    STORE_INDIRECT,
     LOAD_INDEX,
     STORE_INDEX,
     LEA,
     ALLOC, // Allocates zero-initialized heap memory with a given size
+    MALLOC_BYTES, // Allocates uninitialized heap memory from a runtime byte count
     ALLOC_DYNAMIC, // Allocates zeroed memory for runtime count * element size
 
     // Stack / calling convention
@@ -119,10 +122,13 @@ inline const char* toString(MIROp op) {
 
         case MIROp::LOAD: return "LOAD";
         case MIROp::STORE: return "STORE";
+        case MIROp::LOAD_INDIRECT: return "LOAD_INDIRECT";
+        case MIROp::STORE_INDIRECT: return "STORE_INDIRECT";
         case MIROp::LOAD_INDEX: return "LOAD_INDEX";
         case MIROp::STORE_INDEX: return "STORE_INDEX";
         case MIROp::LEA: return "LEA";
         case MIROp::ALLOC: return "ALLOC";
+        case MIROp::MALLOC_BYTES: return "MALLOC_BYTES";
         case MIROp::ALLOC_DYNAMIC: return "ALLOC_DYNAMIC";
 
 

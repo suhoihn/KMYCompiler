@@ -24,7 +24,6 @@ void DeclTypeResolver::resolve() {
 
 // Expressions
 void DeclTypeResolver::visit(FunctionExpr& e) {
-    std::cout << "hi im func\n";
     std::vector<Type*> paramTypes;
     std::vector<ParamTypeInfo> info;
 
@@ -45,7 +44,6 @@ void DeclTypeResolver::visit(FunctionExpr& e) {
                 // If strict mode:
                 // throw KMYCompileError("Parameter must have explicit type signature.");
             } else {
-                std::cout << "param has annotation! but the symbol doesnt have it\n";
                 param.symbol->type = typeSigToType(currScope, param.type);
             }
         }
@@ -79,15 +77,12 @@ void DeclTypeResolver::visit(FunctionExpr& e) {
     fnType->info = std::move(info);
     fnType->infoExists = true;
     e.type = fnType;
-    std::cout << "my type is " << typeToString(e.type) << "\n";
 }
 
 void DeclTypeResolver::visit(ThisExpr& e) {
     if (!currentThis) {
         throw KMYCompileError("\"this\" used outside of method... :(");
     }
-    std::cout << "Cthis is " << currentThis << std::endl;
-    std::cout << "which refers to " << static_cast<InstanceType*>(currentThis->type)->name<< std::endl;
 
     e.symbol = currentThis;
     e.type = currentThis->type;
@@ -108,7 +103,6 @@ void DeclTypeResolver::visit(Block& s) {
 
 
 void DeclTypeResolver::visit(Let& s) {
-    printLog(LogLevel::DEBUG, "Visiting let node for " + s.name + "\n");
     
     if (s.expr) {
         s.expr->accept(*this);

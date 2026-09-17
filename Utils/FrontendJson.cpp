@@ -249,6 +249,8 @@ std::string typeName(const TypeNodePtr& type) {
             else if (node->isDynamic) suffix = "[dynamic]";
             return typeName(node->elementType) + suffix;
         }
+        case TypeNodeKind::POINTER:
+            return typeName(std::static_pointer_cast<PointerTypeNode>(type)->pointee) + "*";
         case TypeNodeKind::FUNCTION: {
             const auto node = std::static_pointer_cast<FunctionTypeNode>(type);
             std::string result = "(";

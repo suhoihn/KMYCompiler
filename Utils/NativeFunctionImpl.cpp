@@ -194,7 +194,23 @@ Value writeFile(int argc, Value* args) {
     return Value(static_cast<bool>(file.good()));
 }
 
+Value mallocNative(int, Value*) {
+    // The bytecode VM has no raw address value or pointer dereference yet.
+    throw std::runtime_error("malloc is currently supported only by the x86 backend");
+}
+
 std::unordered_map<std::string, NativeEntry> nativeFnTypes = {
+    {
+        "malloc",
+        {
+            TypeInterner::getFunctionType(
+                {&Types::INT_TYPE},
+                TypeInterner::getPointerType(&Types::ANY_TYPE)
+            ),
+            &mallocNative,
+            11
+        }
+    },
     {
         "streq",
         {

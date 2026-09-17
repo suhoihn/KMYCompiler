@@ -1,6 +1,7 @@
 #include "utils.hpp"
 
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -10,6 +11,18 @@
 #include "../Core/Ast.hpp"
 
 using std::cout, std::endl;
+
+static bool astTraceEnabled = false;
+static const char* astTracePass = nullptr;
+
+void setAstTraceEnabled(bool enabled) { astTraceEnabled = enabled; }
+void setAstTracePass(const char* pass) { astTracePass = pass; }
+
+void traceAstVisit(const char* node) {
+    if (astTraceEnabled && astTracePass) {
+        std::cerr << "[" << astTracePass << "] visit " << node << '\n';
+    }
+}
 
 constexpr const char* RESET  = "\033[0m";
 
@@ -62,12 +75,15 @@ static const std::unordered_map<TokenType, std::string> tokenTypeNames = {
     {TokenType::BitAnd, "And"},
     {TokenType::BitOr, "Or"},
     {TokenType::BitNot, "Not"},
+    {TokenType::BitXor, "Xor"},
     {TokenType::LShift, "LShift"},
     {TokenType::RShift, "RShift"},
 
     // Logical Operators
     {TokenType::LogicalAnd, "AndAnd"},
     {TokenType::LogicalOr, "OrOr"},
+    {TokenType::NullCoalesce, "NullCoalesce"},
+    {TokenType::Nullable, "Nullable"},
 
     // Assignment Operators
     {TokenType::Assign, "Assign"},
@@ -134,6 +150,7 @@ static const std::unordered_map<TokenType, std::string> tokenTypeNames = {
     {TokenType::RightBrace, "RightBrace"},
     {TokenType::Semicolon, "Semicolon"},
     {TokenType::Bang, "Bang"},
+    {TokenType::ForceUnwrap, "ForceUnwrap"},
     {TokenType::LeftBracket, "LeftBracket"},
     {TokenType::RightBracket, "RightBracket"},
     {TokenType::Comma, "Comma"},
@@ -209,13 +226,35 @@ static const std::unordered_map<TokenType, std::string> tokenTypeSymbols = {
 };
 
 void printTokens(const std::vector<Token>& tokens) {
-    for (const auto& token : tokens) {
-        if (!tokenTypeNames.count(token.type)) {
-            throw std::runtime_error("Unknown token type to print. Maybe u forgot to add in the map.");
+    auto escape = [](const std::string& value) {
+        std::string escaped;
+        for (char c : value) {
+            switch (c) {
+                case '\\': escaped += "\\\\"; break;
+                case '"': escaped += "\\\""; break;
+                case '\n': escaped += "\\n"; break;
+                case '\r': escaped += "\\r"; break;
+                case '\t': escaped += "\\t"; break;
+                default: escaped += c; break;
+            }
         }
-        auto& tokenStr = tokenTypeNames.at(token.type);
-        cout << "[" << tokenStr << ", \"" << token.lexeme << "\"]" << endl;
-     }
+        return escaped;
+    };
+
+    cout << "  #    line  span       token                 lexeme\n";
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        const auto& token = tokens[i];
+        auto name = tokenTypeNames.find(token.type);
+        // Debug output must never reject a token that the lexer produced.
+        const std::string tokenName = name == tokenTypeNames.end()
+            ? "Token(" + std::to_string(static_cast<int>(token.type)) + ")"
+            : name->second;
+        cout << "  " << std::left << std::setw(5) << i
+             << std::setw(6) << token.line
+             << std::setw(11) << (std::to_string(token.startIdx) + ".." + std::to_string(token.endIdx))
+             << std::setw(22) << tokenName
+             << '"' << escape(token.lexeme) << "\"\n";
+    }
 }
 
 // Forward declaration.

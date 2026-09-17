@@ -228,6 +228,25 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         case IROp::GET_ADDR:
             return { make(MIROp::LEA) };
 
+        case IROp::LOAD_INDIRECT:
+            return {
+                MIRInstr {
+                    .op = MIROp::LOAD_INDIRECT,
+                    .dst = instr.dst,
+                    .args = convertHIRargs(instr.args), // [pointer]
+                    .imm = 0,
+                }
+            };
+
+        case IROp::STORE_INDIRECT:
+            return {
+                MIRInstr {
+                    .op = MIROp::STORE_INDIRECT,
+                    .args = convertHIRargs(instr.args), // [pointer, value]
+                    .imm = 0,
+                }
+            };
+
         case IROp::ALLOC_HEAP: {
             MIRInstr alloc;
             alloc.op = MIROp::ALLOC;
@@ -243,6 +262,9 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             alloc.imm = instr.imm.value();
             return { alloc };
         }
+
+        case IROp::MALLOC_BYTES:
+            return { make(MIROp::MALLOC_BYTES) };
 
         case IROp::ALLOC_ARRAY_DYNAMIC: {
             MIRInstr alloc;

@@ -32,7 +32,6 @@ static IRLocalInfo* getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
     if (it != localMap.end()) {
         return &it->second;
     }
-    std::cout << ("SERIOUS ERROR?. UNDEFINED cell VAR " + sym->name) << "\n";
     return nullptr;
 }
 
@@ -458,12 +457,112 @@ void IRBuilder::visit(BinaryExpr& e) {
 }
 
 void IRBuilder::visit(UnaryExpr& e) {
+    if (e.op == UnaryOp::AddressOf) {
+        // Taking the address must not first load the lvalue's value.
+        if (e.operand->kind == ExprKind::Variable) {
+            auto var = std::static_pointer_cast<Variable>(e.operand);
+
+            auto upvalueIt = currCtx->upvalues.find(var->symbol);
+            if (upvalueIt != currCtx->upvalues.end()) {
+                // Captured variables already live in heap cells; the cell
+                // pointer is the address that '&' should expose.
+                setLastValue(upvalueIt->second);
+                return;
+            }
+
+            // Ordinary locals are intentionally represented as VarRef until
+            // SSA renaming. Keep the symbol explicit here instead of asking
+            // the transient local-value map for a definition that may not
+            // exist yet.
+            auto localIt = currCtx->locals.find(var->symbol);
+            if (localIt != currCtx->locals.end() && localIt->second.isCell) {
+                // A local promoted to a cell is already represented by its
+                // cell pointer, so no extra address instruction is needed.
+                setLastValue(localIt->second.value);
+                return;
+            }
+
+            IRValue dst = makeValue(e.type);
+            emit({
+                .op = IROp::GET_ADDR,
+                .dst = dst,
+                .args = { VarRef{var->symbol} }
+            });
+            setLastValue(dst);
+            return;
+        }
+
+        if (e.operand->kind == ExprKind::Get) {
+            auto get = std::static_pointer_cast<Get>(e.operand);
+            if (get->resolvedMethod || get->obj->type->kind != TypeKind::INSTANCE) {
+                throw KMYCompileError("Address-of requires a native field lvalue");
+            }
+
+            get->obj->accept(*this);
+            IRValue dst = makeValue(e.type);
+            emit({
+                .op = IROp::GET_ADDR,
+                .dst = dst,
+                .args = { getLastValue() },
+                .imm = static_cast<int64_t>(get->fieldIdx) * 8
+            });
+            setLastValue(dst);
+            return;
+        }
+
+        if (e.operand->kind == ExprKind::Index) {
+            auto indexExpr = std::static_pointer_cast<Index>(e.operand);
+            if (indexExpr->obj->type->kind != TypeKind::ARRAY) {
+                throw KMYCompileError("Address-of requires an array lvalue");
+            }
+
+            auto* arrayType = static_cast<ArrayType*>(indexExpr->obj->type);
+            size_t elementSize = TypeLayout::sizeOf(arrayType->elementType);
+            if (elementSize != PTR_SIZE) {
+                throw KMYCompileError("Native array elements must fit in one machine word.");
+            }
+
+            indexExpr->obj->accept(*this);
+            HIROperand array = getLastValue();
+            indexExpr->index->accept(*this);
+            HIROperand index = getLastValue();
+
+            IRValue dst = makeValue(e.type);
+            emit({
+                .op = IROp::GET_ADDR,
+                .dst = dst,
+                .args = { array, index },
+                .imm = static_cast<int64_t>(elementSize)
+            });
+            setLastValue(dst);
+            return;
+        }
+
+        if (e.operand->kind == ExprKind::UnaryExpr) {
+            auto nested = std::static_pointer_cast<UnaryExpr>(e.operand);
+            if (nested->op == UnaryOp::Dereference) {
+                // &*p is the original pointer; no memory access is needed.
+                nested->operand->accept(*this);
+                return;
+            }
+        }
+
+        throw KMYCompileError("Address-of requires an addressable expression");
+    }
+
     e.operand->accept(*this);
     HIROperand v = getLastValue();
 
     if (e.op == UnaryOp::ForceUnwrap) {
         IRValue dst = makeValue(e.type);
         emit({ .op = IROp::FORCE_UNWRAP, .dst = dst, .args = { v } });
+        setLastValue(dst);
+        return;
+    }
+
+    if (e.op == UnaryOp::Dereference) {
+        IRValue dst = makeValue(e.type);
+        emit({ .op = IROp::LOAD_INDIRECT, .dst = dst, .args = { v } });
         setLastValue(dst);
         return;
     }
@@ -483,6 +582,47 @@ void IRBuilder::visit(UnaryExpr& e) {
 void IRBuilder::visit(Assignment& e) {
     // Case 1: variable assignment
     assert(e.left->isLValue());
+
+    // Pointer dereference assignment. The dereference expression is already
+    // an lvalue, so its operand evaluates to the destination address.
+    if (e.left->kind == ExprKind::UnaryExpr) {
+        auto unary = std::static_pointer_cast<UnaryExpr>(e.left);
+        if (unary->op != UnaryOp::Dereference) {
+            throw KMYCompileError("Invalid unary assignment target");
+        }
+
+        unary->operand->accept(*this);
+        HIROperand pointer = getLastValue();
+
+        HIROperand value;
+        if (e.op == AssignmentOp::Assign) {
+            e.right->accept(*this);
+            value = getLastValue();
+        } else {
+            IRValue oldValue = makeValue(e.type);
+            emit({
+                .op = IROp::LOAD_INDIRECT,
+                .dst = oldValue,
+                .args = { pointer }
+            });
+
+            e.right->accept(*this);
+            IRValue newValue = makeValue(e.type);
+            emit({
+                .op = binaryOpToIROp(compoundToBinaryOp(e.op)),
+                .dst = newValue,
+                .args = { oldValue, getLastValue() }
+            });
+            value = newValue;
+            setLastValue(newValue);
+        }
+
+        emit({
+            .op = IROp::STORE_INDIRECT,
+            .args = { pointer, value }
+        });
+        return;
+    }
 
     if (e.left->kind == ExprKind::Variable) {
         auto var = std::static_pointer_cast<Variable>(e.left);
@@ -515,9 +655,7 @@ void IRBuilder::visit(Assignment& e) {
 
         // UNLESS it is an upvalue!
         // Emit SET_ENV for mutable upvalues (like x = 3 where x is not local.)
-        std::cout << "[assignment] check: " << var->symbol << std::endl;
         if (currCtx->locals.count(var->symbol)) {
-            std::cout << "[assignment] check: " << var->symbol << " exists in locals. this is an local cell mutation.\n";
             IRLocalInfo* varInfo = getValueFromLocal(currCtx, var->symbol);
             if (varInfo && varInfo->isCell) {
                 emit({
@@ -557,8 +695,6 @@ void IRBuilder::visit(Assignment& e) {
         assert(currCtx->incomingEnv.has_value());
         
         // Should have a parent that provides addr to upvalue.
-        std::cout << var->name << std::endl;
-        std::cout << "= " << getLastValue() << std::endl;
         assert(currCtx->parent);
 
         IRValue cell = currCtx->upvalues[var->symbol];
@@ -707,10 +843,13 @@ void IRBuilder::visit(Index& e) {
 void IRBuilder::visit(Call& e) {
     if (e.func->kind == ExprKind::Variable) {
         auto builtin = std::static_pointer_cast<Variable>(e.func);
-        if (builtin->name == "streq" || builtin->name == "strconcat" ||
+        // Lower only the actual registered builtin symbol. A user-defined
+        // function that shadows a builtin name must remain an ordinary call.
+        if (builtin->symbol && builtin->symbol->nativeFnPtr &&
+            (builtin->name == "streq" || builtin->name == "strconcat" ||
             builtin->name == "strlen" || builtin->name == "strByteAt" ||
             builtin->name == "strFromByte" || builtin->name == "readFile" ||
-            builtin->name == "writeFile") {
+            builtin->name == "writeFile" || builtin->name == "malloc")) {
             std::vector<HIROperand> args;
             for (const auto& arg : e.args) {
                 arg->accept(*this);
@@ -725,6 +864,7 @@ void IRBuilder::visit(Call& e) {
             if (builtin->name == "strFromByte") op = IROp::STRING_FROM_BYTE;
             if (builtin->name == "readFile") op = IROp::FILE_READ;
             if (builtin->name == "writeFile") op = IROp::FILE_WRITE;
+            if (builtin->name == "malloc") op = IROp::MALLOC_BYTES;
             emit({
                 .op = op,
                 .dst = result,
@@ -837,100 +977,7 @@ void IRBuilder::visit(ScopeAccessExpr& e) {
     setLastValue(value);
 }
 
-static void printFunctionContext(FunctionContext* fnCtx) {
-    if (!fnCtx) {
-        std::cout << "<null function context>\n";
-        return;
-    }
-
-    std::cout << "========================================\n";
-    std::cout << "FunctionContext @" << fnCtx << "\n";
-
-    //
-    // Locals
-    //
-    std::cout << "\nLocals (" << fnCtx->locals.size() << ")\n";
-    std::cout << "----------------------------------------\n";
-
-    for (const auto& local : fnCtx->locals) {
-        std::cout
-            << "  "
-            << local.sym->name
-            << "  slot=" << local.slot
-            << "  depth=" << local.scopeDepth
-            << "  captured=" << std::boolalpha << local.captured
-            << "\n";
-    }
-
-    //
-    // Upvalues
-    //
-    std::cout << "\nUpvalues (" << fnCtx->upvalues.size() << ")\n";
-    std::cout << "----------------------------------------\n";
-
-    for (int i = 0; i < fnCtx->upvalues.size(); ++i) {
-        const auto& up = fnCtx->upvalues[i];
-
-        std::cout
-            << "  ["
-            << i
-            << "] "
-            << up.symbol->name
-            << "  parentSlot=" << up.index
-            << "  isLocal=" << std::boolalpha << up.isLocal
-            << "  capturedByChildren="
-            << up.capturedByChildren
-            << "\n";
-    }
-
-    //
-    // Environment layout
-    //
-    std::cout << "\nEnvironment (" << fnCtx->envMap.size()
-              << " slots, size=" << fnCtx->envSize << ")\n";
-    std::cout << "----------------------------------------\n";
-
-    for (const auto& [sym, slot] : fnCtx->envMap) {
-        std::cout
-            << "  slot " << slot
-            << " -> " << sym->name
-            << "\n";
-    }
-
-    //
-    // Local map
-    //
-    std::cout << "\nLocalMap\n";
-    std::cout << "----------------------------------------\n";
-
-    for (const auto& [sym, slot] : fnCtx->localMap) {
-        std::cout
-            << "  "
-            << sym->name
-            << " -> " << slot
-            << "\n";
-    }
-
-    //
-    // Upvalue map
-    //
-    std::cout << "\nUpvalueMap\n";
-    std::cout << "----------------------------------------\n";
-
-    for (const auto& [sym, slot] : fnCtx->upvalueMap) {
-        std::cout
-            << "  "
-            << sym->name
-            << " -> " << slot
-            << "\n";
-    }
-
-    std::cout << "========================================\n";
-}
-
 void IRBuilder::visit(FunctionExpr& e) {
-    std::cout << "NEW FUNC " << e.functionId << "\n";
-    printFunctionContext(e.functionContext);
 
     // Context switch to a new function.
     auto oldCtx = currCtx;
@@ -1134,7 +1181,6 @@ void IRBuilder::visit(FunctionExpr& e) {
         emit(instr);
 
         if (up.capturedByChildren) {
-            std::cout << "Hey! it's a me, UPVALUECAPTUREDBYCHILDREN!\n";
             // Children captures MY upvalue
             // We need to put it in env so that the children can see my upvalues.
             
@@ -1185,8 +1231,6 @@ void IRBuilder::visit(FunctionExpr& e) {
             //??????
             //currCtx->locals[funcDeclSym] = IRLocalInfo{ .value = fnValue, .isCell = false };
             uncapturedLocal = true;
-        } else {
-            std::cout << "Duplicate write prevented which is not very desired.\n";
         }
 
         auto it = currCtx->fnCtx->envMap.find(funcDeclSym);
@@ -1195,7 +1239,6 @@ void IRBuilder::visit(FunctionExpr& e) {
         // Set it on env (func/closure is also a pointer, so copy occurs.)
         if (it != currCtx->fnCtx->envMap.end()) {
             assert(currCtx->env.has_value());
-            std::cout << "Hoisted function " << funcDeclSym->name << " is captured by children. Setting it on env.\n";
             
             IRValue cell = makeValue(
                 new CellType(e.type)
@@ -1218,15 +1261,6 @@ void IRBuilder::visit(FunctionExpr& e) {
         if (uncapturedLocal) {
             currCtx->currBlock->defs.push_back({funcDeclSym, fnValue});
         }
-    }
-
-    std::cout << "env\n";
-    for (auto& [sym, slot] : e.functionContext->envMap) {
-        std::cout << sym->name << " -> " << slot << "\n";
-    }
-    std::cout << "locals so far\n";
-    for (auto& [sym, v] : currCtx->locals) {
-        std::cout << sym->name << " -> " << v.value << " (isCell: " << v.isCell << ")\n";
     }
 
     
@@ -1254,7 +1288,6 @@ void IRBuilder::visit(FunctionExpr& e) {
     }
 
     currFunc->lastValueId = currCtx->nextId;
-    std::cout << "This function " << currFunc->functionId << " lastVId: " << currFunc->lastValueId << "\n";
     functions.push_back(currFunc);
 
     // Prevent currCtx from being nullptr (top level entry func)
@@ -1694,11 +1727,8 @@ void IRBuilder::visit(Let& s) {
     
     bool uncapturedLocal = true;
     if (currCtx->locals.find(s.symbol) == currCtx->locals.end()) {
-        std::cout << "[let] wtf why are you here: " << s.symbol->name << "\n";
         uncapturedLocal = true;
        // currCtx->locals[s.symbol] = IRLocalInfo{ .value = value, .isCell = false };
-    } else {
-        std::cout << "Duplicate write prevented which is not very desired.\n";
     }
 
     // Set env right away.
@@ -1707,11 +1737,9 @@ void IRBuilder::visit(Let& s) {
     auto it = currCtx->fnCtx->envMap.find(s.symbol);
 
     IRValue cell;
-    std::cout << "[let] currctx->env: " << currCtx->env.has_value() << "\n";
     
     if (currCtx->env && it != currCtx->fnCtx->envMap.end()) {
         uncapturedLocal = false;
-        std::cout << "[let] " << s.symbol->name << " exists in env\n";
 
         Type* type = nullptr;
         if (std::holds_alternative<IRValue>(value)) {
@@ -1757,8 +1785,13 @@ void IRBuilder::visit(Aggregate& s) {
     bool oldMemberMode = compilingAggregateMember;
     compilingAggregateMember = true;
 
+    // Register every method prototype before lowering any method body.
+    // A parser method such as primary() may call expression(), even when
+    // expression() is declared later in the class.
     for (auto& method : s.methodMembers) {
         methodFunctions[method.symbol] = method.methodExpr.get();
+    }
+    for (auto& method : s.methodMembers) {
         method.methodExpr->accept(*this);
     }
     fieldInitFunctions[static_cast<InstanceType*>(s.typeSymbol->type)] = s.fieldInitFunc.get();

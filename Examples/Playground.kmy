@@ -1,36 +1,13 @@
-typealias C = B; // TODO: This is not handled
-typealias B = A;
-typealias A = C;
+let matrix = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+];
 
-//let g: ()->any;
-//let f = fun() { g(); };
-//g = fun() { f(); }; // Error (or runtime TDZ)
+let matrixp = &matrix;
+let rowp = &((*matrixp)[1]);
+let elemp = &((*rowp)[2]);
 
-// TODO: This bypasses type check.
-// Good news: C# has an elegant solution to this
-// At all call site, CHECK WHETHER ALL VARS ARE ALLOCED.
-// Possibly on pass 3? (While resolving names)
-// Perhaps a dedicated initialisation control pass? (after closure analysis) 
+*elemp = 69;
 
-// For each block:
-//   IN[B]  = vars definitely assigned on entry
-//    OUT[B] = vars definitely assigned on exit
-
-//OUT[B] = GEN[B] ∪ (IN[B] - KILL[B])
-//IN[B]  = intersection of predecessors' OUTs
-
-fun f(): void {
-    let x = 3;
-    let w = 5;
-    fun g(): (int)->void {
-        let y = 4;
-        print(w);
-        fun h(t: int): void {
-            w += 1;
-            print(y + x + w + t);
-        }
-        return h;
-    }
-    g()(10); // Allowed thanks to hoisting.
-}
-f();
+print(matrix[1][2]); // 69

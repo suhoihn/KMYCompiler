@@ -2,6 +2,38 @@
 
 // All AST nodes forward declared.
 
+void traceAstVisit(const char* node);
+
+template <typename T> inline constexpr const char* astNodeName = "ASTNode";
+#define KMY_AST_NAME(T) template <> inline constexpr const char* astNodeName<struct T> = #T
+KMY_AST_NAME(Literal);
+KMY_AST_NAME(ArrayLiteral);
+KMY_AST_NAME(RecordLiteral);
+KMY_AST_NAME(Variable);
+KMY_AST_NAME(BinaryExpr);
+KMY_AST_NAME(UnaryExpr);
+KMY_AST_NAME(Assignment);
+KMY_AST_NAME(Index);
+KMY_AST_NAME(Call);
+KMY_AST_NAME(Get);
+KMY_AST_NAME(ScopeAccessExpr);
+KMY_AST_NAME(FunctionExpr);
+KMY_AST_NAME(ThisExpr);
+KMY_AST_NAME(NewExpr);
+KMY_AST_NAME(Print);
+KMY_AST_NAME(If);
+KMY_AST_NAME(While);
+KMY_AST_NAME(Block);
+KMY_AST_NAME(Break);
+KMY_AST_NAME(Continue);
+KMY_AST_NAME(Let);
+KMY_AST_NAME(Return);
+KMY_AST_NAME(Aggregate);
+KMY_AST_NAME(TypeAlias);
+KMY_AST_NAME(Enum);
+KMY_AST_NAME(ExprStmt);
+#undef KMY_AST_NAME
+
 class Visitor {
 public:
     // Expressions

@@ -2,10 +2,12 @@
 #include <fstream>
 #include <exception>
 #include <cstdlib>
+#include <streambuf>
 
 #include "../Utils/utils.hpp"
 #include "../Utils/SymbolPrinter.hpp"
 #include "../Utils/FrontendJson.hpp"
+#include "../Utils/PrettyAst.hpp"
 #include "../Core/lexer.hpp"
 #include "../Core/newParser.hpp"
 #include "../Core/Ast.hpp"
@@ -92,14 +94,53 @@ static void printDiagnostic(
               << "\n";
 }
 
+static void printUsage(std::ostream& out) {
+    out << "KMY compiler (kmyc)\n"
+        << "2026 (c) KMY\n\n"
+        << "Usage:\n"
+        << "  kmyc <source-file> [options]\n"
+        << "  kmyc --help\n\n"
+        << "Options:\n"
+        << "  -h, --help             Show this help text and exit.\n"
+        << "  -asm, --asm            Compile through the native x86-64 backend.\n"
+        << "  -o, --output <path>    Set the output executable/assembly base path.\n"
+        << "  --no-run               Generate output but do not link/run it.\n"
+        << "  --frontend-json        Emit frontend tokens/trace JSON and stop.\n"
+        << "  -d, --debug            Print intermediate compiler information.\n"
+        << "  -t, --strict-types     Enable the legacy strict-type switch.\n\n"
+        << "Examples:\n"
+        << "  kmyc Examples/Hello.kmy\n"
+        << "  kmyc Examples/Hello.kmy -asm -o hello\n"
+        << "  kmyc Examples/Hello.kmy --frontend-json\n";
+}
+
+// Older passes still print their internal tracing directly to stdout. Keep it
+// out of both normal builds and the curated -d view without hiding stderr.
+class QuietPassOutput {
+    class Sink : public std::streambuf {
+        int overflow(int c) override { return traits_type::not_eof(c); }
+    } sink;
+    std::streambuf* previous;
+
+public:
+    QuietPassOutput() : previous(std::cout.rdbuf(&sink)) {}
+    ~QuietPassOutput() { std::cout.rdbuf(previous); }
+    QuietPassOutput(const QuietPassOutput&) = delete;
+    QuietPassOutput& operator=(const QuietPassOutput&) = delete;
+};
+
+template <typename F>
+auto runQuietly(const char* passName, F&& pass) {
+    setAstTracePass(passName);
+    QuietPassOutput quiet;
+    return pass();
+}
+
+static void printDebugHeading(const std::string& name) {
+    std::cout << "\n" << name << "\n" << std::string(name.size(), '-') << "\n";
+}
+
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        std::cerr << "Usage: mylang <source-file>\n";
-        return 1;
-    }
-
-    const std::string filename = argv[1];
-
     // Switches
     bool debugOutput = false;
     bool strictTypes = false;
@@ -107,55 +148,96 @@ int main(int argc, char *argv[]) {
     bool frontendJson = false;
     bool run = true;
     const char* output = nullptr;
+    const char* filename = nullptr;
 
-    for (int i = 2; i < argc; i++) {
-        char* str = argv[i];
+    if (argc == 1) {
+        printUsage(std::cout);
+        return 0;
+    }
+
+    for (int i = 1; i < argc; i++) {
+        const char* str = argv[i];
+
+        if (strcmp(str, "-h") == 0 || strcmp(str, "--help") == 0) {
+            printUsage(std::cout);
+            return 0;
+        }
 
         if (strcmp(str, "--frontend-json") == 0) {
+            if (frontendJson) {
+                printLog(LogLevel::WARN, "Duplicate switch (--frontend-json) detected.");
+            }
             frontendJson = true;
             run = false;
+            continue;
         }
-        
-        if (strcmp(str, "-d") == 0) {
+
+        if (strcmp(str, "-d") == 0 || strcmp(str, "--debug") == 0) {
             if (debugOutput) {
-                std::cout << "[WARNING]: Duplicate switch (-d) detected." << std::endl;
+                printLog(LogLevel::WARN, "Duplicate switch (--debug) detected.");
             }
             debugOutput = true;
-            std::cout << "[DEBUG]: Intermediate results will be outputed." << std::endl;
-        } if (strcmp(str, "-t") == 0) {
+            continue;
+        }
+
+        if (strcmp(str, "-t") == 0 || strcmp(str, "--strict-types") == 0) {
             if (strictTypes) {
-                std::cout << "[WARNING]: Duplicate switch (-t) detected." << std::endl;
+                printLog(LogLevel::WARN, "Duplicate switch (--strict-types) detected.");
             }
             strictTypes = true;
-            std::cout << "[DEBUG]: Strict typing enabled." << std::endl;
-        } if (strcmp(str, "-asm") == 0) {
+            continue;
+        }
+
+        if (strcmp(str, "-asm") == 0 || strcmp(str, "--asm") == 0) {
             if (isBuildingASM) {
-                printLog(LogLevel::WARN, "Duplicate switch (-asm) detected.");
+                printLog(LogLevel::WARN, "Duplicate switch (--asm) detected.");
             }
             isBuildingASM = true;
-            std::cout << "[DEBUG]: Direct lowering enabled." << std::endl;
+            continue;
         }
+
         if (strcmp(str, "--no-run") == 0) {
             if (!run) {
                 printLog(LogLevel::WARN, "Duplicate switch (--no-run) detected.");
             }
             run = false;
-            std::cout << "[DEBUG]: Will not execute." << std::endl;
+            continue;
         }
-        if (strcmp(str, "-o") == 0) {
+
+        if (strcmp(str, "-o") == 0 || strcmp(str, "--output") == 0) {
             if (output) {
-                printLog(LogLevel::WARN, "Duplicate switch (-o) detected.");
+                printLog(LogLevel::WARN, "Duplicate output switch detected; using the last path.");
             }
-            if (i + 1 >= argc) {
-                printLog(LogLevel::ERROR, "Wrong switch formation!");
+            if (i + 1 >= argc || argv[i + 1][0] == '-') {
+                printLog(LogLevel::ERROR, "Output switch requires a path: -o <path>");
                 return 1;
             }
             output = argv[++i];
-            std::cout << "[DEBUG]: Output file name: " << output << std::endl;
+            continue;
         }
+
+        if (str[0] == '-') {
+            std::cerr << "Unknown switch: " << str << "\n\n";
+            printUsage(std::cerr);
+            return 1;
+        }
+
+        if (filename) {
+            std::cerr << "Unexpected extra source file: " << str << "\n\n";
+            printUsage(std::cerr);
+            return 1;
+        }
+        filename = str;
     }
 
-    if (!frontendJson) printLog(LogLevel::INFO, "Reading file...\n");
+    if (!filename) {
+        std::cerr << "No source file specified.\n\n";
+        printUsage(std::cerr);
+        return 1;
+    }
+
+    setAstTraceEnabled(debugOutput);
+
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Could not open file: " << filename << "\n";
@@ -165,8 +247,6 @@ int main(int argc, char *argv[]) {
     std::string source((std::istreambuf_iterator<char>(file)),
     std::istreambuf_iterator<char>());
     
-    if (!frontendJson) printLog(LogLevel::INFO, "Reading done. Source file string created.\n");
-
     std::vector<Token> tokens;
     std::vector<ParserTraceEvent> parserTrace;
 
@@ -175,9 +255,8 @@ int main(int argc, char *argv[]) {
         Lexer lexer(source);
         tokens = lexer.tokenise();
 
-        if (!frontendJson) printLog(LogLevel::INFO, "Lexing finished. Ready to parse.\n");
-        if (debugOutput) {
-            printLog(LogLevel::INFO, "Tokens:\n");
+        if (debugOutput && !frontendJson) {
+            printDebugHeading("Tokens");
             printTokens(tokens);
         }
 
@@ -190,137 +269,110 @@ int main(int argc, char *argv[]) {
             return 0;
         }
         if (debugOutput) {
-            printLog(LogLevel::INFO, "AST:\n");
-            // TODO: improve AST printing.
-            printAST(program);
+            printDebugHeading("Parsed AST");
+            printPrettyAST(std::cout, program);
         }
-
-        // Define symbol printer here.
-        SymbolPrinter symPrinter(program);
-        
-        printLog(LogLevel::INFO, "Parsing finished. Ready to move onto semantic analysis.\n");
         
         // 3-1. Symbol building
-        SymbolScopeBuilder builder(program);
-        auto globalScope = builder.analyse();
-
-        printLog(LogLevel::INFO, "Symbol building done. Ready to declare types and func signatures.\n");
-        
-        if (debugOutput) {
-            printLog(LogLevel::INFO, "Symbols built: \n");
-            symPrinter.print();
-        }
+        auto globalScope = runQuietly("SymbolScopeBuilder", [&] {
+            SymbolScopeBuilder builder(program);
+            return builder.analyse();
+        });
 
         // 3-2. Type declaration and function signature builder
-        DeclTypeResolver temp(program, globalScope);
-        temp.resolve(); // TODO: Better name
-
-        printLog(LogLevel::INFO, "Type declaration done. Ready to resolve variables and their types.\n");
-        
-        if (debugOutput) {
-            printLog(LogLevel::INFO, "Symbols built: \n");
-            symPrinter.print();
-        }
+        runQuietly("DeclTypeResolver", [&] {
+            DeclTypeResolver temp(program, globalScope);
+            temp.resolve(); // TODO: Better name
+        });
 
         // 3-3. Variable resolvance
-        Resolver resolver(program, globalScope);
-        resolver.resolve();
-        
-        if (debugOutput) {
-            printLog(LogLevel::INFO, "Symbols built: \n");
-            symPrinter.print();
-        }
-
-        std::cout << "[DEBUG]: Variable resolvance done. Ready to lower methods if one exists." << std::endl;
+        runQuietly("Resolver", [&] {
+            Resolver resolver(program, globalScope);
+            resolver.resolve();
+        });
 
         
         //3-3.5(?). Method lowering
-        MethodLower lower(program);
-        lower.lower();
+        runQuietly("MethodLower", [&] {
+            MethodLower lower(program);
+            lower.lower();
+        });
 
         if (debugOutput) {
-            printLog(LogLevel::INFO, "Symbols built: \n");
-            symPrinter.print();
-            printLog(LogLevel::INFO, "Modified AST: \n");
-            printAST(program);
+            printDebugHeading("Resolved AST");
+            printPrettyAST(std::cout, program);
         }
-        
-       
-        printLog(LogLevel::INFO, "Method lowering done. Ready to allocate local slots and analyse closures.\n");
 
         // 3-4. Closure analysis and slot allocation (VM).
-        ClosureAnalyser analyser(program);
-        analyser.analyse();
-
-        if (debugOutput) {
-            printLog(LogLevel::INFO, "Symbols built: \n");
-            symPrinter.print();
-        }
-        
-        printLog(LogLevel::INFO, "Slot allocation and closure analysis done.\n");
+        runQuietly("ClosureAnalyser", [&] {
+            ClosureAnalyser analyser(program);
+            analyser.analyse();
+        });
         
         // 3-4. Type check
         if (strictTypes) {
-            std::cout << "[DEBUG]: Strict type check enabled." << std::endl;
-            std::cout << "[WARNING]: DEPRECATED. Already done in resolver. Nothing will be done here.\n";
+            std::cerr << "Warning: --strict-types is deprecated; the resolver already checks types.\n";
             // TypeChecker checker(program);
             // checker.check();
             // std::cout << "[DEBUG]: Type checks done." << std::endl;
         }
 
         
-        printLog(LogLevel::INFO, "Ready for code generation.\n");
-
         if (isBuildingASM) {
             // 4-a. Code gen (CFG IR)
             IRBuilder builder(program);
-            auto funcs = builder.compile();
-            for (const auto& func: funcs) {
-                std::cout << *func << "\n";
+            auto funcs = runQuietly("IRBuilder", [&] { return builder.compile(); });
+            if (debugOutput) {
+                printDebugHeading("HIR (before SSA)");
+                for (const auto& func : funcs) std::cout << *func << "\n";
             }
 
             // 4-b. Phi computation and SSA renaming
-            SSABuilder ssaBuilder(funcs);
-            ssaBuilder.build();
+            runQuietly("SSABuilder", [&] {
+                SSABuilder ssaBuilder(funcs);
+                ssaBuilder.build();
+            });
 
-            for (const auto& func: funcs) {
-                std::cout << *func << "\n";
+            if (debugOutput) {
+                printDebugHeading("HIR (after SSA)");
+                for (const auto& func : funcs) std::cout << *func << "\n";
             }
 
-            std::cout << "[DEBUG]: CFG IR generation done. Ready to lower to MIR." << std::endl;
             MIRBuilder mirBuilder(funcs);
-            auto mirFuncs = mirBuilder.lower();
-            for (const auto& func: mirFuncs) {
-                std::cout << *func << "\n";
+            auto mirFuncs = runQuietly("MIRBuilder", [&] { return mirBuilder.lower(); });
+            if (debugOutput) {
+                printDebugHeading("MIR");
+                for (const auto& func : mirFuncs) std::cout << *func << "\n";
             }
 
-            std::cout << "[DEBUG]: MIR generation done. Ready to lower to X86 assembly." << std::endl;
-            printLog(LogLevel::WARN, "FINAL STEP...\n");
-            printLog(LogLevel::WARN, "The assembled code may corrupt the raw memory. Say hi to seg faults and sudden stops.\n");
-            
             std::ostringstream buffer;
 
             X86Builder x86Builder(mirFuncs, buffer, builder.getStringPool());
-            x86Builder.build();
+            runQuietly("X86Builder", [&] { x86Builder.build(); });
 
             std::string assembly = buffer.str();
 
-            // Always print
-            std::cout << assembly;
+            if (debugOutput) {
+                printDebugHeading("x86-64 assembly");
+                std::cout << assembly;
+            }
 
             
             if (!output) {
                 output = "out";
             }
             
-            // Save asm to file if output is specified.
-            printLog(LogLevel::INFO, "Saving asm to " + std::string(output) + ".s\n");
-            
             std::string asmFile = std::string(output) + ".s";
             {
                 std::ofstream file(asmFile);
+                if (!file) {
+                    std::cerr << "Could not write assembly file: " << asmFile << "\n";
+                    return 1;
+                }
                 file << assembly;
             } // close file.
+
+            std::cout << "Assembly written to " << asmFile << "\n";
 
             if (run) {
                 std::string cmd = "gcc \"" + asmFile + "\" \"Runtime C Functions\\runtime.o\" -o \"" + std::string(output) + "\"";
@@ -332,38 +384,32 @@ int main(int argc, char *argv[]) {
                     return 1;
                 }
 
-                std::cout << "Built successfully\n";
+                std::cout << "Built " << output << "\n";
             }
             return 0;
         }
 
         // 4. Code gen (Stack VM)
         Compiler compiler(program);
-        auto fnProtos = compiler.compile();
+        auto fnProtos = runQuietly("VMCompiler", [&] { return compiler.compile(); });
 
         if (debugOutput) {
-            printLog(LogLevel::INFO, "Symbols built: \n");
-            symPrinter.print();
-        }
-
-        std::cout << "[DEBUG]: Compilation done. Ready to run VM." << std::endl;
-        int fnProtoId = 0;
-        for (auto& fnProto : fnProtos) {
-            std::cout << "Function proto " << fnProtoId << ":\n";
-            std::cout << "Upvalue cnt " << fnProto.upValueCnt << "\n";
-            std::cout << "Upvalue vec size " << fnProto.upvalues.size() << "\n";
-
-            std::cout << chunkToString(fnProto.chunk) << std::endl;
-            fnProtoId++;
+            printDebugHeading("VM bytecode");
+            int fnProtoId = 0;
+            for (auto& fnProto : fnProtos) {
+                std::cout << "Function " << fnProtoId++
+                          << " (" << fnProto.upValueCnt << " captures):\n"
+                          << chunkToString(fnProto.chunk) << '\n';
+            }
         }
 
         if (run) {
             // 4. run
+            setAstTracePass(nullptr);
             VM vm;
             vm.load(fnProtos);
             vm.run();
     
-            std::cout << "[DEBUG]: VM halted." << std::endl;
             //std::exit(0);
         }
         return 0;
@@ -387,6 +433,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    std::cerr << "Usage: kmyc <file>\n";
+    printUsage(std::cerr);
     return 1;
 }

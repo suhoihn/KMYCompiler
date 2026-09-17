@@ -27,8 +27,6 @@ static int allocateLocal(FunctionContext* fnCtx, VarSymbol* sym) {
     // For debug.
     sym->slot = slot;
 
-    std::cout << sym << std::endl;
-    std::cout << "Allocating local variable: " << sym->name << " at slot " << slot << std::endl;
     fnCtx->locals.push_back(Local{
         sym,
         slot,
@@ -47,7 +45,6 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
         throw KMYCompileError("Symbol not resolved? this is stupid.");
     }
     // Returns the slot of upvalue where name belongs in fnCtx's context.
-    std::cout << "[DEBUG] Resolving upvalue for symbol: " << sym->name << std::endl;
 
     auto parentCtx = fnCtx->parent;
     if (!parentCtx) {
@@ -55,14 +52,12 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
         return INVALID_SLOT;
     }
 
-    std::cout << "In resolveupvalue part 1\n";
     // Check whether name is already resolved in current context.
     auto itMap = fnCtx->upvalueMap.find(sym);
     if (itMap != fnCtx->upvalueMap.end()) {
         return itMap->second;
     }
     
-    std::cout << "In resolveupvalue part 2\n";
     // Firstly, is name in parent's local?
     
     if (isInsideFunction(sym, parentCtx->fnScope)) {
@@ -84,7 +79,6 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
         int slot = fnCtx->upvalues.size();
         fnCtx->upvalueMap[sym] = slot;
 
-        std::cout << "In resolveupvalue part 2-3\n";
         
         // Also the upvalues vector.
         fnCtx->upvalues.push_back(
@@ -101,7 +95,6 @@ static int resolveUpvalue(FunctionContext* fnCtx, VarSymbol* sym) {
         return slot;
     }
 
-    std::cout << "In resolveupvalue part 3\n";
     // Not found in parent's local.
     // Let's go up and add name in ancestor's upvalues vector.
     // Slot in parent's upvalue vector.
@@ -145,7 +138,6 @@ ResolvedVar ClosureAnalyser::resolveVariable(VarSymbol* sym) {
         throw KMYCompileError("Symbol not resolved? this is stupid.");
     }
 
-    std::cout << "In resolveVariable(), first search function's local scope.\n";
     // 1. Local
     if (isInsideFunction(sym, currCtx->fnScope)) {
         // Found in function's local.
@@ -169,12 +161,9 @@ ResolvedVar ClosureAnalyser::resolveVariable(VarSymbol* sym) {
 
     }
     
-    std::cout << "In resolveVariable(), next search upvalue\n";
     // 2. Upvalue
     int up = resolveUpvalue(currCtx, sym);
     if (up != INVALID_SLOT) {
-        std::cout << "Captured upvalue! " << sym->name << "\n";
-        std::cout << "Upvalue slot: " << up << "\n";
 
         return ResolvedVar {
             ResolvedVar::Kind::UPVALUE,
@@ -186,19 +175,7 @@ ResolvedVar ClosureAnalyser::resolveVariable(VarSymbol* sym) {
 }
 
 void ClosureAnalyser::visit(Variable& e) {
-    std::cout << "haha i got ya\n";
-    std::cout << "var node=" << &e << '\n';
-    std::cout << "symbol=" << e.symbol << '\n';
-    std::cout << "resolved= " << e.resolved << "\n";
-    std::cout << "resolution=" << (int)e.resolution.kind << "\n";
-    std::cout << typeToString(e.type) << "\n";
-    std::cout << "name=" << e.name << "\n"; 
-
-    if (e.symbol)
-        std::cout << "symbol name=" << e.symbol->name << '\n';
-
     if (e.symbol->nativeFnPtr) {
-        std::cout << "Hi native!\n";
         e.resolved = true;
         // TODO: Really feels like a hack...
         e.resolution = ResolvedVar{ResolvedVar::Kind::GLOBAL, e.symbol->globalSlot};
@@ -207,14 +184,11 @@ void ClosureAnalyser::visit(Variable& e) {
         
     if (!e.resolved) {
         e.resolved = true;
-        std::cout << "Lets resolve symbol\n";
         e.resolution = resolveVariable(e.symbol);
     }
 }
 
 void ClosureAnalyser::visit(FunctionExpr& e) {
-    std::cout << "Entering function: " << e.params.size() << " params\n";
-    std::cout << "it is given an id of " << functionId << "\n";
     e.functionId = functionId++;
     
     // 1. Create new context
@@ -234,10 +208,8 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
         allocateLocal(currCtx, param.symbol);
     }
 
-    std::cout << "Local alloc done. body check." << std::endl;
     // 3. Body
     e.body->accept(*this);
-    std::cout << "body check done" << std::endl;
 
     int envSlot = 0;
 
@@ -262,8 +234,6 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
 
     currCtx = fnCtx->parent;
     
-    std::cout << "framesize: " << fnCtx->nextSlot << std::endl;
-    std::cout << "upvalue cnt: " << fnCtx->upvalues.size() << std::endl;
 
     e.functionContext = fnCtx;
     
@@ -271,12 +241,10 @@ void ClosureAnalyser::visit(FunctionExpr& e) {
 
 void ClosureAnalyser::visit(ThisExpr& e) {
     // Note that "this" can be captured too!
-    printLog(LogLevel::DEBUG, "Visiting ThisExpr.");
     if (!e.resolved) {
         e.resolved = true;
         e.resolution = resolveVariable(e.symbol);
     }
-    printLog(LogLevel::DEBUG, "ThisExpr visit done.");
 }
 
 // Statements
@@ -328,7 +296,6 @@ void ClosureAnalyser::visit(Let& s) {
 }
 
 void ClosureAnalyser::visit(Aggregate& s) {
-    std::cout << "Entering class: \n";
 
     int offset = 0;
     for (auto& field : s.fieldMembers) {
@@ -349,7 +316,6 @@ void ClosureAnalyser::visit(Aggregate& s) {
     s.fieldInitFunc->accept(*this);
 
     s.fieldCount = offset;
-    std::cout << "member check done" << std::endl;
 }
 
 void ClosureAnalyser::visit(Enum& s) {

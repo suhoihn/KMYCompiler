@@ -1,0 +1,16 @@
+// malloc returns opaque any*; a typed pointer annotation chooses how to use it.
+// The program initializes every word before reading it. There is no free yet.
+let value: int* = malloc(8);
+*value = 42;
+print(*value);
+
+let slot: int** = malloc(8);
+*slot = value;
+**slot = **slot + 5;
+print(*value);
+print(**slot);
+
+let pointers: int*[] = new int*[2];
+pointers[0] = value;
+pointers[1] = *slot;
+print(*pointers[1]);

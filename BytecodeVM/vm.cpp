@@ -16,7 +16,6 @@ VM::VM() {
     nativeFunctions.resize(maxSlot + 1);
 
     for (auto& [name, info] : nativeFnTypes) {
-        std::cout << "Address check for " + name + " in " << (void*)(info.fn) << " with slot " << info.globalSlot << "\n";
         nativeFunctions[info.globalSlot] =
             Value(std::make_shared<FunctionObj>(info.fn));
     }
@@ -120,7 +119,6 @@ void VM::load(std::vector<FunctionProto> functionProtos) {
         nullptr, // no function object for global scope
     });
     frames.back().base = stack.size();
-    std::cout << "framesize: " << this->functionProtos.back().frameSize << std::endl;
     stack.resize(stack.size() + this->functionProtos.back().frameSize, Value(GarbageValue{})); // or frameSize
 }
 
@@ -163,7 +161,6 @@ void VM::closeUpvalues(int base) {
 
         if (uv->stackSlot >= base) {
             // close it
-            std::cout << "Closing upvalue at stack slot " << uv->stackSlot << std::endl;
             uv->closed = stack[uv->stackSlot];
             uv->isClosed = true;
 
@@ -370,8 +367,6 @@ void VM::executeInstr(const Instruction& instr) {
                 auto& up = fnProto.upvalues[i];
                 int slot = up.index;
                 if (up.isLocal) {
-                    std::cout << "frame.base: " << frame.base << "\n";
-                    std::cout << "slot " << slot << "\n";
 
                     // From immediate parent,
                     // take x directly from parent stack frame
@@ -396,13 +391,6 @@ void VM::executeInstr(const Instruction& instr) {
                 &fnProto,
                 std::move(upvalues)
             );
-
-            // allocate upvalue slots
-            std::cout << "Upvalue count: " << fnProto.upValueCnt << std::endl;
-            for (int i = 0; i < fnProto.upValueCnt; i++) {
-                std::cout << "Upvalue " << i << ": " << (closure->upvalues[i]->isClosed ? "closed" : "open") << std::endl;
-                std::cout << "  Stack Slot: " << closure->upvalues[i]->stackSlot << std::endl;
-            }
 
             push(Value(closure));
             break;
@@ -437,45 +425,23 @@ void VM::executeInstr(const Instruction& instr) {
                 newFrame.base = stack.size() - instr.operand; // arguments are already on stack
                 newFrame.function = fn;
                 
-                std::cout << "New frame size: " << fn->proto->frameSize << std::endl;
-                std::cout << "New frame base: " << stack.size() - instr.operand << std::endl; 
                 stack.resize(newFrame.base + fn->proto->frameSize, Value(GarbageValue{})); // or frameSize
-    
-                std::cout << "Will run "  << newFrame.chunk << "\n";
-                
-                //chunkToString(fn->proto->chunk);
                 frames.push_back(newFrame);
             } else if (fn->kind == FunctionKind::Native) {
                 // Native call. No virtual(?) frame created.
                 Value* args = new Value[instr.operand];
                 
-                std::cout << "operand: " << instr.operand << "\n";
-                std::cout << stack.size() << "\n";
                 for (int i = 0; i < instr.operand; i++) {
-                    std::cout << "stksize: " << stack.size() << " / i: " << i << "\n";
                     args[i] = pop();
                 }
-                std::cout << stack.size() << "\n";
-
-                std::cout << "ARGS\n";
-                for (int i = 0; i < instr.operand; i++) {
-                    std::cout << args[i].toString() << "\n";
-                }
-                std::cout << "LESSGO\n";
-                std::cout << "func: " << (void*)(fn->nativeFn) << "\n";
 
                 // Clean func & args
-                //stack.resize(stack.size() - instr.operand - 1);
-                //std::cout << "resize ok\n";
                 pop();
                 
                 push(fn->nativeFn(instr.operand, args));
-                std::cout << "push ok\n";
 
                 delete[] args;
-                std::cout << "arg del ok?\n";
             }
-            std::cout << "let's go home\n";
             break;
         }
 
@@ -635,20 +601,7 @@ void VM::executeInstr(const Instruction& instr) {
 void VM::run() {
     running = true;
     while (running) {
-        //std::cout << "STACK SIZE: " << stack.size() << "\n";
-        for(auto& v : stack) {
-            std::cout << v.toString() << " | ";
-        }
-        std::cout << std::endl;
-        
-        // std::cout << "IP: " << frames.back().ip <<  std::endl;
         Instruction instr = fetchInstr();
-        std::cout << "Executing: " << opcodeToString(instr.opcode);
-
-        if (instr.operand != INVALID_SLOT)
-            std::cout << " " << instr.operand;
-
-        std::cout << std::endl;
         executeInstr(instr);
     }
 }

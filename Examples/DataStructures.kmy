@@ -1,6 +1,6 @@
 // Basic data structures implemented entirely in KMY.
 class IntStack {
-    let data: int[] = new int[4 + 0];
+    let data: int[] = new int[4];
     let size: int = 0;
     let capacity: int = 4;
 
@@ -30,7 +30,7 @@ class IntStack {
 };
 
 class IntQueue {
-    let data: int[] = new int[4 + 0];
+    let data: int[] = new int[4];
     let head: int = 0;
     let tail: int = 0;
     let size: int = 0;

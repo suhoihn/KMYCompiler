@@ -1,0 +1,74 @@
+// Singly linked list of integers. Each node is a heap-allocated class value;
+// the nullable next field is either another node or the end of the list.
+class ListNode {
+    let value: int = 0;
+    let next: ListNode? = null;
+
+    init(const value: int) {
+        this.value = value;
+    }
+};
+
+class LinkedList {
+    let head: ListNode? = null;
+    let tail: ListNode? = null;
+    let size: int = 0;
+
+    init() {}
+
+    fun append(value: int) {
+        let node: ListNode = new ListNode(value);
+        if (this.tail) {
+            this.tail!!.next = node;
+        } else {
+            this.head = node;
+        }
+        this.tail = node;
+        this.size += 1;
+    }
+
+    fun removeFirst(): int {
+        if (this.size == 0) {
+            return -1;
+        }
+
+        let first: ListNode = this.head!!;
+        this.head = first.next;
+        this.size -= 1;
+        if (this.size == 0) {
+            this.tail = null;
+        }
+        return first.value;
+    }
+
+    fun length(): int {
+        return this.size;
+    }
+
+    fun printAll() {
+        let current: ListNode? = this.head;
+        while (current) {
+            print(current!!.value);
+            current = current!!.next;
+        }
+    }
+};
+
+let list: LinkedList = new LinkedList();
+print(list.length());
+list.append(10);
+list.append(20);
+list.append(30);
+list.printAll();
+print(list.length());
+
+print(list.removeFirst());
+list.printAll();
+print(list.length());
+
+print(list.removeFirst());
+print(list.removeFirst());
+print(list.removeFirst()); // Empty list returns -1.
+list.append(99);          // Reuse after the last node was removed.
+list.printAll();
+print(list.length());

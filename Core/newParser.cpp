@@ -22,7 +22,7 @@ FunctionExprPtr Parser::parse() {
     return std::make_shared<FunctionExpr>(
         std::vector<Parameter>{}, // No params for global scope
         std::make_shared<Block>(move(statements)),
-        nullptr, // No return type annotation for global scope
+        nullptr, // No return annotation for global scope
         true // Entry function.
     );
 }
@@ -745,9 +745,25 @@ ExprPtr Parser::parse_expression(int minBP) {
         // e.g. 1 + 2 * 3 / 1 - 3
         //              ^right
         //          ^left
+        // e.g. 1 + 2 * 3 / 1 - 3
+        //                  ^right
+        //          ^^^^^left
         // e.g. x = y += z = 1 + 2 * 3
         //          ^^^^^^^^^^^^^^^^^^right (doesn't stop at += or = since its r-associative)         
         //      ^left
+        // e.g. x = y += z = 1 + 2 * 3
+        //               ^^^^^^^^^^^^^right
+        //          ^left
+        // e.g. x = y += z = 1 + 2 * 3
+        //                   ^^^^^^^^^right
+        //               ^left
+        // e.g. x = y += z = 1 + 2 * 3
+        //                       ^^^^^^right
+        //                   ^left
+        // e.g. x = y += z = 1 + 2 * 3
+        //                           ^right
+        //                       ^left
+
         ExprPtr right = parse_expression(nextMinBP);
 
         // Assignment operators
@@ -858,12 +874,15 @@ ExprPtr Parser::parse_prefix() {
         case TokenType::KeywordNew:
             return parse_newExpr();
 
-        // Unary operators
+        // Unary operators. '&' and '*' reuse BitAnd and Star tokens; their
+        // prefix position distinguishes address-of/dereference from the
+        // binary operators handled by parse_expression's Pratt loop.
         case TokenType::Plus:
-            return parse_expression(BP_UNARY);
         case TokenType::Minus:
         case TokenType::Bang:
-        case TokenType::BitNot: { // ~
+        case TokenType::BitNot: // ~
+        case TokenType::BitAnd: // &
+        case TokenType::Star: { // *
             ExprPtr right = parse_expression(BP_UNARY);
             return std::make_shared<UnaryExpr>(toUnaryOp(tok.type), std::move(right));
         }
@@ -874,7 +893,7 @@ ExprPtr Parser::parse_prefix() {
 }
 
 /*
-type        → ( basicType | functionType | recordType | scopedType ) arraySuffix*
+type        → ( basicType | functionType | recordType | scopedType ) ( '*' | arraySuffix )* '?'?
 basicType   → "int" | "string" | "bool" | "any" | "void"
 
 functionType → '(' typeList? ')' "->" type
@@ -983,10 +1002,10 @@ TypeNodePtr Parser::parse_scopedType() {
     return std::make_shared<ScopedTypeNode>(std::move(parts));
 }
 
-// type -> baseType arraySuffix* '?'?
-// A trailing '?' wraps the complete type, so `int[]?` means a nullable array
-// reference while `int?[4]` remains invalid until nullable element syntax is
-// explicitly introduced.
+// type -> baseType ( '*' | arraySuffix )* '?'?
+// Each '*' wraps the type parsed so far: `int**` is pointer-to-pointer,
+// `int*[]` is an array of pointers, and `int[]*` is pointer-to-array.
+// A trailing '?' wraps the complete type, e.g. `int*?` or `int[]?`.
 TypeNodePtr Parser::parse_type(bool parseArraySuffix) {
     TypeNodePtr result = nullptr;
     if (check(TokenType::LeftParen)) {
@@ -1001,13 +1020,19 @@ TypeNodePtr Parser::parse_type(bool parseArraySuffix) {
         advance(); // It is like this due to proper usage of previous() in parseTypeToken() error
     }
 
-    // parseArraySuffix is false if we need to parse in a form of T[expr]
-    // for something like new int[n * 5];
-    while (parseArraySuffix && match(TokenType::LeftBracket)) {
+    // parseArraySuffix is false for `new T[expression]`. Pointer suffixes
+    // still belong to the element type, so `new int*[n]` remains possible.
+    while (true) {
+        if (match(TokenType::Star)) {
+            result = std::make_shared<PointerTypeNode>(std::move(result));
+            continue;
+        }
+        if (!parseArraySuffix || !match(TokenType::LeftBracket)) break;
         if (match(TokenType::RightBracket)) {
             // Unsized array type, e.g., int[] (used with runtime-sized new).
             result = std::make_shared<ArrayTypeNode>(result, -1, false, false);
         } else if (false) {
+            // NOTE: UNUSED BRANCH!
             // TODO: Dynamic array will have diff expr...
             // Dynamic array, e.g., int[...]
             consume(TokenType::RightBracket, "Expected ']' after '...'");

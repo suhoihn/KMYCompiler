@@ -1,0 +1,43 @@
+KMY preview
+-----------
+let total: int = 1 + 2 * (9 - 5) / 2;
+let cell: int* = malloc(8);
+*cell = total;
+let alias: int* = &*cell;
+*alias = *alias + 3;
+
+AST
+---
+  let total: int
+    initializer: add (+)
+      left: integer 1
+      right: divide (/)
+        left: multiply (*)
+          left: integer 2
+          right: subtract (-)
+            left: integer 9
+            right: integer 5
+        right: integer 2
+
+  let cell: int*
+    initializer: call
+      callee: name malloc
+      argument: integer 8
+
+  assignment (=)
+    target: dereference (*)
+      operand: name cell
+    value: name total
+
+  let alias: int*
+    initializer: address-of (&)
+      operand: dereference (*)
+        operand: name cell
+
+  assignment (=)
+    target: dereference (*)
+      operand: name alias
+    value: add (+)
+      left: dereference (*)
+        operand: name alias
+      right: integer 3

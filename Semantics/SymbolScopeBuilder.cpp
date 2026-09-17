@@ -20,7 +20,7 @@ SymbolScopeBuilder::SymbolScopeBuilder(
     for (const auto& name : {std::string("streq"), std::string("strconcat"),
                              std::string("strlen"), std::string("strByteAt"),
                              std::string("strFromByte"), std::string("readFile"),
-                             std::string("writeFile")}) {
+                             std::string("writeFile"), std::string("malloc")}) {
         auto& info = nativeFnTypes.at(name);
         VarSymbol* sym = declareVar(name, false);
 
@@ -68,7 +68,6 @@ VarSymbol* SymbolScopeBuilder::declareVar(const std::string& name, bool isMutabl
 TypeSymbol* SymbolScopeBuilder::declareType(const std::string& name, bool isMutable) {
     // NOTE: New types can only be declared via aggregate (class or record) or typealias.
     // TODO: Implement const types (need usage for isMutable.)
-    printLog(LogLevel::DEBUG, "Declaring type symbol " + name + "\n");
     // 1. Check current scope only (NOT parents)
     if (currScope->types.find(name) != currScope->types.end()) {
         // Redeclaration in same scope.
