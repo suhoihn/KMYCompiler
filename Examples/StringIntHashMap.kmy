@@ -1,0 +1,152 @@
+// An unordered string -> int map using open addressing and linear probing.
+// State 0 = never used, 1 = occupied, 2 = deleted (a tombstone).
+// Deleted slots must not stop a lookup: another colliding key may follow them.
+class StringIntHashMap {
+    let keys: string[] = new string[8];
+    let values: int[] = new int[8];
+    let states: int[] = new int[8];
+    let capacity: int = 8;
+    let size: int = 0;
+    let tombstones: int = 0;
+
+    init() {}
+
+    fun hash(key: string): int {
+        let result: int = 0;
+        let i: int = 0;
+        while (i < strlen(key)) {
+            // Reduce at each byte so ordinary keys do not overflow int.
+            result = (result * 31 + strByteAt(key, i)) % this.capacity;
+            i += 1;
+        }
+        return result;
+    }
+
+    fun findIndex(key: string): int {
+        let index: int = this.hash(key);
+        let probes: int = 0;
+        while (probes < this.capacity) {
+            if (this.states[index] == 0) { return -1; }
+            if (this.states[index] == 1 && streq(this.keys[index], key)) {
+                return index;
+            }
+            index = (index + 1) % this.capacity;
+            probes += 1;
+        }
+        return -1;
+    }
+
+    // Only called when the key is absent and at least one slot is free.
+    fun insertAbsent(key: string, value: int) {
+        let index: int = this.hash(key);
+        let firstDeleted: int = -1;
+        while (this.states[index] != 0) {
+            if (firstDeleted == -1 && this.states[index] == 2) {
+                firstDeleted = index;
+            }
+            index = (index + 1) % this.capacity;
+        }
+        if (firstDeleted != -1) {
+            index = firstDeleted;
+            this.tombstones -= 1;
+        }
+        this.keys[index] = key;
+        this.values[index] = value;
+        this.states[index] = 1;
+        this.size += 1;
+    }
+
+    fun rehash(newCapacity: int) {
+        let oldKeys: string[] = this.keys;
+        let oldValues: int[] = this.values;
+        let oldStates: int[] = this.states;
+        let oldCapacity: int = this.capacity;
+        this.keys = new string[newCapacity];
+        this.values = new int[newCapacity];
+        this.states = new int[newCapacity];
+        this.capacity = newCapacity;
+        this.size = 0;
+        this.tombstones = 0;
+
+        let i: int = 0;
+        while (i < oldCapacity) {
+            if (oldStates[i] == 1) {
+                this.insertAbsent(oldKeys[i], oldValues[i]);
+            }
+            i += 1;
+        }
+        // KMY has no free yet, so old backing arrays remain allocated.
+    }
+
+    // Returns true for a new key, false when an existing value was replaced.
+    fun put(key: string, value: int): bool {
+        let existing: int = this.findIndex(key);
+        if (existing != -1) {
+            this.values[existing] = value;
+            return false;
+        }
+        // Keep at least 30% of slots empty for short probe chains.
+        if ((this.size + this.tombstones + 1) * 10 >= this.capacity * 7) {
+            if ((this.size + 1) * 10 >= this.capacity * 7) {
+                this.rehash(this.capacity * 2);
+            } else {
+                this.rehash(this.capacity);
+            }
+        }
+        this.insertAbsent(key, value);
+        return true;
+    }
+
+    fun contains(key: string): bool {
+        return this.findIndex(key) != -1;
+    }
+
+    fun getOrDefault(key: string, fallback: int): int {
+        let index: int = this.findIndex(key);
+        if (index == -1) { return fallback; }
+        return this.values[index];
+    }
+
+    fun remove(key: string): bool {
+        let index: int = this.findIndex(key);
+        if (index == -1) { return false; }
+        this.states[index] = 2;
+        this.keys[index] = "";
+        this.values[index] = 0;
+        this.size -= 1;
+        this.tombstones += 1;
+        return true;
+    }
+
+    fun length(): int { return this.size; }
+};
+
+let map: StringIntHashMap = new StringIntHashMap();
+// These keys all hash to bucket 1 at capacity 8.
+print(map.put("a", 10));
+print(map.put("i", 20));
+print(map.put("q", -30));
+print(map.put("", 40));
+print(map.getOrDefault("q", -1));
+print(map.put("i", 25));
+print(map.length());
+print(map.remove("i"));
+print(map.getOrDefault("q", -1));
+print(map.contains("i"));
+print(map.put("y", 50));
+print(map.getOrDefault("y", -1));
+print(map.getOrDefault("missing", -99));
+
+// Force several growths, then verify both new and old entries survive.
+let i: int = 0;
+while (i < 40) {
+    let key: string = strconcat("key", strFromByte(65 + i));
+    map.put(key, i * 3);
+    i += 1;
+}
+print(map.length());
+print(map.getOrDefault("keyA", -1));
+print(map.getOrDefault("keyh", -1));
+print(map.getOrDefault("a", -1));
+print(map.getOrDefault("", -1));
+print(map.remove("nope"));

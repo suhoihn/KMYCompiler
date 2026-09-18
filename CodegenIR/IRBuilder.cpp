@@ -1,4 +1,5 @@
 #include "IRBuilder.hpp"
+#include "../Core/newParser.hpp"
 
 #include <assert.h>
 #include "../Core/type.hpp"
@@ -13,8 +14,8 @@ static inline bool hasTerminator(HIRBlock* bb) {
     return bb->term.has_value();
 }
 
-IRBuilder::IRBuilder(FunctionExprPtr program)
-    : program(program) 
+IRBuilder::IRBuilder(Module& module, StringPool& stringPool)
+    : program(module.program), stringPool(stringPool)
 {}
 
 void IRBuilder::emit(const IRInstr& instr) {
@@ -32,6 +33,7 @@ static IRLocalInfo* getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
     if (it != localMap.end()) {
         return &it->second;
     }
+    std::cout << "Local value lookup missed: " << sym->name << '\n';
     return nullptr;
 }
 
@@ -655,7 +657,9 @@ void IRBuilder::visit(Assignment& e) {
 
         // UNLESS it is an upvalue!
         // Emit SET_ENV for mutable upvalues (like x = 3 where x is not local.)
+        std::cout << "[assignment] check: " << var->symbol << std::endl;
         if (currCtx->locals.count(var->symbol)) {
+            std::cout << "[assignment] check: " << var->symbol << " exists in locals. this is an local cell mutation.\n";
             IRLocalInfo* varInfo = getValueFromLocal(currCtx, var->symbol);
             if (varInfo && varInfo->isCell) {
                 emit({
@@ -695,6 +699,8 @@ void IRBuilder::visit(Assignment& e) {
         assert(currCtx->incomingEnv.has_value());
         
         // Should have a parent that provides addr to upvalue.
+        std::cout << var->name << std::endl;
+        std::cout << "= " << getLastValue() << std::endl;
         assert(currCtx->parent);
 
         IRValue cell = currCtx->upvalues[var->symbol];
@@ -965,6 +971,32 @@ void IRBuilder::visit(Get& e) {
 }
 
 void IRBuilder::visit(ScopeAccessExpr& e) {
+    // A qualified imported function is compiled like a normal function value:
+    // make a closure whose code pointer is the globally unique function label.
+    // Module globals are not implemented, so imported functions must not rely
+    // on captured module state yet; their environment is therefore null.
+    if (e.symbol) {
+        if (e.symbol->nativeFunctionId == INVALID_SLOT) {
+            throw KMYCompileError(
+                "Imported value \"" + e.symbol->name +
+                "\" is not a native function declaration"
+            );
+        }
+
+        IRValue nullEnv = makeValue(new PointerType(&Types::VOID_TYPE));
+        emit({ .op = IROp::CONST_NULL, .dst = nullEnv });
+
+        IRValue closure = makeValue(e.type);
+        emit({
+            .op = IROp::FUNC_LABEL,
+            .dst = closure,
+            .args = { nullEnv },
+            .imm = e.symbol->nativeFunctionId
+        });
+        setLastValue(closure);
+        return;
+    }
+
     // Enum variants are compile-time ordinal constants (RED = 0, GREEN = 1,
     // ...).  Keep the enum type on the IR value while using the native integer
     // representation for MIR/x86 storage and comparisons.
@@ -977,7 +1009,100 @@ void IRBuilder::visit(ScopeAccessExpr& e) {
     setLastValue(value);
 }
 
+static void printFunctionContext(FunctionContext* fnCtx) {
+    if (!fnCtx) {
+        std::cout << "<null function context>\n";
+        return;
+    }
+
+    std::cout << "========================================\n";
+    std::cout << "FunctionContext @" << fnCtx << "\n";
+
+    //
+    // Locals
+    //
+    std::cout << "\nLocals (" << fnCtx->locals.size() << ")\n";
+    std::cout << "----------------------------------------\n";
+
+    for (const auto& local : fnCtx->locals) {
+        std::cout
+            << "  "
+            << local.sym->name
+            << "  slot=" << local.slot
+            << "  depth=" << local.scopeDepth
+            << "  captured=" << std::boolalpha << local.captured
+            << "\n";
+    }
+
+    //
+    // Upvalues
+    //
+    std::cout << "\nUpvalues (" << fnCtx->upvalues.size() << ")\n";
+    std::cout << "----------------------------------------\n";
+
+    for (int i = 0; i < fnCtx->upvalues.size(); ++i) {
+        const auto& up = fnCtx->upvalues[i];
+
+        std::cout
+            << "  ["
+            << i
+            << "] "
+            << up.symbol->name
+            << "  parentSlot=" << up.index
+            << "  isLocal=" << std::boolalpha << up.isLocal
+            << "  capturedByChildren="
+            << up.capturedByChildren
+            << "\n";
+    }
+
+    //
+    // Environment layout
+    //
+    std::cout << "\nEnvironment (" << fnCtx->envMap.size()
+              << " slots, size=" << fnCtx->envSize << ")\n";
+    std::cout << "----------------------------------------\n";
+
+    for (const auto& [sym, slot] : fnCtx->envMap) {
+        std::cout
+            << "  slot " << slot
+            << " -> " << sym->name
+            << "\n";
+    }
+
+    //
+    // Local map
+    //
+    std::cout << "\nLocalMap\n";
+    std::cout << "----------------------------------------\n";
+
+    for (const auto& [sym, slot] : fnCtx->localMap) {
+        std::cout
+            << "  "
+            << sym->name
+            << " -> " << slot
+            << "\n";
+    }
+
+    //
+    // Upvalue map
+    //
+    std::cout << "\nUpvalueMap\n";
+    std::cout << "----------------------------------------\n";
+
+    for (const auto& [sym, slot] : fnCtx->upvalueMap) {
+        std::cout
+            << "  "
+            << sym->name
+            << " -> " << slot
+            << "\n";
+    }
+
+    std::cout << "========================================\n";
+}
+
 void IRBuilder::visit(FunctionExpr& e) {
+    std::cout << "NEW FUNC " << e.functionId << "\n";
+    printFunctionContext(e.functionContext);
 
     // Context switch to a new function.
     auto oldCtx = currCtx;
@@ -1181,6 +1306,7 @@ void IRBuilder::visit(FunctionExpr& e) {
         emit(instr);
 
         if (up.capturedByChildren) {
+            std::cout << "Re-exporting upvalue captured by child closure\n";
             // Children captures MY upvalue
             // We need to put it in env so that the children can see my upvalues.
             
@@ -1231,6 +1357,8 @@ void IRBuilder::visit(FunctionExpr& e) {
             //??????
             //currCtx->locals[funcDeclSym] = IRLocalInfo{ .value = fnValue, .isCell = false };
             uncapturedLocal = true;
+        } else {
+            std::cout << "Duplicate write prevented which is not very desired.\n";
         }
 
         auto it = currCtx->fnCtx->envMap.find(funcDeclSym);
@@ -1239,6 +1367,7 @@ void IRBuilder::visit(FunctionExpr& e) {
         // Set it on env (func/closure is also a pointer, so copy occurs.)
         if (it != currCtx->fnCtx->envMap.end()) {
             assert(currCtx->env.has_value());
+            std::cout << "Hoisted function " << funcDeclSym->name << " is captured by children. Setting it on env.\n";
             
             IRValue cell = makeValue(
                 new CellType(e.type)
@@ -1261,6 +1390,15 @@ void IRBuilder::visit(FunctionExpr& e) {
         if (uncapturedLocal) {
             currCtx->currBlock->defs.push_back({funcDeclSym, fnValue});
         }
+    }
+
+    std::cout << "env\n";
+    for (auto& [sym, slot] : e.functionContext->envMap) {
+        std::cout << sym->name << " -> " << slot << "\n";
+    }
+    std::cout << "locals so far\n";
+    for (auto& [sym, v] : currCtx->locals) {
+        std::cout << sym->name << " -> " << v.value << " (isCell: " << v.isCell << ")\n";
     }
 
     
@@ -1288,6 +1426,7 @@ void IRBuilder::visit(FunctionExpr& e) {
     }
 
     currFunc->lastValueId = currCtx->nextId;
+    std::cout << "This function " << currFunc->functionId << " lastVId: " << currFunc->lastValueId << "\n";
     functions.push_back(currFunc);
 
     // Prevent currCtx from being nullptr (top level entry func)
@@ -1727,8 +1866,11 @@ void IRBuilder::visit(Let& s) {
     
     bool uncapturedLocal = true;
     if (currCtx->locals.find(s.symbol) == currCtx->locals.end()) {
+        std::cout << "Let has no existing local binding: " << s.symbol->name << '\n';
         uncapturedLocal = true;
        // currCtx->locals[s.symbol] = IRLocalInfo{ .value = value, .isCell = false };
+    } else {
+        std::cout << "Duplicate write prevented which is not very desired.\n";
     }
 
     // Set env right away.
@@ -1737,9 +1879,11 @@ void IRBuilder::visit(Let& s) {
     auto it = currCtx->fnCtx->envMap.find(s.symbol);
 
     IRValue cell;
+    std::cout << "[let] currctx->env: " << currCtx->env.has_value() << "\n";
     
     if (currCtx->env && it != currCtx->fnCtx->envMap.end()) {
         uncapturedLocal = false;
+        std::cout << "[let] " << s.symbol->name << " exists in env\n";
 
         Type* type = nullptr;
         if (std::holds_alternative<IRValue>(value)) {

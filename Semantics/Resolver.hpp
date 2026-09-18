@@ -7,6 +7,8 @@
 #include "../Utils/DefaultVisitor.hpp"
 #include "TypeInterner.hpp"
 
+struct Module;
+
 // Pass 2: Name Resolution
 // Resolves identifier usages to their declared symbols using the scope tree built in Pass 1.
 // Binds variables/functions/classes to Symbol objects and reports undefined references.
@@ -15,10 +17,11 @@
 
 class Resolver : public DefaultVisitor {
 public:
-    Resolver(FunctionExprPtr program, Scope* globalScope);
+    Resolver(Module& module);
     void resolve();
 
 private:
+    Module& module;
     // TypeInterner typeInterner;
     const FunctionExprPtr program;
     Scope* globalScope;

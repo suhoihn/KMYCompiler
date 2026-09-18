@@ -1,4 +1,5 @@
 #include "MethodLower.hpp"
+#include "../Core/newParser.hpp"
 
 #include <vector>
 #include "../Core/errorhandler.hpp"
@@ -6,8 +7,8 @@
 #include <unordered_set>
 
 MethodLower::MethodLower(
-    FunctionExprPtr program
-) : program(program) {}
+    Module& module
+) : program(module.program) {}
 
 void MethodLower::lower() {
     program->accept(*this);

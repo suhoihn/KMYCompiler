@@ -16,6 +16,8 @@ VM::VM() {
     nativeFunctions.resize(maxSlot + 1);
 
     for (auto& [name, info] : nativeFnTypes) {
+        std::cout << "Native binding " << name << " address=" << (void*)(info.fn)
+                  << " slot=" << info.globalSlot << '\n';
         nativeFunctions[info.globalSlot] =
             Value(std::make_shared<FunctionObj>(info.fn));
     }
@@ -119,7 +121,12 @@ void VM::load(std::vector<FunctionProto> functionProtos) {
         nullptr, // no function object for global scope
     });
     frames.back().base = stack.size();
+    std::cout << "framesize: " << this->functionProtos.back().frameSize << std::endl;
     stack.resize(stack.size() + this->functionProtos.back().frameSize, Value(GarbageValue{})); // or frameSize
+}
+
+void VM::setProgramOutput(std::streambuf* output) {
+    programOutput = output;
 }
 
 Instruction VM::fetchInstr() {
@@ -161,6 +168,7 @@ void VM::closeUpvalues(int base) {
 
         if (uv->stackSlot >= base) {
             // close it
+            std::cout << "Closing upvalue at stack slot " << uv->stackSlot << std::endl;
             uv->closed = stack[uv->stackSlot];
             uv->isClosed = true;
 
@@ -367,6 +375,8 @@ void VM::executeInstr(const Instruction& instr) {
                 auto& up = fnProto.upvalues[i];
                 int slot = up.index;
                 if (up.isLocal) {
+                    std::cout << "frame.base: " << frame.base << "\n";
+                    std::cout << "slot " << slot << "\n";
 
                     // From immediate parent,
                     // take x directly from parent stack frame
@@ -391,6 +401,13 @@ void VM::executeInstr(const Instruction& instr) {
                 &fnProto,
                 std::move(upvalues)
             );
+
+            // allocate upvalue slots
+            std::cout << "Upvalue count: " << fnProto.upValueCnt << std::endl;
+            for (int i = 0; i < fnProto.upValueCnt; i++) {
+                std::cout << "Upvalue " << i << ": " << (closure->upvalues[i]->isClosed ? "closed" : "open") << std::endl;
+                std::cout << "  Stack Slot: " << closure->upvalues[i]->stackSlot << std::endl;
+            }
 
             push(Value(closure));
             break;
@@ -425,23 +442,44 @@ void VM::executeInstr(const Instruction& instr) {
                 newFrame.base = stack.size() - instr.operand; // arguments are already on stack
                 newFrame.function = fn;
                 
+                std::cout << "New frame size: " << fn->proto->frameSize << std::endl;
+                std::cout << "New frame base: " << stack.size() - instr.operand << std::endl;
                 stack.resize(newFrame.base + fn->proto->frameSize, Value(GarbageValue{})); // or frameSize
+
+                std::cout << "Entering function chunk " << newFrame.chunk << '\n';
+
+                //chunkToString(fn->proto->chunk);
                 frames.push_back(newFrame);
             } else if (fn->kind == FunctionKind::Native) {
                 // Native call. No virtual(?) frame created.
                 Value* args = new Value[instr.operand];
                 
+                std::cout << "Native call argument count: " << instr.operand << '\n';
+                std::cout << "Stack size before argument pop: " << stack.size() << '\n';
                 for (int i = 0; i < instr.operand; i++) {
+                    std::cout << "stksize: " << stack.size() << " / i: " << i << "\n";
                     args[i] = pop();
                 }
+                std::cout << "Stack size after argument pop: " << stack.size() << '\n';
+
+                std::cout << "Native arguments:\n";
+                for (int i = 0; i < instr.operand; i++) {
+                    std::cout << args[i].toString() << "\n";
+                }
+                std::cout << "Calling native function at " << (void*)(fn->nativeFn) << '\n';
 
                 // Clean func & args
+                //stack.resize(stack.size() - instr.operand - 1);
+                //std::cout << "resize ok\n";
                 pop();
                 
                 push(fn->nativeFn(instr.operand, args));
+                std::cout << "Native result pushed\n";
 
                 delete[] args;
+                std::cout << "Native argument buffer released\n";
             }
+            std::cout << "CALL complete\n";
             break;
         }
 
@@ -583,7 +621,10 @@ void VM::executeInstr(const Instruction& instr) {
 
         case Opcode::PRINT: {
             Value v = pop();
-            std::cout << "\033[31m" << v.toString() << "\033[0m" << std::endl;
+            // Compiler diagnostics may be captured for -d, but user-visible
+            // print output must always reach the original stdout stream.
+            std::ostream out(programOutput ? programOutput : std::cout.rdbuf());
+            out << "\033[31m" << v.toString() << "\033[0m" << std::endl;
             break;
         }
 
@@ -601,7 +642,20 @@ void VM::executeInstr(const Instruction& instr) {
 void VM::run() {
     running = true;
     while (running) {
+        //std::cout << "STACK SIZE: " << stack.size() << "\n";
+        for(auto& v : stack) {
+            std::cout << v.toString() << " | ";
+        }
+        std::cout << std::endl;
+
+        // std::cout << "IP: " << frames.back().ip <<  std::endl;
         Instruction instr = fetchInstr();
+        std::cout << "Executing: " << opcodeToString(instr.opcode);
+
+        if (instr.operand != INVALID_SLOT)
+            std::cout << " " << instr.operand;
+
+        std::cout << std::endl;
         executeInstr(instr);
     }
 }

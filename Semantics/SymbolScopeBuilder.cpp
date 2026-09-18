@@ -1,4 +1,5 @@
 #include "SymbolScopeBuilder.hpp"
+#include "../Core/newParser.hpp"
 
 #include <vector>
 #include <unordered_set>
@@ -9,11 +10,12 @@
 #include <assert.h>
 
 SymbolScopeBuilder::SymbolScopeBuilder(
-    FunctionExprPtr program
-) : program(program)
+    Module& module
+) : module(module), program(module.program)
 {
     // Global scope made
     globalScope = new Scope();
+    module.globalScope = globalScope;
     currScope = globalScope;
 
     // Register string intrinsics as ordinary built-in function identifiers.
@@ -49,6 +51,13 @@ void SymbolScopeBuilder::exitScope() {
 }
 
 VarSymbol* SymbolScopeBuilder::declareVar(const std::string& name, bool isMutable) {
+    // Import aliases are file-level compile-time qualifiers (`math::Vector`).
+    // Reserve them only in the module scope; a function-local `math` is a
+    // normal lexical variable and cannot make `math::...` ambiguous there.
+    if (currScope == globalScope && module.imports.contains(name)) {
+        throw KMYCompileError("Name \"" + name + "\" is already used as an import alias.");
+    }
+
     // 1. Check current scope only (NOT parents)
     if (currScope->values.find(name) != currScope->values.end()) {
         // Redeclaration in same scope.
@@ -68,6 +77,14 @@ VarSymbol* SymbolScopeBuilder::declareVar(const std::string& name, bool isMutabl
 TypeSymbol* SymbolScopeBuilder::declareType(const std::string& name, bool isMutable) {
     // NOTE: New types can only be declared via aggregate (class or record) or typealias.
     // TODO: Implement const types (need usage for isMutable.)
+    printLog(LogLevel::DEBUG, "Declaring type symbol " + name + "\n");
+    // Types share the module-level qualifier namespace with values: allowing
+    // `typealias math = int` beside `import ... as math` would make `math::X`
+    // ambiguous before the resolver knows whether `math` is a module or type.
+    if (currScope == globalScope && module.imports.contains(name)) {
+        throw KMYCompileError("Name \"" + name + "\" is already used as an import alias.");
+    }
+
     // 1. Check current scope only (NOT parents)
     if (currScope->types.find(name) != currScope->types.end()) {
         // Redeclaration in same scope.

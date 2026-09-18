@@ -25,10 +25,29 @@
 #include "../SSA/SSABuilder.hpp" // Pass 7
 #include "../MachineIR/MIRBuilder.hpp" // Pass X
 #include "../X86Codegen/x86Builder.hpp" // The ultimate pass... right?
+#include <queue>
+#include <filesystem>
 
 const std::string RED = "\033[31m";
 const std::string RESET = "\033[0m";
 const std::string BOLD = "\033[1m";
+
+// Module-map keys use normalized paths. Imports are relative to their importing
+// file, and spelling variants such as `lib/../lib/math.kmy` load only once.
+static std::string normalizeModulePath(const std::filesystem::path& path) {
+    return path.lexically_normal().generic_string();
+}
+
+static std::string resolveImportPath(
+    const std::string& importerPath,
+    const std::string& requestedPath
+) {
+    std::filesystem::path path(requestedPath);
+    if (path.is_relative()) {
+        path = std::filesystem::path(importerPath).parent_path() / path;
+    }
+    return normalizeModulePath(path);
+}
 
 static void printDiagnostic(
     const KMYParseError& e,
@@ -109,30 +128,70 @@ static void printUsage(std::ostream& out) {
         << "  -d, --debug            Print intermediate compiler information.\n"
         << "  -t, --strict-types     Enable the legacy strict-type switch.\n\n"
         << "Examples:\n"
-        << "  kmyc Examples/Hello.kmy\n"
-        << "  kmyc Examples/Hello.kmy -asm -o hello\n"
-        << "  kmyc Examples/Hello.kmy --frontend-json\n";
+        << "  kmyc tests/x86/vm_smoke.kmy\n"
+        << "  kmyc Examples/SimpleASMTest.kmy -asm -o simpleasm\n"
+        << "  kmyc Examples/SimpleASMTest.kmy --frontend-json\n";
 }
 
-// Older passes still print their internal tracing directly to stdout. Keep it
-// out of both normal builds and the curated -d view without hiding stderr.
-class QuietPassOutput {
-    class Sink : public std::streambuf {
-        int overflow(int c) override { return traits_type::not_eof(c); }
-    } sink;
+// Keep the older, detailed pass diagnostics, but present each completed line
+// under its pass name. Without -d they stay out of normal program output.
+class PassOutputFormatter : public std::streambuf {
     std::streambuf* previous;
+    const char* passName;
+    bool enabled;
+    std::string pending;
+
+    void flushLine() {
+        if (!enabled || pending.empty()) { pending.clear(); return; }
+
+        // printLog emits ANSI colors; pass details use a single plain style.
+        std::string plain;
+        for (size_t i = 0; i < pending.size(); ++i) {
+            if (pending[i] == '\033' && i + 1 < pending.size() && pending[i + 1] == '[') {
+                i += 2;
+                while (i < pending.size() && pending[i] != 'm') ++i;
+                continue;
+            }
+            if (pending[i] != '\r') plain += pending[i];
+        }
+        const auto first = plain.find_first_not_of(" \t");
+        if (first != std::string::npos) {
+            const auto last = plain.find_last_not_of(" \t");
+            std::cerr << "  [" << passName << "] detail: "
+                      << plain.substr(first, last - first + 1) << '\n';
+        }
+        pending.clear();
+    }
+
+    int overflow(int c) override {
+        if (c == traits_type::eof()) return traits_type::not_eof(c);
+        if (c == '\n') flushLine();
+        else if (enabled) pending += static_cast<char>(c);
+        return c;
+    }
+
+    std::streamsize xsputn(const char* data, std::streamsize size) override {
+        for (std::streamsize i = 0; i < size; ++i) overflow(data[i]);
+        return size;
+    }
+
+    // cerr is tied to cout; a node trace can flush cout halfway through an
+    // older multi-part message. Only newline/destruction completes a line.
+    int sync() override { return 0; }
 
 public:
-    QuietPassOutput() : previous(std::cout.rdbuf(&sink)) {}
-    ~QuietPassOutput() { std::cout.rdbuf(previous); }
-    QuietPassOutput(const QuietPassOutput&) = delete;
-    QuietPassOutput& operator=(const QuietPassOutput&) = delete;
+    PassOutputFormatter(const char* name, bool debug)
+        : previous(std::cout.rdbuf(this)), passName(name), enabled(debug) {}
+    ~PassOutputFormatter() { flushLine(); std::cout.rdbuf(previous); }
+    PassOutputFormatter(const PassOutputFormatter&) = delete;
+    PassOutputFormatter& operator=(const PassOutputFormatter&) = delete;
 };
 
 template <typename F>
-auto runQuietly(const char* passName, F&& pass) {
+auto runPass(const char* passName, bool debug, F&& pass) {
+    if (debug) { std::cout.flush(); std::cerr << "\n" << passName << " pass\n"; }
     setAstTracePass(passName);
-    QuietPassOutput quiet;
+    PassOutputFormatter formatted(passName, debug);
     return pass();
 }
 
@@ -230,72 +289,199 @@ int main(int argc, char *argv[]) {
         filename = str;
     }
 
+    setAstTraceEnabled(debugOutput);
+
     if (!filename) {
         std::cerr << "No source file specified.\n\n";
         printUsage(std::cerr);
         return 1;
     }
 
-    setAstTraceEnabled(debugOutput);
+    const std::string entryModulePath = normalizeModulePath(filename);
 
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Could not open file: " << filename << "\n";
-        return 1;
-    }
 
-    std::string source((std::istreambuf_iterator<char>(file)),
-    std::istreambuf_iterator<char>());
-    
-    std::vector<Token> tokens;
+
     std::vector<ParserTraceEvent> parserTrace;
+    std::vector<Token> tokens;
+    std::string source;
+    FunctionExprPtr program;
 
+    enum class ModuleState {
+        LOADING,
+        LOADED,
+    };
+    std::unordered_map<std::string, ModuleState> moduleStates;
+    // One owned AST per file. Pointers/references to unordered_map elements stay
+    // valid across rehashes, so Module::imports can safely point at these values.
+    std::unordered_map<std::string, Module> modules;
     try {
-        // 1. Tokenize
-        Lexer lexer(source);
-        tokens = lexer.tokenise();
+        std::queue<std::string> importQueue;
+        importQueue.push(entryModulePath);
 
-        if (debugOutput && !frontendJson) {
-            printDebugHeading("Tokens");
-            printTokens(tokens);
+        while (!importQueue.empty()) {
+            std::string modulePath = importQueue.front();
+            importQueue.pop();
+
+            if (moduleStates.count(modulePath) > 0) {
+                switch (moduleStates[modulePath]) {
+                    // The queue only collects each physical path once.
+                    case ModuleState::LOADED: continue;
+                    case ModuleState::LOADING: continue;
+                }
+            }
+
+            moduleStates[modulePath] = ModuleState::LOADING;
+
+            // Read first.
+            std::ifstream file(modulePath);
+            if (!file.is_open()) {
+                std::cerr << "Could not open file: " << modulePath << "\n";
+                return 1;
+            }
+
+            source = std::string((std::istreambuf_iterator<char>(file)),
+            std::istreambuf_iterator<char>());
+
+
+            // 1. Tokenize
+            Lexer lexer(source);
+            tokens = lexer.tokenise();
+
+            if (debugOutput && !frontendJson) {
+                printDebugHeading("Tokens");
+                printTokens(tokens);
+            }
+
+            // 2. Parse
+            Parser parser(tokens, frontendJson ? &parserTrace : nullptr);
+
+            Module module = parser.parse();
+            if (modulePath == entryModulePath) {
+                program = module.program;
+            } else {
+                // Imported files contribute callable code, but only the command
+                // line module becomes the x86 `main` entry point.
+                module.program->isEntry = false;
+            }
+
+            // Store normalized paths in the import graph after parsing. This
+            // does not change source-level aliases or runtime semantics.
+            for (ImportDecl& importDecl : module.importDecls) {
+                importDecl.path = resolveImportPath(modulePath, importDecl.path);
+            }
+
+            if (frontendJson) {
+                writeFrontendJson(std::cout, source, tokens, parserTrace, program);
+                std::cout << '\n';
+                return 0;
+            }
+            if (debugOutput) {
+                printDebugHeading("Parsed AST");
+                printPrettyAST(std::cout, program);
+            }
+
+            // Store the parsed module before queuing its dependencies. The second
+            // pass below turns these raw import declarations into Module pointers.
+            auto [stored, inserted] = modules.emplace(modulePath, std::move(module));
+            if (!inserted) {
+                throw KMYCompileError("Module was collected more than once: " + modulePath);
+            }
+
+            for (const ImportDecl& importDecl : stored->second.importDecls) {
+                importQueue.push(importDecl.path);
+            }
+            moduleStates[modulePath] = ModuleState::LOADED;
         }
 
-        // 2. Parse
-        Parser parser(tokens, frontendJson ? &parserTrace : nullptr);
-        FunctionExprPtr program = parser.parse();
-        if (frontendJson) {
-            writeFrontendJson(std::cout, source, tokens, parserTrace, program);
-            std::cout << '\n';
-            return 0;
+        // Reuse the state map for DFS: LOADING means "on the active path".
+        // A back-edge to LOADING is an import cycle.
+        moduleStates.clear();
+        std::vector<std::string> declarationOrder;
+        auto checkCycles = [&](auto&& self, const std::string& modulePath) -> void {
+            auto state = moduleStates.find(modulePath);
+            if (state != moduleStates.end()) {
+                if (state->second == ModuleState::LOADING) {
+                    throw KMYCompileError("Circular import involving: " + modulePath);
+                }
+                return; // Already checked this completed dependency.
+            }
+
+            moduleStates.emplace(modulePath, ModuleState::LOADING);
+            const Module& module = modules.at(modulePath);
+            for (const ImportDecl& importDecl : module.importDecls) {
+                auto target = modules.find(importDecl.path);
+                if (target == modules.end()) {
+                    throw KMYCompileError(
+                        "Imported module was not collected: " + importDecl.path +
+                        " (from " + modulePath + ")"
+                    );
+                }
+                self(self, target->first);
+            }
+            moduleStates[modulePath] = ModuleState::LOADED;
+            // Postorder puts dependencies before importers for declaration types.
+            declarationOrder.push_back(modulePath);
+        };
+
+        for (const auto& [modulePath, module] : modules) {
+            checkCycles(checkCycles, modulePath);
         }
-        if (debugOutput) {
-            printDebugHeading("Parsed AST");
-            printPrettyAST(std::cout, program);
+
+        // Link raw `path as alias` declarations after the graph is valid.
+        for (auto& [modulePath, module] : modules) {
+            for (const ImportDecl& importDecl : module.importDecls) {
+                auto target = modules.find(importDecl.path);
+                if (target == modules.end()) {
+                    throw KMYCompileError(
+                        "Imported module was not collected: " + importDecl.path +
+                        " (from " + modulePath + ")"
+                    );
+                }
+                if (module.imports.count(importDecl.alias) > 0) {
+                    throw KMYCompileError(
+                        "Duplicate import alias \"" + importDecl.alias +
+                        "\" in " + modulePath
+                    );
+                }
+                module.imports.emplace(importDecl.alias, &target->second);
+            }
         }
-        
-        // 3-1. Symbol building
-        auto globalScope = runQuietly("SymbolScopeBuilder", [&] {
-            SymbolScopeBuilder builder(program);
-            return builder.analyse();
+
+        if (!program) {
+            throw KMYCompileError("Entry module was not collected.");
+        }
+
+        // 3-1. Every module must own a scope before imported names can resolve.
+        runPass("SymbolScopeBuilder", debugOutput, [&] {
+            for (auto& [modulePath, module] : modules) {
+                SymbolScopeBuilder builder(module);
+                builder.analyse();
+            }
         });
 
-        // 3-2. Type declaration and function signature builder
-        runQuietly("DeclTypeResolver", [&] {
-            DeclTypeResolver temp(program, globalScope);
-            temp.resolve(); // TODO: Better name
+        // 3-2. Resolve declarations/signatures after all module scopes exist.
+        runPass("DeclTypeResolver", debugOutput, [&] {
+            for (const std::string& modulePath : declarationOrder) {
+                DeclTypeResolver temp(modules.at(modulePath));
+                temp.resolve(); // TODO: Better name
+            }
         });
 
-        // 3-3. Variable resolvance
-        runQuietly("Resolver", [&] {
-            Resolver resolver(program, globalScope);
-            resolver.resolve();
+        // 3-3. Resolve each module body against its own module scope.
+        runPass("Resolver", debugOutput, [&] {
+            for (auto& [modulePath, module] : modules) {
+                Resolver resolver(module);
+                resolver.resolve();
+            }
         });
 
-        
+
         //3-3.5(?). Method lowering
-        runQuietly("MethodLower", [&] {
-            MethodLower lower(program);
-            lower.lower();
+        runPass("MethodLower", debugOutput, [&] {
+            for (auto& [modulePath, module] : modules) {
+                MethodLower lower(module);
+                lower.lower();
+            }
         });
 
         if (debugOutput) {
@@ -304,11 +490,14 @@ int main(int argc, char *argv[]) {
         }
 
         // 3-4. Closure analysis and slot allocation (VM).
-        runQuietly("ClosureAnalyser", [&] {
-            ClosureAnalyser analyser(program);
-            analyser.analyse();
+        runPass("ClosureAnalyser", debugOutput, [&] {
+            int nextFunctionId = 0;
+            for (const std::string& modulePath : declarationOrder) {
+                ClosureAnalyser analyser(modules.at(modulePath), nextFunctionId);
+                analyser.analyse();
+            }
         });
-        
+
         // 3-4. Type check
         if (strictTypes) {
             std::cerr << "Warning: --strict-types is deprecated; the resolver already checks types.\n";
@@ -317,18 +506,27 @@ int main(int argc, char *argv[]) {
             // std::cout << "[DEBUG]: Type checks done." << std::endl;
         }
 
-        
+
         if (isBuildingASM) {
             // 4-a. Code gen (CFG IR)
-            IRBuilder builder(program);
-            auto funcs = runQuietly("IRBuilder", [&] { return builder.compile(); });
+            StringPool stringPool;
+            std::vector<HIRFunction*> funcs;
+            runPass("IRBuilder", debugOutput, [&] {
+                // Compile dependencies before importers. Their functions share
+                // one HIR/MIR/x86 program, while only the root module is main.
+                for (const std::string& modulePath : declarationOrder) {
+                    IRBuilder builder(modules.at(modulePath), stringPool);
+                    auto moduleFuncs = builder.compile();
+                    funcs.insert(funcs.end(), moduleFuncs.begin(), moduleFuncs.end());
+                }
+            });
             if (debugOutput) {
                 printDebugHeading("HIR (before SSA)");
                 for (const auto& func : funcs) std::cout << *func << "\n";
             }
 
             // 4-b. Phi computation and SSA renaming
-            runQuietly("SSABuilder", [&] {
+            runPass("SSABuilder", debugOutput, [&] {
                 SSABuilder ssaBuilder(funcs);
                 ssaBuilder.build();
             });
@@ -339,7 +537,7 @@ int main(int argc, char *argv[]) {
             }
 
             MIRBuilder mirBuilder(funcs);
-            auto mirFuncs = runQuietly("MIRBuilder", [&] { return mirBuilder.lower(); });
+            auto mirFuncs = runPass("MIRBuilder", debugOutput, [&] { return mirBuilder.lower(); });
             if (debugOutput) {
                 printDebugHeading("MIR");
                 for (const auto& func : mirFuncs) std::cout << *func << "\n";
@@ -347,8 +545,8 @@ int main(int argc, char *argv[]) {
 
             std::ostringstream buffer;
 
-            X86Builder x86Builder(mirFuncs, buffer, builder.getStringPool());
-            runQuietly("X86Builder", [&] { x86Builder.build(); });
+            X86Builder x86Builder(mirFuncs, buffer, stringPool);
+            runPass("X86Builder", debugOutput, [&] { x86Builder.build(); });
 
             std::string assembly = buffer.str();
 
@@ -357,11 +555,11 @@ int main(int argc, char *argv[]) {
                 std::cout << assembly;
             }
 
-            
+
             if (!output) {
                 output = "out";
             }
-            
+
             std::string asmFile = std::string(output) + ".s";
             {
                 std::ofstream file(asmFile);
@@ -390,8 +588,8 @@ int main(int argc, char *argv[]) {
         }
 
         // 4. Code gen (Stack VM)
-        Compiler compiler(program);
-        auto fnProtos = runQuietly("VMCompiler", [&] { return compiler.compile(); });
+        Compiler compiler(modules.at(entryModulePath));
+        auto fnProtos = runPass("VMCompiler", debugOutput, [&] { return compiler.compile(); });
 
         if (debugOutput) {
             printDebugHeading("VM bytecode");
@@ -406,10 +604,16 @@ int main(int argc, char *argv[]) {
         if (run) {
             // 4. run
             setAstTracePass(nullptr);
-            VM vm;
-            vm.load(fnProtos);
-            vm.run();
-    
+            if (debugOutput) std::cerr << "\nVM runtime\n";
+            {
+                std::streambuf* programOutput = std::cout.rdbuf();
+                PassOutputFormatter formatted("VM", debugOutput);
+                VM vm;
+                vm.setProgramOutput(programOutput);
+                vm.load(fnProtos);
+                vm.run();
+            }
+
             //std::exit(0);
         }
         return 0;

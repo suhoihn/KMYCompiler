@@ -50,6 +50,31 @@ To run one program after building `kmyc.exe`:
 `-asm` writes an adjacent `.s` assembly file and invokes GCC unless
 `--no-run` is supplied. `-o` selects the executable path.
 
+## Source modules
+
+KMY supports compile-time source modules in the native x86 pipeline. The
+syntax is `import "path/to/file.kmy" as Alias;`,
+followed by references such as `Alias::Type`. Imports will be compile-time
+dependencies, not runtime values or C-style text inclusion. They will be
+allowed only at the start of a file, before other statements. See
+[`grammar.md`](grammar.md) for the rule.
+
+There is no `export` keyword yet: module-level type declarations and functions
+are visible to an importing module by default. Native x86 imports currently
+support imported types, enum variants, and functions such as
+`math::triple(7)`. Imported module variables are deliberately not supported
+yet: `let x = 3;` in `math.kmy` cannot currently be read as `math::x`.
+Supporting that requires a real module-global storage and initialization model,
+which is separate from compiling callable functions. The stack-VM backend does
+not yet compile imports. Consequently, an imported function must not capture a
+top-level module variable until that storage/initialization model exists.
+
+Import paths will resolve relative to the **file containing the import**,
+regardless of where `kmyc` is launched. For example, an import of
+`"lib/math.kmy"` in `src/main.kmy` will find `src/lib/math.kmy`. An import
+inside that library will resolve relative to `src/lib/` in turn. Use `/` in
+source paths for portability.
+
 ## Automated native tests
 
 Run the x86 suite from the repository root:

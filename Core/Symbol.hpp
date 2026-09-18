@@ -101,6 +101,11 @@ struct VarSymbol : Symbol {
     NativeFnPtr nativeFnPtr = nullptr;
     int globalSlot = INVALID_SLOT;
 
+    // Native x86 function label for a KMY function declaration. Closure
+    // analysis assigns this from one compilation-wide counter, so an imported
+    // reference can materialize a closure for the correct emitted function.
+    int nativeFunctionId = INVALID_SLOT;
+
     VarSymbol(const std::string& name, bool isMutable)
         : Symbol(name, SymbolKind::VARIABLE), isMutable(isMutable) {}
 };

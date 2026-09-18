@@ -1,4 +1,5 @@
 #include "Resolver.hpp"
+#include "../Core/newParser.hpp"
 
 #include <iostream>
 #include "../Core/errorhandler.hpp"
@@ -8,20 +9,23 @@
 #include "TypeHelpers.hpp"
 
 Resolver::Resolver(
-    FunctionExprPtr program,
-    Scope* _globalScope
+    Module& module
 ) : 
-    program(program),
-    globalScope(_globalScope),
-    currScope(globalScope)
+    program(module.program),
+    globalScope(module.globalScope),
+    currScope(globalScope),
+    module(module)
 {}
 
 void Resolver::resolve() {
+    printLog(LogLevel::INFO, "Resolver pass started\n");
     program->accept(*this);
+    printLog(LogLevel::INFO, "Resolver pass ended.\n");
 }
 
 VarSymbol* Resolver::lookupVarSymbol(const std::string& name) {
     Scope* scope = currScope;
+    printLog(LogLevel::DEBUG, "Resolving var symbol: " + name + "\n");
 
     while (scope) {
         auto it = scope->values.find(name);
@@ -30,11 +34,13 @@ VarSymbol* Resolver::lookupVarSymbol(const std::string& name) {
             if (it->second->available) {
                 return it->second;
             }
+            printLog(LogLevel::DEBUG, "Var symbol used before let: " + name + "\n");
             return nullptr;
         }
 
         scope = scope->parent;
     }
+    printLog(LogLevel::DEBUG, "Var symbol not found: " + name + "\n");
     return nullptr; // Undefined variable.
 }
 
@@ -59,6 +65,7 @@ void Resolver::visit(Literal& e) {
 }   
 
 void Resolver::visit(ArrayLiteral& e) {
+    printLog(LogLevel::DEBUG, "Visiting array literal node\n");
 
     Type* baseType = &Types::ANY_TYPE;
     bool elementExists = false;
@@ -122,6 +129,7 @@ void Resolver::visit(RecordLiteral& e) {
     expectedType = oldET;
 
     for (auto& [name, slot] : e.layout) {
+        std::cout << "name: " << name << "slot: " << slot << std::endl;
     }
 
     e.type = TypeInterner::getStructualType(std::move(fieldTypes));
@@ -377,6 +385,7 @@ void Resolver::visit(Assignment& e) {
 
     expectedType = oldET;
 
+    // std::cout << "In assign checking assignability of " << (int)(e.left->type->kind) << " and  " << (int)(e.right->type->kind) << "\n";
 
     if (!isAssignable(e.right->type, e.left->type)) {
         // TODO: Covariant and contravariant type checking.
@@ -485,6 +494,7 @@ void Resolver::visit(Call& e) {
 void Resolver::visit(Get& e) {
     
     e.obj->accept(*this);
+    std::cout << "Get object type kind: " << (int)(e.obj->type->kind) << "\n";
     
     if (e.obj->type->kind != TypeKind::STRUCTUAL && e.obj->type->kind != TypeKind::INSTANCE && e.obj->type != &Types::ANY_TYPE) {
         throw KMYCompileError(
@@ -544,6 +554,59 @@ void Resolver::visit(ScopeAccessExpr& e) {
     if (e.parts.size() < 2)
         throw KMYCompileError("Invalid scope access. This should not be even allowed here though...");
 
+    // An import alias is a compile-time prefix, not a fake type. Its next part
+    // can be either a top-level value (`math::sqrt`) or a type that continues
+    // to an enum variant (`math::Color::RED`).
+    auto imported = module.imports.find(e.parts[0]);
+    if (imported != module.imports.end()) {
+        Module* importedModule = imported->second;
+        Scope* importedScope = importedModule->globalScope;
+
+        if (e.parts.size() == 2) {
+            auto value = importedScope->values.find(e.parts[1]);
+            if (value != importedScope->values.end() && value->second->available) {
+                e.symbol = value->second;
+                e.type = e.symbol->type;
+                return;
+            }
+        }
+
+        TypeSymbol* typeSym = lookupTypeSymbol(importedScope, e.parts[1]);
+        if (!typeSym) {
+            throw KMYCompileError(
+                "No imported value or type \"" + e.parts[1] +
+                "\" in module alias \"" + e.parts[0] + "\""
+            );
+        }
+
+        // Start after `alias::Type`; the remaining path follows the existing
+        // aggregate/enum rules used for local qualified enum values.
+        for (size_t i = 2; i < e.parts.size() - 1; ++i) {
+            if (typeSym->type->kind != TypeKind::INSTANCE) {
+                throw KMYCompileError("Only aggregates support nested ::");
+            }
+            auto aggType = static_cast<InstanceType*>(typeSym->type);
+            auto nested = aggType->enumMap.find(e.parts[i]);
+            if (nested == aggType->enumMap.end()) {
+                throw KMYCompileError("Nested type not found: " + e.parts[i]);
+            }
+            typeSym = nested->second;
+        }
+
+        if (typeSym->type->kind == TypeKind::ENUM) {
+            auto enumType = static_cast<EnumType*>(typeSym->type);
+            auto variant = enumType->variantMap.find(e.parts.back());
+            if (variant == enumType->variantMap.end()) {
+                throw KMYCompileError("Enum value not found: " + e.parts.back());
+            }
+            e.type = enumType;
+            e.accessIdx = variant->second;
+            return;
+        }
+
+        throw KMYCompileError("Only imported values and enum variants support :: in expressions.");
+    }
+
     // Step 1: lookup first part as type
     auto typeSym = lookupTypeSymbol(currScope, e.parts[0]);
 
@@ -588,6 +651,7 @@ void Resolver::visit(ScopeAccessExpr& e) {
     if (typeSym->type->kind == TypeKind::ENUM) {
         auto enumType = static_cast<EnumType*>(typeSym->type);
 
+        std::cout << "Checking enum " << typeSym->name << "\n";
         auto it = enumType->variantMap.find(last);
         if (it == enumType->variantMap.end()) {
             throw KMYCompileError("Enum value not found: " + last);
@@ -629,6 +693,8 @@ void Resolver::visit(ThisExpr& e) {
     if (!currentThis) {
         throw KMYCompileError("\"this\" used outside of method... :(");
     }
+    std::cout << "this symbol=" << currentThis
+              << " type=" << static_cast<InstanceType*>(currentThis->type)->name << '\n';
 
     e.symbol = currentThis;
     e.type = currentThis->type;
@@ -637,7 +703,7 @@ void Resolver::visit(ThisExpr& e) {
 
 void Resolver::visit(NewExpr& e) {
     if (e.arrayType) {
-        e.type = typeSigToType(currScope, e.arrayType);
+        e.type = typeSigToType(module, currScope, e.arrayType);
         if (e.type->kind != TypeKind::ARRAY) {
             throw KMYCompileError("Array allocation requires an array type.");
         }
@@ -712,6 +778,10 @@ void Resolver::visit(Continue&) {
 }
 
 void handleAnnotatedAndInferred(VarSymbol* sym, Type* annotated, Type* inferred) {
+    std::cout << "annotated: " << typeToString(annotated)<< std::endl;
+    std::cout << "inferred: " << typeToString(inferred) << std::endl;
+    std::cout << "sym:" << sym << std::endl;
+    printLog(LogLevel::DEBUG, "Handling annotated and inferred types\n");
 
     // CASE 1: annotated type exists
     if (annotated) {
@@ -745,6 +815,7 @@ void handleAnnotatedAndInferred(VarSymbol* sym, Type* annotated, Type* inferred)
 }
 
 void Resolver::visit(Let& s) {
+    printLog(LogLevel::DEBUG, "Visiting let node for " + s.name + "\n");
 
     // Check pass 1 did correct job.
     assert(s.symbol);
@@ -752,7 +823,7 @@ void Resolver::visit(Let& s) {
     Type* annotated = nullptr;
 
     if (s.annotatedType) {
-        annotated = typeSigToType(currScope, s.annotatedType);
+        annotated = typeSigToType(module, currScope, s.annotatedType);
 
         if (annotated == &Types::VOID_TYPE) {
             // TODO: if not strict mode, u ignore this. 
@@ -815,18 +886,20 @@ void Resolver::visit(Aggregate& s) {
         Type* inferred = nullptr;
 
         if (field.initialiser) {
+            std::cout << "Resolving field initializer with this=" << currentThis << '\n';
             field.initialiser->accept(*this);
         }
 
         handleAnnotatedAndInferred(
             field.symbol,
-            field.annotatedType ? typeSigToType(currScope, field.annotatedType) : nullptr,
+            field.annotatedType ? typeSigToType(module, currScope, field.annotatedType) : nullptr,
             inferred
         );
     
         field.symbol->fieldOffset = offset++;
     }
 
+    std::cout << "Aggregate fields resolved\n";
 
     
     int methodIdx = 0;
@@ -838,10 +911,16 @@ void Resolver::visit(Aggregate& s) {
 
         member.methodExpr->accept(*this);
         
+        std::cout << "Method body resolved: " << member.name << '\n';
         member.symbol->type = member.methodExpr->type; 
+        std::cout << "Method signature assigned: " << member.name << '\n';
         member.symbol->methodIdx = methodIdx++;
+        std::cout << "Method index assigned: " << member.name
+                  << " -> " << member.symbol->methodIdx << '\n';
+        std::cout << "Method registration complete: " << member.name << '\n';
     }
 
+    std::cout << "Aggregate methods resolved\n";
 
     for (auto& member : s.constructorMembers) {
         currentThis = member.initFuncExpr->params[0].symbol;
@@ -850,14 +929,17 @@ void Resolver::visit(Aggregate& s) {
         member.initFuncExpr->accept(*this);
     }
 
+    std::cout << "Aggregate constructors resolved\n";
 
     
 
+    std::cout << "Aggregate: " << currentAggregate->name << '\n';
     // Field initialiser
     currentThis = s.fieldInitFunc->params[0].symbol;
     currentThis->type = currentAggregate;
     s.fieldInitFunc->accept(*this);
 
+    std::cout << "Aggregate field initializer resolved\n";
 
     currentThis = oldThis;
     currentAggregate = oldAgg;
@@ -865,11 +947,13 @@ void Resolver::visit(Aggregate& s) {
 }
 
 void Resolver::visit(TypeAlias& s) {
+    printLog(LogLevel::DEBUG, "Visiting typealias node for " + s.name + "\n");
     // In pass 2.
     // s.typeSymbol->type = typeSigToType(currScope, s.aliasingType);
 }
 
 void Resolver::visit(Enum& s) {
+    //printLog(LogLevel::DEBUG, "Visiting enum node for " + s.name + "\n");
     
     // Type already built in pass 2.
     /*
@@ -884,6 +968,7 @@ void Resolver::visit(Enum& s) {
     s.typeSymbol->type = enumType;
     */
 
+    //printLog(LogLevel::DEBUG, "Enum offset is " + std::to_string(offset) + " for " + s.name + "\n");
 }
 
 void Resolver::visit(ExprStmt& s) {

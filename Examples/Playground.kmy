@@ -11,3 +11,29 @@ let elemp = &((*rowp)[2]);
 *elemp = 69;
 
 print(matrix[1][2]); // 69
+
+
+enum Color {
+    Red,
+    Green,
+    Blue
+};
+
+let x = Color::Red;
+let const px = &x;
+let const y = Color::Red;
+let const py = &y;
+
+print(px == py); // false
+
+fun printColor(const c: Color*) {
+    if (*c == Color::Red) {
+        print("Red");
+    } else if (*c == Color::Green) {
+        print("Green");
+    } else if (*c == Color::Blue) {
+        print("Blue");
+    }
+}
+
+printColor(px); // Red

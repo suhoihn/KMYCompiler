@@ -18,16 +18,24 @@ void SSABuilder::build() {
         defBlocks.clear();
 
         computeDoms(func);
+        printDoms();
 
         computeIDoms(func);
+        printIDoms();
 
         buildDomTree();
+        printDomTree(func->entry);
 
         computeDFNaive(func);
+        printDF();
 
         collectDefs(func);
+        printDefBlocks();
+
+        std::cout << "This function " << func->functionId << " lastVId: " << func->lastValueId << "\n";
         
         computePhiPos(func);
+        printPhiBlocks();
         insertPhis(func);
 
         // Final boss.

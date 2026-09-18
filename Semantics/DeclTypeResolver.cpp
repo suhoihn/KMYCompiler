@@ -1,4 +1,5 @@
 #include "DeclTypeResolver.hpp"
+#include "../Core/newParser.hpp"
 
 #include <vector>
 #include "../Core/errorhandler.hpp"
@@ -10,11 +11,11 @@
 #include "TypeHelpers.hpp"
 
 DeclTypeResolver::DeclTypeResolver(
-    FunctionExprPtr program,
-    Scope* _globalScope
+    Module& module
 ) : 
-    program(program),
-    globalScope(_globalScope),
+    module(module),
+    program(module.program),
+    globalScope(module.globalScope),
     currScope(globalScope)
 {}
 
@@ -24,6 +25,7 @@ void DeclTypeResolver::resolve() {
 
 // Expressions
 void DeclTypeResolver::visit(FunctionExpr& e) {
+    std::cout << "Resolving function signature\n";
     std::vector<Type*> paramTypes;
     std::vector<ParamTypeInfo> info;
 
@@ -44,7 +46,8 @@ void DeclTypeResolver::visit(FunctionExpr& e) {
                 // If strict mode:
                 // throw KMYCompileError("Parameter must have explicit type signature.");
             } else {
-                param.symbol->type = typeSigToType(currScope, param.type);
+                std::cout << "Assigning annotated parameter type: " << param.name << '\n';
+                param.symbol->type = typeSigToType(module, currScope, param.type);
             }
         }
         paramTypes.push_back(param.symbol->type);
@@ -70,19 +73,22 @@ void DeclTypeResolver::visit(FunctionExpr& e) {
     FunctionType* fnType = TypeInterner::getFunctionType(
         std::move(paramTypes),
         e.annotatedReturnType 
-            ? typeSigToType(currScope, e.annotatedReturnType) 
+            ? typeSigToType(module, currScope, e.annotatedReturnType)
             : &Types::ANY_TYPE
     );
 
     fnType->info = std::move(info);
     fnType->infoExists = true;
     e.type = fnType;
+    std::cout << "my type is " << typeToString(e.type) << "\n";
 }
 
 void DeclTypeResolver::visit(ThisExpr& e) {
     if (!currentThis) {
         throw KMYCompileError("\"this\" used outside of method... :(");
     }
+    std::cout << "this symbol=" << currentThis
+              << " type=" << static_cast<InstanceType*>(currentThis->type)->name << '\n';
 
     e.symbol = currentThis;
     e.type = currentThis->type;
@@ -103,6 +109,7 @@ void DeclTypeResolver::visit(Block& s) {
 
 
 void DeclTypeResolver::visit(Let& s) {
+    printLog(LogLevel::DEBUG, "Visiting let node for " + s.name + "\n");
     
     if (s.expr) {
         s.expr->accept(*this);
@@ -201,7 +208,7 @@ void DeclTypeResolver::visit(TypeAlias& s) {
         - Builds ArrayType with elementType = &Types::INT_TYPE
     */
     if (s.typeSymbol->type) {
-        s.typeSymbol->type = typeSigToType(currScope, s.aliasingType);
+        s.typeSymbol->type = typeSigToType(module, currScope, s.aliasingType);
     }
 }
 

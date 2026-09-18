@@ -4,6 +4,8 @@
 #include "../Core/Ast.hpp"
 #include "../Utils/DefaultVisitor.hpp"
 
+struct Module;
+
 // Pass 2: Declaration Type Resolver 
 // For typealias, function decls, aggregate
 // Since their symbols are available but their types aren't, pre-define the types in this pass
@@ -12,10 +14,11 @@
 
 class DeclTypeResolver : public DefaultVisitor {
 public:
-    DeclTypeResolver(FunctionExprPtr program, Scope* globalScope);
+    DeclTypeResolver(Module& module);
     void resolve();
 
 private:
+    Module& module;
     Scope* globalScope = nullptr;
     Scope* currScope = nullptr;
     const FunctionExprPtr program;

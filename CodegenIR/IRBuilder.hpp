@@ -10,6 +10,8 @@
 #include "CommonDef.hpp"
 #include "StringPool.hpp"
 
+struct Module;
+
 struct LoopContext {
     BasicBlock<IRInstr>* continueTarget;
     BasicBlock<IRInstr>* breakTarget;
@@ -57,7 +59,9 @@ struct IRCodegenFnCtx {
 
 class IRBuilder : public Visitor {    
 public:
-    IRBuilder(FunctionExprPtr program);
+    // All per-module builders share this pool because one assembly file emits
+    // every module's code and therefore has one string-data section.
+    IRBuilder(Module& module, StringPool& stringPool);
 
     std::vector<IRFunction<IRInstr>*> compile();
 
@@ -66,7 +70,7 @@ public:
 private:
     // Readonly AST
     const FunctionExprPtr program;
-    StringPool stringPool;
+    StringPool& stringPool;
 
     void emit(const IRInstr& instr);
 

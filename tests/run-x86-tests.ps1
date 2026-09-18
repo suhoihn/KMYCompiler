@@ -76,41 +76,52 @@ try {
         -not $debugText.Contains('ForceUnwrap') -or
         -not $debugText.Contains('Xor') -or
         -not $debugText.Contains('Parsed AST') -or
-        -not $debugText.Contains('[Resolver] visit Let')) {
+        -not $debugText.Contains('[Resolver] visit Let') -or
+        -not $debugText.Contains('[Resolver] detail:')) {
         throw "Debug output failed: $debugText"
     }
     Write-Host 'PASS debug tokens and AST trace'
 
     $vmSource = Join-Path $repoRoot 'tests/x86/vm_smoke.kmy'
-    $vmStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $vmStartInfo.FileName = $compiler
-    $vmStartInfo.Arguments = '"' + $vmSource + '"'
-    $vmStartInfo.UseShellExecute = $false
-    $vmStartInfo.CreateNoWindow = $true
-    $vmStartInfo.RedirectStandardOutput = $true
-    $vmStartInfo.RedirectStandardError = $true
-    $vmProcess = [System.Diagnostics.Process]::new()
-    $vmProcess.StartInfo = $vmStartInfo
-    $previousErrorMode = [KmyTestErrorMode]::SetErrorMode(2)
-    try {
-        [void]$vmProcess.Start()
-        $vmOutputTask = $vmProcess.StandardOutput.ReadToEndAsync()
-        $vmErrorTask = $vmProcess.StandardError.ReadToEndAsync()
-        if (-not $vmProcess.WaitForExit(5000)) {
-            $vmProcess.Kill()
-            [void]$vmProcess.WaitForExit(2000)
-            throw 'VM smoke test timed out and was terminated.'
+    foreach ($debugVm in @($false, $true)) {
+        $vmStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $vmStartInfo.FileName = $compiler
+        $vmStartInfo.Arguments = '"' + $vmSource + '"' + $(if ($debugVm) { ' -d' } else { '' })
+        $vmStartInfo.UseShellExecute = $false
+        $vmStartInfo.CreateNoWindow = $true
+        $vmStartInfo.RedirectStandardOutput = $true
+        $vmStartInfo.RedirectStandardError = $true
+        $vmProcess = [System.Diagnostics.Process]::new()
+        $vmProcess.StartInfo = $vmStartInfo
+        $previousErrorMode = [KmyTestErrorMode]::SetErrorMode(2)
+        try {
+            [void]$vmProcess.Start()
+            $vmOutputTask = $vmProcess.StandardOutput.ReadToEndAsync()
+            $vmErrorTask = $vmProcess.StandardError.ReadToEndAsync()
+            if (-not $vmProcess.WaitForExit(5000)) {
+                $vmProcess.Kill()
+                [void]$vmProcess.WaitForExit(2000)
+                throw 'VM smoke test timed out and was terminated.'
+            }
+            $vmOutput = [regex]::Replace($vmOutputTask.Result, [char]27 + '\[[0-9;]*m', '').Trim()
+            $vmError = $vmErrorTask.Result
+            if ($vmProcess.ExitCode -ne 0) {
+                throw "VM smoke test failed: $vmOutput`n$vmError"
+            }
+            if ($debugVm) {
+                if (-not $vmOutput.Contains('3') -or -not $vmError.Contains('[VM] detail:')) {
+                    throw 'VM debug view lost the program result or retained diagnostics.'
+                }
+            } elseif ($vmOutput -ne '3') {
+                throw "Normal VM output contains debug chatter: $vmOutput"
+            }
         }
-        $vmOutput = [regex]::Replace($vmOutputTask.Result, [char]27 + '\[[0-9;]*m', '').Trim()
-        if ($vmProcess.ExitCode -ne 0 -or $vmOutput -ne '3') {
-            throw "VM smoke test failed: $vmOutput`n$($vmErrorTask.Result)"
+        finally {
+            $vmProcess.Dispose()
+            [void][KmyTestErrorMode]::SetErrorMode($previousErrorMode)
         }
     }
-    finally {
-        $vmProcess.Dispose()
-        [void][KmyTestErrorMode]::SetErrorMode($previousErrorMode)
-    }
-    Write-Host 'PASS VM output without runtime debug chatter'
+    Write-Host 'PASS VM program output and retained debug details'
 
     $tests = @(
         @{ Name = 'control_flow'; Source = 'tests/x86/control_flow.kmy'; Expected = 'tests/x86/control_flow.expected' },
@@ -127,10 +138,12 @@ try {
         @{ Name = 'kmy_lexer'; Source = 'Examples/KmyLexer.kmy'; Expected = 'tests/x86/kmy_lexer.expected' },
         @{ Name = 'kmy_parser'; Source = 'Examples/KmyParser.kmy'; Expected = 'tests/x86/kmy_parser.expected' },
         @{ Name = 'arraylist'; Source = 'Examples/ArrayList.kmy'; Expected = 'tests/x86/arraylist.expected' },
+        @{ Name = 'string_int_hash_map'; Source = 'Examples/StringIntHashMap.kmy'; Expected = 'tests/x86/string_int_hash_map.expected' },
         @{ Name = 'conways_life'; Source = 'Examples/ConwaysLife.kmy'; Expected = 'tests/x86/conways_life.expected' },
         @{ Name = 'string_ops'; Source = 'Examples/StringOps.kmy'; Expected = 'tests/x86/string_ops.expected' },
         @{ Name = 'file_io'; Source = 'Examples/FileIO.kmy'; Expected = 'tests/x86/file_io.expected' },
-        @{ Name = 'enum_x86'; Source = 'Examples/EnumX86.kmy'; Expected = 'tests/x86/enum_x86.expected' }
+        @{ Name = 'enum_x86'; Source = 'Examples/EnumX86.kmy'; Expected = 'tests/x86/enum_x86.expected' },
+        @{ Name = 'modules'; Source = 'tests/x86/modules/main.kmy'; Expected = 'tests/x86/modules.expected' }
     )
 
     foreach ($test in $tests) {

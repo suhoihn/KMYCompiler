@@ -98,6 +98,9 @@ const char* tokenTypeName(TokenType type) {
         case TokenType::KeywordRecord: return "KeywordRecord";
         case TokenType::KeywordInit: return "KeywordInit";
         case TokenType::KeywordEnum: return "KeywordEnum";
+        case TokenType::KeywordImport: return "KeywordImport";
+        case TokenType::KeywordAs: return "KeywordAs";
+        case TokenType::KeywordFrom: return "KeywordFrom";
         case TokenType::KeywordInt: return "KeywordInt";
         case TokenType::KeywordDouble: return "KeywordDouble";
         case TokenType::KeywordBool: return "KeywordBool";

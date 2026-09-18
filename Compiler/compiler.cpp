@@ -1,4 +1,5 @@
 #include "compiler.hpp"
+#include "../Core/newParser.hpp"
 
 #include <stdexcept>
 #include <exception>
@@ -12,15 +13,17 @@ void Compiler::emit(Opcode op, int operand=-1) {
     currCtx->chunk.code.push_back(Instruction{op, operand});
 }
 
-Compiler::Compiler(FunctionExprPtr program) 
-    : program(program)
+Compiler::Compiler(Module& module)
+    : program(module.program)
 {
     // Initialize the first function context for the global scope.
     currCtx = nullptr;
 }
 
 std::vector<FunctionProto> Compiler::compile(void) {
+    std::cout << "Starting compilation..." << std::endl;
     program->accept(*this);
+    std::cout << "Done" << std::endl;
 
      // Emit HALT at the end of global chunk to prevent fallthrough into function chunks.
 
@@ -250,6 +253,7 @@ void Compiler::visit(Index& e) {
 }
 
 void Compiler::visit(Call& e) { 
+    std::cout << "Compiling function call..." << std::endl;
 
     // Push function
     if (e.func->kind == ExprKind::Get) {
@@ -306,6 +310,7 @@ int Compiler::allocateFuncProto(const FunctionProto& fnProto) {
 
 
 void Compiler::visit(FunctionExpr& e) {
+    std::cout << "Compiling function..." << std::endl;
     FunctionProto fnProto;
     fnProto.totalParams = e.params.size();
     fnProto.frameSize = e.functionContext->locals.size();
@@ -325,6 +330,7 @@ void Compiler::visit(FunctionExpr& e) {
         }
     }
 
+    std::cout << "body compile" << std::endl;
 
     bool isCompilingMethod = compilingMethod;
     compilingMethod = false;
@@ -336,6 +342,25 @@ void Compiler::visit(FunctionExpr& e) {
             if (!isCompilingMethod) {
                 emit(Opcode::MAKE_CLOSURE, funcDeclExpr->fnProtoIdx);
             }
+            // Not a top level function.
+            // 8. Capture variables
+            /*
+            std::cout << "Capture" << std::endl;
+            for (auto up : e.upvalues) {
+                std::cout << up.index << std::endl;
+                // CAPTURE opcode creates a runtime heap object UpValueObj
+                if (up.isLocal) {
+                    // From immediate parent,
+                    // take x directly from parent stack frame
+                    //emit(Opcode::CAPTURE_LOCAL, up.index);
+                } else {
+                    // take variable from my parent closure’s upvalue list
+                    //emit(Opcode::CAPTURE_UPVALUE, up.index);
+                }
+            }
+            std::cout << "Capture done" << std::endl;
+            std::cout << "Delete temp" << std::endl;
+            */
         
         allocateLocal(funcDeclSym);
 
@@ -347,6 +372,7 @@ void Compiler::visit(FunctionExpr& e) {
     e.body->accept(*this);
     compilingMethod = isCompilingMethod;
     
+    std::cout << "body compile done" << std::endl;
 
     // 4. Implicit return
     if (currCtx->parent == nullptr) {
@@ -367,6 +393,7 @@ void Compiler::visit(FunctionExpr& e) {
     fnProto.upValueCnt = e.functionContext->upvalues.size();
 
     currCtx = currCtx->parent;
+    std::cout << "currctx: " << currCtx << std::endl;
 
     // 6. Register proto
     int fnIndex = allocateFuncProto(fnProto);
@@ -381,6 +408,7 @@ void Compiler::visit(FunctionExpr& e) {
     }
     
     delete temp;
+    std::cout << "function compiled" << std::endl;
 }
 
 
@@ -415,6 +443,7 @@ void Compiler::visit(NewExpr& e) {
     int argCnt = e.args.size();
 
     for (auto& constructor : aggType->constructorVec) {
+        std::cout << "Checking constructor signature\n";
         if (constructor->type->kind != TypeKind::FUNCTION) {
             throw KMYCompileError("Constuctor is not a function? This is weird.");
         }
@@ -475,6 +504,7 @@ void Compiler::visit(Print& s) {
     // Emit print instruction
     emit(Opcode::PRINT);
 
+    std::cout << "Print statement compiled." << std::endl;
 }
 
 

@@ -8,6 +8,8 @@
 #include "../BytecodeVM/vm.hpp"
 #include "../Semantics/Resolver.hpp"
 
+struct Module;
+
 struct CodegenFnCtx {
     int scopeDepth = 0;
     std::vector<Local> locals;
@@ -24,7 +26,7 @@ struct CodegenLoopCtx {
 
 class Compiler : public Visitor {
 public:
-    Compiler(FunctionExprPtr program);
+    Compiler(Module& module);
     std::vector<FunctionProto> compile(void);
 private:
     const FunctionExprPtr program; // AST (read-only)

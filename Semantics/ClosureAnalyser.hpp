@@ -9,6 +9,8 @@
 #include "../Core/FunctionContext.hpp"
 #include "../Utils/DefaultVisitor.hpp"
 
+struct Module;
+
 // Pass 3: Closure Analysis + Slot Allocation
 // Determines runtime storage for variables.
 // Detects captured variables/upvalues and assigns local stack slots
@@ -23,7 +25,9 @@ static bool isInsideFunction(VarSymbol* sym, Scope* functionScope);
 
 class ClosureAnalyser : public DefaultVisitor {
 public:
-    ClosureAnalyser(FunctionExprPtr program);
+    // `nextFunctionId` belongs to the whole native compilation, not one
+    // source file: x86 labels must remain unique after modules are combined.
+    ClosureAnalyser(Module& module, int& nextFunctionId);
     void analyse();
 
 private:
@@ -37,7 +41,7 @@ private:
     Aggregate* currentAggregate = nullptr;
 
     // ID given to each function expr.
-    int functionId = 0;
+    int& nextFunctionId;
 
     // Expressions
     void visit(Variable& e) override;

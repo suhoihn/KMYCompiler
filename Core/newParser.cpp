@@ -14,17 +14,54 @@ Parser::Parser(
 ) : tokens(tokens), trace(trace) {}
 
 // program → statement* EOF
-FunctionExprPtr Parser::parse() {
+Module Parser::parse() {
     std::vector<StmtPtr> statements;
+    parse_import();
     while (!is_at_end()) {
         statements.push_back(parse_statement());
     }
-    return std::make_shared<FunctionExpr>(
+    auto program = std::make_shared<FunctionExpr>(
         std::vector<Parameter>{}, // No params for global scope
         std::make_shared<Block>(move(statements)),
         nullptr, // No return annotation for global scope
         true // Entry function.
     );
+
+    return Module {
+        .importDecls = importDecls,
+        .program = program
+    };
+}
+
+/*
+Format---------- Compile-time imports
+
+module     → importDecl* statement* EOF
+importDecl → "import" STRING "as" IDENTIFIER ";"
+
+The string names a source file relative to the importing file's directory.
+The alias names that module in this file (Alias::Name). Imports belong before
+all statements, and their metadata will be kept separate from runtime AST
+statements. "import", "as", and "from" are lexer keywords; "from" is not
+used by this proposed whole-module import grammar.
+*/
+void Parser::parse_import() {
+    while (match(TokenType::KeywordImport)) {
+        // It is a string literal, not an identifier
+        Token path = consume(TokenType::StringLiteral, "Expected a string literal for the import path");
+
+        // TODO: From not implemented yet.
+        Token alias;
+        if (match(TokenType::KeywordAs)){
+            alias = consume(TokenType::Identifier, "Expected an identifier for the import alias");
+        } else {
+            // Error without as for now
+            throw KMYCompileError("You need 'as' for imports.");
+        }
+        consumeSemicolon();
+
+        importDecls.push_back(ImportDecl{path.lexeme, alias.lexeme});
+    }
 }
 
 Token Parser::peek() const {

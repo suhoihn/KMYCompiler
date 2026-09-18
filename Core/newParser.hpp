@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <stdexcept>
 #include "tokens.hpp"
@@ -36,6 +37,20 @@ struct ParserTraceEvent {
     int bindingPower = BP_NONE;
 };
 
+struct ImportDecl {
+    std::string path;
+    std::string alias;
+};
+
+struct Scope;
+
+struct Module {
+    std::vector<ImportDecl> importDecls;
+    std::unordered_map<std::string, Module*> imports; // alias to Module*
+    FunctionExprPtr program;
+    Scope* globalScope = nullptr;
+};
+
 class Parser {
 public:
     explicit Parser(
@@ -44,7 +59,7 @@ public:
     );
 
     // Entry point
-    FunctionExprPtr parse();
+    Module parse();
 
 private:
     // =============================
@@ -85,6 +100,7 @@ private:
     // Parsing statements
     // =============================
     
+    void parse_import(); // File header declaration; not a runtime statement.
     StmtPtr parse_block();
     void consumeSemicolon();
     StmtPtr parse_statement();
@@ -98,4 +114,6 @@ private:
     const std::vector<Token> tokens;
     std::vector<ParserTraceEvent>* trace;
     size_t current = 0;
+
+    std::vector<ImportDecl> importDecls;
 };

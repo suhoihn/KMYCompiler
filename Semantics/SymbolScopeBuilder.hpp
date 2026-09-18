@@ -5,6 +5,8 @@
 #include "../Core/Symbol.hpp"
 #include "../Utils/DefaultVisitor.hpp"
 
+struct Module;
+
 // Pass 1: Scope & Symbol Construction
 // Builds scope hierarchy and registers all "order-independent" declarations
 // - function DECL, aggregate itself's definition, type alias are order-independent
@@ -56,10 +58,11 @@
 
 class SymbolScopeBuilder : public DefaultVisitor {
 public:
-    SymbolScopeBuilder(FunctionExprPtr program);
+    SymbolScopeBuilder(Module& module);
     Scope* analyse();
 
 private:
+    Module& module;
     FunctionExprPtr program;
 
     Scope* globalScope;

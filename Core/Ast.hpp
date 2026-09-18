@@ -174,9 +174,12 @@ struct Get : ExprHelper<Get, ExprKind::Get> {
 // Format: obj '::' name
 struct ScopeAccessExpr : ExprHelper<ScopeAccessExpr, ExprKind::ScopeAccess> {
     std::vector<std::string> parts;
+    // Set for an imported value such as `math::sqrt`. Enum variants still use
+    // accessIdx because they lower to compile-time integer ordinals.
+    VarSymbol* symbol = nullptr;
     int accessIdx = INVALID_SLOT;
 
-    // TODO: later u need symbols stored here to access static fields...
+    // TODO: later extend this for static fields.
 
     ScopeAccessExpr(std::vector<std::string> parts);
 

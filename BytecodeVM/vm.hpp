@@ -2,6 +2,7 @@
 
 #include "../Core/value.hpp"
 #include <stdexcept>
+#include <iosfwd>
 
 inline static BinaryOp opcodeToBinaryOp(Opcode op) {
     switch (op) {
@@ -63,10 +64,12 @@ class VM {
 public:
     void load(std::vector<FunctionProto> functionProtos);
     void run(void);
+    void setProgramOutput(std::streambuf* output);
 
     VM();
 private:
     bool running = false;
+    std::streambuf* programOutput = nullptr;
 
     std::vector<FunctionProto> functionProtos;
 

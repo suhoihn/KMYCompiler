@@ -4,6 +4,8 @@
 #include "../Core/Ast.hpp"
 #include "../Utils/DefaultVisitor.hpp"
 
+struct Module;
+
 // Pass 3: Method lowerer
 // Lowers all function calls in form of 
 //  obj.f(...) -> f(obj, ...)
@@ -12,7 +14,7 @@
 
 class MethodLower : public DefaultVisitor {
 public:
-    MethodLower(FunctionExprPtr program);
+    MethodLower(Module& module);
     void lower();
 
 private:

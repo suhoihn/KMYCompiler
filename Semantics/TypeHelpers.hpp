@@ -4,6 +4,7 @@
 #include "../Core/Symbol.hpp"
 #include "../Utils/utils.hpp"
 #include "../Core/errorhandler.hpp"
+#include "../Core/newParser.hpp"
 #include <iostream>
 #include "TypeInterner.hpp"
 
@@ -11,9 +12,9 @@
 // This may be trivial if sym->type is defined.
 // Otherwise, it walks sym->typeNode via typeSigToType
 // Forward decl.
-inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type);
+inline Type* typeSigToType(Module& module, Scope* currScope, const TypeNodePtr& type);
 
-inline Type* resolveTypeSymbol(Scope* currScope, TypeSymbol* sym) {
+inline Type* resolveTypeSymbol(Module& module, Scope* currScope, TypeSymbol* sym) {
     if (!sym)
         throw KMYCompileError("Null type symbol");
 
@@ -30,7 +31,7 @@ inline Type* resolveTypeSymbol(Scope* currScope, TypeSymbol* sym) {
     if (!sym->typeNode) {
         throw KMYCompileError("Type symbol's AST is nullptr. This is a serious bug.");
     }
-    sym->type = typeSigToType(currScope, sym->typeNode);
+    sym->type = typeSigToType(module, currScope, sym->typeNode);
 
     sym->resolving = false;
 
@@ -71,7 +72,7 @@ static std::unordered_map<std::string, Type*> primitiveToType = {
 };
 
 // Converts TypeNodePtr to Type*
-inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
+inline Type* typeSigToType(Module& module, Scope* currScope, const TypeNodePtr& type) {
     printLog(LogLevel::DEBUG, "Converting type annotation to Type*: (TODO...)\n" );
     
     if (!type) {
@@ -93,7 +94,7 @@ inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
         case TypeNodeKind::ARRAY: {
             std::cout << "ur array\n";
             const auto& arrayTypeNode = static_cast<ArrayTypeNode&>(*type);
-            Type* elementType = typeSigToType(currScope, arrayTypeNode.elementType);
+            Type* elementType = typeSigToType(module, currScope, arrayTypeNode.elementType);
             if (arrayTypeNode.isSizeDetermined && !arrayTypeNode.isDynamic) {
                 return TypeInterner::getArrayType(
                     elementType,
@@ -105,12 +106,12 @@ inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
 
         case TypeNodeKind::POINTER: {
             const auto& pointer = static_cast<PointerTypeNode&>(*type);
-            return TypeInterner::getPointerType(typeSigToType(currScope, pointer.pointee));
+            return TypeInterner::getPointerType(typeSigToType(module, currScope, pointer.pointee));
         }
 
         case TypeNodeKind::NULLABLE: {
             const auto& nullable = static_cast<NullableTypeNode&>(*type);
-            return new NullableType(typeSigToType(currScope, nullable.innerType));
+            return new NullableType(typeSigToType(module, currScope, nullable.innerType));
         }
 
         case TypeNodeKind::FUNCTION: {
@@ -118,9 +119,9 @@ inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
             const auto& funcTypeNode = static_cast<FunctionTypeNode&>(*type);
             std::vector<Type*> paramTypes;
             for (const auto& param : funcTypeNode.params) {
-                paramTypes.push_back(typeSigToType(currScope, param));
+                paramTypes.push_back(typeSigToType(module, currScope, param));
             }
-            Type* returnType = typeSigToType(currScope, funcTypeNode.returnType);
+            Type* returnType = typeSigToType(module, currScope, funcTypeNode.returnType);
             // IMPORTANT NOTE: No param info is preserved. (default value, var arg etc.)
             return TypeInterner::getFunctionType(std::move(paramTypes), returnType);
         }
@@ -136,7 +137,7 @@ inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
                         "Redeclaration of field name \"" + pair.first + "\" in type signature."
                     );
                 }
-                fieldTypes[pair.first] = typeSigToType(currScope, pair.second);
+                fieldTypes[pair.first] = typeSigToType(module, currScope, pair.second);
             }
 
             return TypeInterner::getStructualType(std::move(fieldTypes));
@@ -147,16 +148,33 @@ inline Type* typeSigToType(Scope* currScope, const TypeNodePtr& type) {
             const auto& scopedTypeNode = static_cast<ScopedTypeNode&>(*type);
 
             const std::string& firstPart = scopedTypeNode.scopeParts[0];
-            std::cout << firstPart << " is the firstpart.\n";
-            TypeSymbol* typeSym = lookupTypeSymbol(currScope, firstPart);
-            if (!typeSym) {
-                throw KMYCompileError("Unknown type symbol \"" + firstPart + "\" in scoped type");
+            Module* typeModule = &module;
+            Scope* typeScope = currScope;
+            size_t typePart = 0;
+
+            // `math::Vector` starts from the imported module's global type
+            // scope. A non-import first part retains normal local/nested-type
+            // resolution, so existing `Outer::Inner` syntax is unchanged.
+            auto import = module.imports.find(firstPart);
+            if (import != module.imports.end()) {
+                typeModule = import->second;
+                typeScope = typeModule->globalScope;
+                typePart = 1;
+                if (typePart == scopedTypeNode.scopeParts.size()) {
+                    throw KMYCompileError("Module alias \"" + firstPart + "\" is not a type.");
+                }
             }
 
-            Type* currType = resolveTypeSymbol(currScope, typeSym);
+            const std::string& typeName = scopedTypeNode.scopeParts[typePart++];
+            TypeSymbol* typeSym = lookupTypeSymbol(typeScope, typeName);
+            if (!typeSym) {
+                throw KMYCompileError("Unknown type symbol \"" + typeName + "\" in scoped type");
+            }
 
-            // start from SECOND element
-            for (size_t i = 1; i < scopedTypeNode.scopeParts.size(); i++) {
+            Type* currType = resolveTypeSymbol(*typeModule, typeScope, typeSym);
+
+            // Resolve remaining nested aggregate/enum type members.
+            for (size_t i = typePart; i < scopedTypeNode.scopeParts.size(); i++) {
                 const std::string& currPart = scopedTypeNode.scopeParts[i];
 
                 if (currType->kind != TypeKind::INSTANCE) {
