@@ -21,7 +21,6 @@ private:
     Module& module;
     Scope* globalScope = nullptr;
     Scope* currScope = nullptr;
-    const FunctionExprPtr program;
 
     VarSymbol* currentThis = nullptr;
     InstanceType* currentAggregate = nullptr;

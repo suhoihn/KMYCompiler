@@ -224,6 +224,18 @@ inline std::ostream& operator<<(
             break;
         }
 
+        case IROp::LOAD_GLOBAL: {
+            os << instr.dst.value();
+            printDefSym(os, instr);
+            os << " = load_global " << instr.imm.value();
+            break;
+        }
+
+        case IROp::STORE_GLOBAL: {
+            os << "store_global " << instr.imm.value() << ", " << instr.args[0];
+            break;
+        }
+
         case IROp::RETURN: {
             os << "return";
 

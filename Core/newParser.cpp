@@ -20,6 +20,11 @@ Module Parser::parse() {
     while (!is_at_end()) {
         statements.push_back(parse_statement());
     }
+    // Keep the source file's statements on Module. The duplicate vector holds
+    // shared AST nodes, not copied statements, and lets legacy passes continue
+    // to use `program` while they are migrated one by one.
+    std::vector<StmtPtr> topLevelStatements = statements;
+
     auto program = std::make_shared<FunctionExpr>(
         std::vector<Parameter>{}, // No params for global scope
         std::make_shared<Block>(move(statements)),
@@ -29,6 +34,7 @@ Module Parser::parse() {
 
     return Module {
         .importDecls = importDecls,
+        .topLevelStatements = std::move(topLevelStatements),
         .program = program
     };
 }
@@ -1246,15 +1252,10 @@ ExprPtr Parser::parse_newExpr() {
         aggregateName = std::static_pointer_cast<NamedTypeNode>(allocatedType)->name;
     } else {
         auto scopedType = std::static_pointer_cast<ScopedTypeNode>(allocatedType);
-        if (scopedType->scopeParts.size() != 1) {
-            throw KMYParseError(
-                "Aggregate allocation currently requires an unqualified type name",
-                previous().line,
-                previous().startIdx,
-                previous().endIdx
-            );
-        }
         aggregateName = scopedType->scopeParts.front();
+        for (size_t i = 1; i < scopedType->scopeParts.size(); ++i) {
+            aggregateName += "::" + scopedType->scopeParts[i];
+        }
     }
     consume(TokenType::LeftParen, "Expected '(' after class/record name");
     std::vector<ExprPtr> args;

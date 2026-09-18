@@ -48,6 +48,8 @@ enum class MIROp {
     // Memory
     LOAD,
     STORE,
+    LOAD_GLOBAL,
+    STORE_GLOBAL,
     LOAD_INDIRECT,
     STORE_INDIRECT,
     LOAD_INDEX,
@@ -122,6 +124,8 @@ inline const char* toString(MIROp op) {
 
         case MIROp::LOAD: return "LOAD";
         case MIROp::STORE: return "STORE";
+        case MIROp::LOAD_GLOBAL: return "LOAD_GLOBAL";
+        case MIROp::STORE_GLOBAL: return "STORE_GLOBAL";
         case MIROp::LOAD_INDIRECT: return "LOAD_INDIRECT";
         case MIROp::STORE_INDIRECT: return "STORE_INDIRECT";
         case MIROp::LOAD_INDEX: return "LOAD_INDEX";

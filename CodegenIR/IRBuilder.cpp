@@ -14,8 +14,8 @@ static inline bool hasTerminator(HIRBlock* bb) {
     return bb->term.has_value();
 }
 
-IRBuilder::IRBuilder(Module& module, StringPool& stringPool)
-    : program(module.program), stringPool(stringPool)
+IRBuilder::IRBuilder(Module& module, StringPool& stringPool, std::vector<int> initializerIds)
+    : program(module.program), stringPool(stringPool), initializerIds(std::move(initializerIds))
 {}
 
 void IRBuilder::emit(const IRInstr& instr) {
@@ -40,7 +40,21 @@ static IRLocalInfo* getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
 std::vector<HIRFunction*> IRBuilder::compile() {
     assert(program);
 
-    program->accept(*this);
+    // Native codegen no longer compiles the parser's synthetic root node.
+    // This compiler-generated function is the module initializer; it owns the
+    // same top-level statement pointers and compatibility closure metadata.
+    FunctionExpr initializer(
+        std::vector<Parameter>{},
+        std::make_shared<Block>(std::static_pointer_cast<Block>(program->body)->statements),
+        nullptr,
+        program->isEntry
+    );
+    initializer.functionContext = program->functionContext;
+    initializer.functionId = program->functionId;
+    initializer.type = TypeInterner::getFunctionType({}, &Types::VOID_TYPE);
+    moduleInitializer = &initializer;
+    initializer.accept(*this);
+    moduleInitializer = nullptr;
 
     if (!hasTerminator(currCtx->currBlock)) {
         currCtx->currBlock->term = HaltTerm{};
@@ -156,6 +170,12 @@ void IRBuilder::visit(RecordLiteral& e) {
 }
 
 void IRBuilder::visit(Variable& e) {
+    if (e.symbol->isModuleGlobal) {
+        IRValue value = makeValue(e.type);
+        emit({ .op = IROp::LOAD_GLOBAL, .dst = value, .imm = e.symbol->moduleGlobalSlot });
+        setLastValue(value);
+        return;
+    }
     auto upvalueIt = currCtx->upvalues.find(e.symbol);
     if (upvalueIt != currCtx->upvalues.end()) {
         IRValue cell = upvalueIt->second;
@@ -652,6 +672,16 @@ void IRBuilder::visit(Assignment& e) {
             // last value isnt updated.
             // In a = 42, the last value is RHS.
         }
+
+        if (var->symbol->isModuleGlobal) {
+            emit({
+                .op = IROp::STORE_GLOBAL,
+                .args = { getLastValue() },
+                .imm = var->symbol->moduleGlobalSlot
+            });
+            return;
+        }
+
         // The locals must already contain the symbol.
         // Though this may never happen.
 
@@ -976,24 +1006,9 @@ void IRBuilder::visit(ScopeAccessExpr& e) {
     // Module globals are not implemented, so imported functions must not rely
     // on captured module state yet; their environment is therefore null.
     if (e.symbol) {
-        if (e.symbol->nativeFunctionId == INVALID_SLOT) {
-            throw KMYCompileError(
-                "Imported value \"" + e.symbol->name +
-                "\" is not a native function declaration"
-            );
-        }
-
-        IRValue nullEnv = makeValue(new PointerType(&Types::VOID_TYPE));
-        emit({ .op = IROp::CONST_NULL, .dst = nullEnv });
-
-        IRValue closure = makeValue(e.type);
-        emit({
-            .op = IROp::FUNC_LABEL,
-            .dst = closure,
-            .args = { nullEnv },
-            .imm = e.symbol->nativeFunctionId
-        });
-        setLastValue(closure);
+        IRValue value = makeValue(e.type);
+        emit({ .op = IROp::LOAD_GLOBAL, .dst = value, .imm = e.symbol->moduleGlobalSlot });
+        setLastValue(value);
         return;
     }
 
@@ -1164,6 +1179,18 @@ void IRBuilder::visit(FunctionExpr& e) {
 
     currFunc->entry = entry;
     currCtx->currBlock = entry;
+
+    // The entry module's legacy root is its initializer/main for now. Run all
+    // dependency initializers before evaluating its own top-level statements.
+    if (&e == moduleInitializer) {
+        for (int initializerId : initializerIds) {
+            IRValue nullEnv = makeValue(new PointerType(&Types::VOID_TYPE));
+            emit({ .op = IROp::CONST_NULL, .dst = nullEnv });
+            IRValue closure = makeValue(new PointerType(&Types::VOID_TYPE));
+            emit({ .op = IROp::FUNC_LABEL, .dst = closure, .args = { nullEnv }, .imm = initializerId });
+            emit({ .op = IROp::CALL, .args = { closure } });
+        }
+    }
 
     // Incoming env from parent
     // Only introduce env if there is a free variable in the function
@@ -1348,6 +1375,11 @@ void IRBuilder::visit(FunctionExpr& e) {
             .defSym = funcDeclSym // TODO: Remove hoisting...
         };
         emit(instr);
+
+        if (funcDeclSym->isModuleGlobal) {
+            emit({ .op = IROp::STORE_GLOBAL, .args = { fnValue }, .imm = funcDeclSym->moduleGlobalSlot });
+            continue;
+        }
         
         //funcDeclExpr->accept(*this);
 
@@ -1863,6 +1895,11 @@ void IRBuilder::visit(Let& s) {
     if (s.isFunctionDecl) { return; }
 
     HIROperand value = getLastValue();
+
+    if (s.symbol->isModuleGlobal) {
+        emit({ .op = IROp::STORE_GLOBAL, .args = { value }, .imm = s.symbol->moduleGlobalSlot });
+        return;
+    }
     
     bool uncapturedLocal = true;
     if (currCtx->locals.find(s.symbol) == currCtx->locals.end()) {

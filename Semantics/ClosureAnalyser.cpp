@@ -8,11 +8,37 @@
 #include <assert.h>
 
 ClosureAnalyser::ClosureAnalyser(Module& module, int& nextFunctionId)
-    : program(module.program), nextFunctionId(nextFunctionId)
+    : module(module), nextFunctionId(nextFunctionId)
 {}
 
 void ClosureAnalyser::analyse() {
-    program->accept(*this);
+    // Compatibility context only: the module's statements are visited
+    // directly, but legacy HIR still needs a FunctionContext while the native
+    // module-initializer generation is introduced in a later step.
+    FunctionContext* moduleContext = new FunctionContext;
+    moduleContext->fnScope = module.globalScope;
+    currCtx = moduleContext;
+
+    module.program->functionId = nextFunctionId++;
+    for (const StmtPtr& statement : module.topLevelStatements) {
+        statement->accept(*this);
+    }
+
+    int envSlot = 0;
+    for (const Local& local : moduleContext->locals) {
+        if (local.captured) {
+            moduleContext->envMap[local.sym] = envSlot++;
+        }
+    }
+    for (const UpvalueInfo& upvalue : moduleContext->upvalues) {
+        if (upvalue.capturedByChildren) {
+            moduleContext->envMap[upvalue.symbol] = envSlot++;
+        }
+    }
+    moduleContext->envSize = envSlot;
+
+    module.program->functionContext = moduleContext;
+    currCtx = nullptr;
 }
 
 static int allocateLocal(FunctionContext* fnCtx, VarSymbol* sym) {

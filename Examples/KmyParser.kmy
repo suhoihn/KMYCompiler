@@ -481,18 +481,24 @@ class KmySourceParser {
     }
 };
 
-let source: string = readFile("Examples/KmyParserInput.kmy");
-let lexer: KmySourceLexer = new KmySourceLexer(source);
-lexer.scan();
-let parser: KmySourceParser = new KmySourceParser(lexer.tokens);
-parser.parse();
-if (parser.failed) {
-    print(strconcat("PARSE ERROR: ", parser.error));
-} else {
-    let ast: string = parser.render();
-    if (writeFile("build/kmy_parser_ast.txt", ast)) {
-        print(ast);
+// Public module entry point. Keeping the lexer, token buffer, and AST private
+// to this file avoids relying on unfinished cross-module class construction.
+fun parseFile(sourcePath: string, outputPath: string) {
+    let source: string = readFile(sourcePath);
+    let lexer: KmySourceLexer = new KmySourceLexer(source);
+    lexer.scan();
+    let parser: KmySourceParser = new KmySourceParser(lexer.tokens);
+    parser.parse();
+    if (parser.failed) {
+        print(strconcat("PARSE ERROR: ", parser.error));
     } else {
-        print("Could not write build/kmy_parser_ast.txt");
+        let ast: string = parser.render();
+        if (writeFile(outputPath, ast)) {
+            print(ast);
+        } else {
+            print("Could not write parser AST output");
+        }
     }
 }
+
+parseFile("Examples/KmyParserInput.kmy", "build/kmy_parser_ast.txt");

@@ -1,0 +1,6 @@
+// Expected native parser rejection: qualified constructor names are not yet
+// accepted after `new`, even though `library::Counter` resolves as a type.
+import "library.kmy" as library;
+
+let counter: library::Counter = new library::Counter(5);
+print(counter.bump());

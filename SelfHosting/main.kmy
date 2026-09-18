@@ -1,0 +1,12 @@
+// First usable self-hosted front-end entry point.
+//
+// This is deliberately an orchestration module: it imports only plain
+// functions, while each module keeps its own classes and internal data.
+// The parser currently accepts a small arithmetic/pointer slice, so its input
+// is the checked-in parser fixture rather than this full compiler source.
+import "../Examples/KmyLexer.kmy" as lexer;
+import "../Examples/KmyParser.kmy" as parser;
+
+let sourcePath: string = "Examples/KmyParserInput.kmy";
+lexer::lexFile(sourcePath);
+parser::parseFile(sourcePath, "build/self_hosted_parser_ast.txt");

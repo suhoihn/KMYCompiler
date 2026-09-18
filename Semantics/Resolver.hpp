@@ -23,7 +23,6 @@ public:
 private:
     Module& module;
     // TypeInterner typeInterner;
-    const FunctionExprPtr program;
     Scope* globalScope;
     Scope* currScope;
 

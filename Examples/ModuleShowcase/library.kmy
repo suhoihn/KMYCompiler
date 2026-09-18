@@ -1,0 +1,82 @@
+// Deliberately varied exported declarations for the native module stress test.
+enum Signal {
+    LOW,
+    HIGH,
+    ERROR
+};
+
+let answer: int = 42;
+
+fun triple(value: int): int {
+    return value * 3;
+}
+
+fun makeStepper(start: int): () -> int {
+    let state: int = start;
+    return fun(): int {
+        state += 2;
+        return state;
+    };
+}
+
+class Counter {
+    let value: int = 0;
+
+    init(start: int) {
+        this.value = start;
+    }
+
+    fun bump(): int {
+        this.value += 1;
+        return this.value;
+    }
+};
+
+// An enum-backed fixed-capacity ArrayList. Keeping this class internal proves
+// that imported functions can exercise aggregate/array/method machinery even
+// before cross-module `new library::Counter()` codegen is completed.
+class SignalList {
+    let values: Signal[] = new Signal[8];
+    let count: int = 0;
+
+    init() {}
+
+    fun add(value: Signal) {
+        if (this.count < 8) {
+            this.values[this.count] = value;
+            this.count += 1;
+        }
+    }
+
+    fun score(): int {
+        let total: int = 0;
+        let index: int = 0;
+        while (index < this.count) {
+            if (this.values[index] == Signal::ERROR) {
+                total += 20;
+            } else if (this.values[index] == Signal::HIGH) {
+                total += 5;
+            } else {
+                total += 1;
+            }
+            index += 1;
+        }
+        return total;
+    }
+};
+
+fun runAggregateStress(): int {
+    let signals: SignalList = new SignalList();
+    signals.add(Signal::LOW);
+    signals.add(Signal::HIGH);
+    signals.add(Signal::ERROR);
+
+    let counter: Counter = new Counter(3);
+    return signals.score() + counter.bump() + counter.bump();
+}
+
+fun runPointerStress(): int {
+    let pointer: int* = malloc(8);
+    *pointer = 99;
+    return *pointer;
+}

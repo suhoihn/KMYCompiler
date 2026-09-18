@@ -18,7 +18,7 @@ public:
     void lower();
 
 private:
-    const FunctionExprPtr program;
+    Module& module;
 
     // Expressions
     void visit(Call& e) override;

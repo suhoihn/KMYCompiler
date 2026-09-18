@@ -1,0 +1,24 @@
+// Native module stress showcase: globals, functions, closures, enum values,
+// arrays, closures, loops, and control flow.
+import "library.kmy" as library;
+
+print(library::answer);
+print(library::triple(7));
+print(library::Signal::HIGH);
+
+let step: () -> int = library::makeStepper(10);
+print(step());
+print(step());
+print(library::runAggregateStress());
+print(library::runPointerStress());
+
+let values: int[] = [1, 2, 3, 4];
+let sum: int = 0;
+let index: int = 0;
+while (index < 4) {
+    if (values[index] % 2 == 0) {
+        sum += values[index];
+    }
+    index += 1;
+}
+print(sum);

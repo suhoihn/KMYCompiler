@@ -31,7 +31,7 @@ public:
     void analyse();
 
 private:
-    const FunctionExprPtr program;
+    Module& module;
     
     FunctionContext* currCtx;
     ResolvedVar resolveVariable(VarSymbol* sym);

@@ -61,7 +61,7 @@ class IRBuilder : public Visitor {
 public:
     // All per-module builders share this pool because one assembly file emits
     // every module's code and therefore has one string-data section.
-    IRBuilder(Module& module, StringPool& stringPool);
+    IRBuilder(Module& module, StringPool& stringPool, std::vector<int> initializerIds = {});
 
     std::vector<IRFunction<IRInstr>*> compile();
 
@@ -71,6 +71,8 @@ private:
     // Readonly AST
     const FunctionExprPtr program;
     StringPool& stringPool;
+    std::vector<int> initializerIds;
+    FunctionExpr* moduleInitializer = nullptr;
 
     void emit(const IRInstr& instr);
 

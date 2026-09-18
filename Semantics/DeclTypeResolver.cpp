@@ -14,13 +14,14 @@ DeclTypeResolver::DeclTypeResolver(
     Module& module
 ) : 
     module(module),
-    program(module.program),
     globalScope(module.globalScope),
     currScope(globalScope)
 {}
 
 void DeclTypeResolver::resolve() {
-    program->accept(*this);
+    for (const StmtPtr& statement : module.topLevelStatements) {
+        statement->accept(*this);
+    }
 }
 
 // Expressions

@@ -63,7 +63,6 @@ public:
 
 private:
     Module& module;
-    FunctionExprPtr program;
 
     Scope* globalScope;
     Scope* currScope;

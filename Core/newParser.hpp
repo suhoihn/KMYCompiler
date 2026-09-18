@@ -47,6 +47,16 @@ struct Scope;
 struct Module {
     std::vector<ImportDecl> importDecls;
     std::unordered_map<std::string, Module*> imports; // alias to Module*
+
+    // The source-level contents of this file. Semantic passes will migrate to
+    // visit these directly, so a module no longer needs to be *represented* as
+    // a fake zero-parameter function.
+    std::vector<StmtPtr> topLevelStatements;
+
+    // Temporary compatibility bridge during the root-function migration.
+    // Existing passes still consume this synthetic wrapper; it will be removed
+    // only after scopes, resolution, closure analysis, and codegen use the
+    // module's real top-level statements and generated initializer instead.
     FunctionExprPtr program;
     Scope* globalScope = nullptr;
 };

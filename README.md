@@ -29,6 +29,19 @@ KMY's existing integer representation, `f64` maps to `double`, and `byte` maps
 to the current integer representation. True width-specific and unsigned
 arithmetic will require a later backend/layout update.
 
+## Current native x86 limitations
+
+- Pointer types, address-of (`&`), dereference (`*`), pointer parameters, and
+  pointer return values are supported. C-style scaled pointer arithmetic is
+  not: `pointer + 1` and `pointer += 1` do not mean “next element.” Use array
+  indexing instead.
+- `++` and `--` are not language operators; use `x += 1` and `x -= 1`.
+- Default parameter values are parsed and represented semantically, but native
+  calls do not yet insert omitted arguments. Pass every argument explicitly.
+- Varargs (`...items`) are parsed and represented in function signatures, but
+  native x86 does not yet implement argument packing or a vararg calling
+  convention. Pass an array when a variable-size input is needed.
+
 ## Prerequisites
 
 - A C++20-capable `g++`
@@ -68,6 +81,8 @@ Supporting that requires a real module-global storage and initialization model,
 which is separate from compiling callable functions. The stack-VM backend does
 not yet compile imports. Consequently, an imported function must not capture a
 top-level module variable until that storage/initialization model exists.
+The planned unified global-slot and module-initialization model is documented
+in [`MODULES.md`](MODULES.md).
 
 Import paths will resolve relative to the **file containing the import**,
 regardless of where `kmyc` is launched. For example, an import of

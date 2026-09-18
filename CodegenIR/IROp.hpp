@@ -75,6 +75,8 @@ enum class IROp {
     ALLOC_CELL_INIT, // Allocates a cell with a given value (e.g., v0 = ALLOC_CELL_INIT v1)
     STORE_CELL, // Stores a value to a cell (e.g., STORE_CELL v0 v1)
     LOAD_CELL, // Loads a value from a cell (e.g., v1 = LOAD_CELL v0)
+    LOAD_GLOBAL, // Loads program-global slot imm into dst
+    STORE_GLOBAL, // Stores arg0 into program-global slot imm
     RETURN
 };
 
@@ -145,6 +147,8 @@ inline const char* toString(IROp op) {
         case IROp::ALLOC_CELL_INIT:     return "ALLOC_CELL_INIT";
         case IROp::STORE_CELL:          return "STORE_CELL";
         case IROp::LOAD_CELL:           return "LOAD_CELL";
+        case IROp::LOAD_GLOBAL:         return "LOAD_GLOBAL";
+        case IROp::STORE_GLOBAL:        return "STORE_GLOBAL";
         case IROp::RETURN:              return "RETURN";
     }
 

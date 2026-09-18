@@ -194,10 +194,16 @@ class Lexer {
     }
 };
 
+// Public module entry point. `SelfHosting/main.kmy` imports this file and
+// calls `lexer::lexFile(path)` without needing to expose Lexer itself.
+fun lexFile(path: string) {
+    let lexer: Lexer = new Lexer(readFile(path));
+    lexer.scan();
+    lexer.dump();
+}
+
 let path: string = "build/kmy_lexer_input.kmy";
 let sample: string = "let total = 3 + 4; // comment
 if (total >= 7) { return total; }";
 writeFile(path, sample);
-let lexer: Lexer = new Lexer(readFile(path));
-lexer.scan();
-lexer.dump();
+lexFile(path);

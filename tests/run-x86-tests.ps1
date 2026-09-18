@@ -143,7 +143,8 @@ try {
         @{ Name = 'string_ops'; Source = 'Examples/StringOps.kmy'; Expected = 'tests/x86/string_ops.expected' },
         @{ Name = 'file_io'; Source = 'Examples/FileIO.kmy'; Expected = 'tests/x86/file_io.expected' },
         @{ Name = 'enum_x86'; Source = 'Examples/EnumX86.kmy'; Expected = 'tests/x86/enum_x86.expected' },
-        @{ Name = 'modules'; Source = 'tests/x86/modules/main.kmy'; Expected = 'tests/x86/modules.expected' }
+        @{ Name = 'modules'; Source = 'tests/x86/modules/main.kmy'; Expected = 'tests/x86/modules.expected' },
+        @{ Name = 'module_showcase'; Source = 'Examples/ModuleShowcase/main.kmy'; Expected = 'tests/x86/module_showcase.expected' }
     )
 
     foreach ($test in $tests) {

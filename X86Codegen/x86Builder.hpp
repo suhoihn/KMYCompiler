@@ -11,6 +11,7 @@ private:
     std::ostream& out;
     std::vector<MIRFunction*> mirFunctions;
     const StringPool& stringPool;
+    int globalSlotCount;
     int indent = 0;
     MIRFunction* currFunc = nullptr;
     // std::unordered_map<int, int> stackOffset;
@@ -28,7 +29,8 @@ public:
     X86Builder(
         std::vector<MIRFunction*> mirFunctions,
         std::ostream& out,
-        const StringPool& stringPool
+        const StringPool& stringPool,
+        int globalSlotCount
     );
 
     void build();

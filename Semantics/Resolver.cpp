@@ -11,7 +11,6 @@
 Resolver::Resolver(
     Module& module
 ) : 
-    program(module.program),
     globalScope(module.globalScope),
     currScope(globalScope),
     module(module)
@@ -19,7 +18,9 @@ Resolver::Resolver(
 
 void Resolver::resolve() {
     printLog(LogLevel::INFO, "Resolver pass started\n");
-    program->accept(*this);
+    for (const StmtPtr& statement : module.topLevelStatements) {
+        statement->accept(*this);
+    }
     printLog(LogLevel::INFO, "Resolver pass ended.\n");
 }
 
@@ -720,7 +721,22 @@ void Resolver::visit(NewExpr& e) {
         return;
     }
 
-    TypeSymbol* aggType = lookupTypeSymbol(currScope, e.typeName);
+    TypeSymbol* aggType = nullptr;
+    const size_t separator = e.typeName.find("::");
+    if (separator == std::string::npos) {
+        aggType = lookupTypeSymbol(currScope, e.typeName);
+    } else {
+        const std::string alias = e.typeName.substr(0, separator);
+        const std::string typeName = e.typeName.substr(separator + 2);
+        auto imported = module.imports.find(alias);
+        if (imported == module.imports.end() || typeName.find("::") != std::string::npos) {
+            throw KMYCompileError("Unknown imported aggregate type: " + e.typeName);
+        }
+        aggType = lookupTypeSymbol(imported->second->globalScope, typeName);
+    }
+    if (!aggType) {
+        throw KMYCompileError("Unknown aggregate type: " + e.typeName);
+    }
     
     // TODO: Separate instance and agg type...
     if (aggType->type->kind != TypeKind::INSTANCE) {

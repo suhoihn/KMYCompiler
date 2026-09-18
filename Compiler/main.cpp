@@ -459,6 +459,22 @@ int main(int argc, char *argv[]) {
             }
         });
 
+        // Reserve one stable program-wide slot for every top-level KMY value.
+        // Native built-ins keep their separate runtime `globalSlot` IDs; these
+        // slots are for the future persistent module-global storage area.
+        int moduleGlobalSlotCount = 0;
+        runPass("GlobalSlotAssignment", debugOutput, [&] {
+            for (const std::string& modulePath : declarationOrder) {
+                Module& module = modules.at(modulePath);
+                for (const StmtPtr& statement : module.topLevelStatements) {
+                    auto* declaration = dynamic_cast<Let*>(statement.get());
+                    if (!declaration) continue;
+                    declaration->symbol->isModuleGlobal = true;
+                    declaration->symbol->moduleGlobalSlot = moduleGlobalSlotCount++;
+                }
+            }
+        });
+
         // 3-2. Resolve declarations/signatures after all module scopes exist.
         runPass("DeclTypeResolver", debugOutput, [&] {
             for (const std::string& modulePath : declarationOrder) {
@@ -515,7 +531,14 @@ int main(int argc, char *argv[]) {
                 // Compile dependencies before importers. Their functions share
                 // one HIR/MIR/x86 program, while only the root module is main.
                 for (const std::string& modulePath : declarationOrder) {
-                    IRBuilder builder(modules.at(modulePath), stringPool);
+                    std::vector<int> dependencyInitializers;
+                    if (modulePath == entryModulePath) {
+                        for (const std::string& priorPath : declarationOrder) {
+                            if (priorPath == entryModulePath) break;
+                            dependencyInitializers.push_back(modules.at(priorPath).program->functionId);
+                        }
+                    }
+                    IRBuilder builder(modules.at(modulePath), stringPool, std::move(dependencyInitializers));
                     auto moduleFuncs = builder.compile();
                     funcs.insert(funcs.end(), moduleFuncs.begin(), moduleFuncs.end());
                 }
@@ -545,7 +568,7 @@ int main(int argc, char *argv[]) {
 
             std::ostringstream buffer;
 
-            X86Builder x86Builder(mirFuncs, buffer, stringPool);
+            X86Builder x86Builder(mirFuncs, buffer, stringPool, moduleGlobalSlotCount);
             runPass("X86Builder", debugOutput, [&] { x86Builder.build(); });
 
             std::string assembly = buffer.str();

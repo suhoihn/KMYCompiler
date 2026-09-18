@@ -17,6 +17,17 @@ KMY already has the beginnings of the required foundation:
 - whole-file text I/O through `readFile` and `writeFile`;
 - a native x86-64 backend and an automated test runner.
 
+## Current runnable entry point
+
+[`main.kmy`](main.kmy) is the native-front-end entry point. It imports the
+existing self-hosted lexer and parser modules, lexes the parser-slice fixture,
+and writes the resulting AST view to `build/self_hosted_parser_ast.txt`.
+
+The imports intentionally expose only `lexer::lexFile(path)` and
+`parser::parseFile(sourcePath, outputPath)`. Their `Lexer`, token-buffer, and
+AST classes remain internal to their defining modules because cross-module
+construction of aggregate types is not part of the native module ABI yet.
+
 The compiler should initially target a simple KMY source-to-source or textual
 IR output before attempting to emit machine code directly.
 

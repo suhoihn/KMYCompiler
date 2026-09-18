@@ -8,8 +8,9 @@
 X86Builder::X86Builder(
     std::vector<MIRFunction*> mirFunctions, 
     std::ostream& out,
-    const StringPool& stringPool
-) : mirFunctions(mirFunctions), stringPool(stringPool), out(out) {}
+    const StringPool& stringPool,
+    int globalSlotCount
+) : mirFunctions(mirFunctions), stringPool(stringPool), globalSlotCount(globalSlotCount), out(out) {}
 
 static const std::vector<std::string> argRegs_linux = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 
@@ -269,6 +270,20 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
 
             // Spill the computed address into the destination MIR slot.
             emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
+        case MIROp::LOAD_GLOBAL: {
+            const int slot = instr.imm.value();
+            emit("mov rax, [rip + kmy_globals + " + std::to_string(slot * 8) + "]");
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
+        case MIROp::STORE_GLOBAL: {
+            const int slot = instr.imm.value();
+            emit("mov rax, " + loc(instr.args[0]));
+            emit("mov [rip + kmy_globals + " + std::to_string(slot * 8) + "], rax");
             break;
         }
 
@@ -632,6 +647,12 @@ void X86Builder::build() {
     for (size_t i = 0; i < stringPool.size(); ++i) {
         emit("kmy_str_" + std::to_string(i) + ":");
         emit(".asciz \"" + escapeAsmString(stringPool.get(static_cast<StringId>(i))) + "\"");
+    }
+    if (globalSlotCount > 0) {
+        emit(".section .bss");
+        emit(".align 8");
+        emit("kmy_globals:");
+        emit(".zero " + std::to_string(globalSlotCount * 8));
     }
     emit(".text");
     emit(".globl main");

@@ -106,6 +106,12 @@ struct VarSymbol : Symbol {
     // reference can materialize a closure for the correct emitted function.
     int nativeFunctionId = INVALID_SLOT;
 
+    // Persistent storage assigned to a top-level module value. This is kept
+    // separate from `globalSlot`, whose existing values identify native
+    // built-ins in the VM/runtime table.
+    bool isModuleGlobal = false;
+    int moduleGlobalSlot = INVALID_SLOT;
+
     VarSymbol(const std::string& name, bool isMutable)
         : Symbol(name, SymbolKind::VARIABLE), isMutable(isMutable) {}
 };

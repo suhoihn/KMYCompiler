@@ -198,6 +198,12 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         // =====================
         // Memory
         // =====================
+        case IROp::LOAD_GLOBAL:
+            return { make(MIROp::LOAD_GLOBAL) };
+
+        case IROp::STORE_GLOBAL:
+            return { make(MIROp::STORE_GLOBAL) };
+
         case IROp::LOAD_CELL:
             // Load from a cell (dereference)
             // arg0: cell pointer

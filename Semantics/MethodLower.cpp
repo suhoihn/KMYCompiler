@@ -8,10 +8,12 @@
 
 MethodLower::MethodLower(
     Module& module
-) : program(module.program) {}
+) : module(module) {}
 
 void MethodLower::lower() {
-    program->accept(*this);
+    for (const StmtPtr& statement : module.topLevelStatements) {
+        statement->accept(*this);
+    }
 }
 
 void MethodLower::visit(Call& e) {

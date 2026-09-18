@@ -11,7 +11,7 @@
 
 SymbolScopeBuilder::SymbolScopeBuilder(
     Module& module
-) : module(module), program(module.program)
+) : module(module)
 {
     // Global scope made
     globalScope = new Scope();
@@ -35,7 +35,9 @@ SymbolScopeBuilder::SymbolScopeBuilder(
 
 // Exports the scope tree.
 Scope* SymbolScopeBuilder::analyse() {
-    program->accept(*this);
+    for (const StmtPtr& statement : module.topLevelStatements) {
+        statement->accept(*this);
+    }
     return globalScope;
 }
 
@@ -54,7 +56,7 @@ VarSymbol* SymbolScopeBuilder::declareVar(const std::string& name, bool isMutabl
     // Import aliases are file-level compile-time qualifiers (`math::Vector`).
     // Reserve them only in the module scope; a function-local `math` is a
     // normal lexical variable and cannot make `math::...` ambiguous there.
-    if (currScope == globalScope && module.imports.contains(name)) {
+    if (currScope == globalScope && module.imports.count(name) > 0) {
         throw KMYCompileError("Name \"" + name + "\" is already used as an import alias.");
     }
 
@@ -81,8 +83,8 @@ TypeSymbol* SymbolScopeBuilder::declareType(const std::string& name, bool isMuta
     // Types share the module-level qualifier namespace with values: allowing
     // `typealias math = int` beside `import ... as math` would make `math::X`
     // ambiguous before the resolver knows whether `math` is a module or type.
-    if (currScope == globalScope && module.imports.contains(name)) {
-        throw KMYCompileError("Name \"" + name + "\" is already used as an import alias.");
+    if (currScope == globalScope && module.imports.count(name) > 0) {
+        throw KMYCompileError("Type name \"" + name + "\" is already used as an import alias.");
     }
 
     // 1. Check current scope only (NOT parents)
@@ -117,11 +119,7 @@ void SymbolScopeBuilder::visit(RecordLiteral& e) {
 
 // Function expr (or decl) has a scope, and each parameter has a var symbol.
 void SymbolScopeBuilder::visit(FunctionExpr& e) {
-    bool isRoot = (&e == program.get());
-
-    if (!isRoot) {
-        enterScope();
-    }
+    enterScope();
     e.scope = currScope;
 
     for (auto& param : e.params) {
@@ -137,9 +135,7 @@ void SymbolScopeBuilder::visit(FunctionExpr& e) {
 
     e.body->accept(*this);
 
-    if (!isRoot) {
-        exitScope();
-    }
+    exitScope();
 }
 
 // ======================================================
@@ -148,18 +144,14 @@ void SymbolScopeBuilder::visit(FunctionExpr& e) {
 
 // Block has a scope.
 void SymbolScopeBuilder::visit(Block& s) {
-    bool isRootBody = (&s == program->body.get());
-
-    if (!isRootBody)
-        enterScope();
+    enterScope();
 
     s.scope = currScope;
 
     for (auto& stmt : s.statements)
         stmt->accept(*this);
 
-    if (!isRootBody)
-        exitScope();
+    exitScope();
 }
 
 
