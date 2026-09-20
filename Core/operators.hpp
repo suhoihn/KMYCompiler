@@ -47,11 +47,12 @@ enum class UnaryOp {
     Dereference, // *x
     ForceUnwrap, // !!
 
-    // TODO: Optional future additions:
-    // PreIncrement,   // ++x
-    // PreDecrement,   // --x
-    // PostIncrement,  // x++
-    // PostDecrement   // x--
+    // Mutation expressions. Prefix and postfix must stay distinct because
+    // they produce different expression values even though both mutate once.
+    PreIncrement,   // ++x
+    PreDecrement,   // --x
+    PostIncrement,  // x++
+    PostDecrement   // x--
 };
 
 enum class AssignmentOp {
@@ -134,6 +135,10 @@ inline UnaryOp toUnaryOp(TokenType t) {
         case TokenType::BitAnd: return UnaryOp::AddressOf;
         case TokenType::Star:   return UnaryOp::Dereference;
         case TokenType::ForceUnwrap:return UnaryOp::ForceUnwrap;
+        // This helper is called only by parse_prefix(). parse_expression()
+        // constructs the Post* variants directly after parsing its left side.
+        case TokenType::PlusPlus: return UnaryOp::PreIncrement;
+        case TokenType::MinusMinus: return UnaryOp::PreDecrement;
 
         default:
             throw std::runtime_error("Invalid TokenType for UnaryOp");

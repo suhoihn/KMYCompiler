@@ -130,6 +130,7 @@ try {
         @{ Name = 'arrays'; Source = 'tests/x86/arrays.kmy'; Expected = 'tests/x86/arrays.expected' },
         @{ Name = 'pointers'; Source = 'tests/x86/pointers.kmy'; Expected = 'tests/x86/pointers.expected' },
         @{ Name = 'pointers_nasty'; Source = 'tests/x86/pointers_nasty.kmy'; Expected = 'tests/x86/pointers_nasty.expected' },
+        @{ Name = 'increment_decrement'; Source = 'tests/x86/increment_decrement.kmy'; Expected = 'tests/x86/increment_decrement.expected' },
         @{ Name = 'malloc'; Source = 'tests/x86/malloc.kmy'; Expected = 'tests/x86/malloc.expected' },
         @{ Name = 'malloc_shadow'; Source = 'tests/x86/malloc_shadow.kmy'; Expected = 'tests/x86/malloc_shadow.expected' },
         @{ Name = 'dynamic_array'; Source = 'Examples/DynamicArray.kmy'; Expected = 'tests/x86/dynamic_array.expected' },
@@ -144,6 +145,11 @@ try {
         @{ Name = 'file_io'; Source = 'Examples/FileIO.kmy'; Expected = 'tests/x86/file_io.expected' },
         @{ Name = 'enum_x86'; Source = 'Examples/EnumX86.kmy'; Expected = 'tests/x86/enum_x86.expected' },
         @{ Name = 'modules'; Source = 'tests/x86/modules/main.kmy'; Expected = 'tests/x86/modules.expected' },
+        @{ Name = 'cross_module_class'; Source = 'tests/x86/modules/cross_class_main.kmy'; Expected = 'tests/x86/cross_module_class.expected' },
+        @{ Name = 'stdlib_collections'; Source = 'tests/stdlib/collections.kmy'; Expected = 'tests/stdlib/collections.expected' },
+        @{ Name = 'stdlib_maps'; Source = 'tests/stdlib/maps.kmy'; Expected = 'tests/stdlib/maps.expected' },
+        @{ Name = 'stdlib_utilities'; Source = 'tests/stdlib/utilities.kmy'; Expected = 'tests/stdlib/utilities.expected' },
+        @{ Name = 'stdlib_smoke'; Source = 'tests/stdlib/smoke.kmy'; Expected = 'tests/stdlib/smoke.expected' },
         @{ Name = 'module_showcase'; Source = 'Examples/ModuleShowcase/main.kmy'; Expected = 'tests/x86/module_showcase.expected' }
     )
 

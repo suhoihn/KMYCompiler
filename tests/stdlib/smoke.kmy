@@ -1,0 +1,49 @@
+// Integration unit test: every import below must compile in one native build.
+import "../../stdlib/core/IntMath.kmy" as math;
+import "../../stdlib/core/Contracts.kmy" as contracts;
+import "../../stdlib/strings/StringUtils.kmy" as strings;
+import "../../stdlib/io/FileUtils.kmy" as files;
+import "../../stdlib/collections/IntArrayList.kmy" as intList;
+import "../../stdlib/collections/StringArrayList.kmy" as stringList;
+import "../../stdlib/collections/IntStack.kmy" as intStack;
+import "../../stdlib/collections/IntQueue.kmy" as intQueue;
+import "../../stdlib/collections/IntDeque.kmy" as intDeque;
+import "../../stdlib/collections/IntLinkedList.kmy" as linked;
+import "../../stdlib/collections/StringStack.kmy" as stringStack;
+import "../../stdlib/collections/StringQueue.kmy" as stringQueue;
+import "../../stdlib/maps/IntIntHashMap.kmy" as intMap;
+import "../../stdlib/maps/StringIntHashMap.kmy" as stringMap;
+import "../../stdlib/maps/IntSet.kmy" as intSet;
+import "../../stdlib/maps/StringSet.kmy" as stringSet;
+import "../../stdlib/algorithms/IntAlgorithms.kmy" as algorithms;
+import "../../stdlib/algorithms/IntStatistics.kmy" as statistics;
+
+print(math::gcd(84, 30));
+print(math::powInt(3, 4));
+print(contracts::capacityFor(5));
+print(strings::stringIndexOf("kmy standard", "stand"));
+print(strings::stringEndsWith("queue", "ue"));
+
+let list: intList::IntArrayList = new intList::IntArrayList();
+let i: int = 0;
+while (i < 8) { list.add(i * 2); i += 1; }
+print(list.length());
+print(list.removeAt(3));
+print(list.get(3));
+
+let words: stringList::StringArrayList = new stringList::StringArrayList();
+words.add("alpha"); words.add("beta"); print(words.indexOf("beta"));
+
+let stack: intStack::IntStack = new intStack::IntStack(); stack.push(7); stack.push(9); print(stack.pop()); print(stack.peek());
+let queue: intQueue::IntQueue = new intQueue::IntQueue(); queue.enqueue(4); queue.enqueue(5); print(queue.dequeue());
+let deque: intDeque::IntDeque = new intDeque::IntDeque(); deque.pushBack(2); deque.pushFront(1); deque.pushBack(3); print(deque.popBack()); print(deque.popFront());
+let nodes: linked::IntLinkedList = new linked::IntLinkedList(); nodes.append(11); nodes.append(12); print(nodes.removeFirst()); print(nodes.first());
+let labels: stringStack::StringStack = new stringStack::StringStack(); labels.push("a"); labels.push("b"); print(labels.pop());
+let events: stringQueue::StringQueue = new stringQueue::StringQueue(); events.enqueue("go"); print(events.dequeue());
+
+let numbers: intMap::IntIntHashMap = new intMap::IntIntHashMap(); numbers.put(-2, 20); numbers.put(6, 60); print(numbers.getOr(-2, -1)); print(numbers.length());
+let names: stringMap::StringIntHashMap = new stringMap::StringIntHashMap(); names.put("kmy", 1); print(names.getOr("kmy", -1));
+let seen: intSet::IntSet = new intSet::IntSet(); print(seen.add(4)); print(seen.add(4));
+let tags: stringSet::StringSet = new stringSet::StringSet(); tags.add("x"); print(tags.contains("x"));
+
+let raw: int[] = [5, 1, 4, 2, 3]; algorithms::bubbleSort(raw, 5); print(algorithms::binarySearch(raw, 5, 4)); print(algorithms::sum(raw, 5)); print(statistics::average(raw, 5));

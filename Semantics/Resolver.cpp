@@ -284,7 +284,15 @@ void Resolver::visit(BinaryExpr& e) {
 
 void Resolver::visit(UnaryExpr& e) {
     e.operand->accept(*this);
-
+    if (e.op == UnaryOp::PreIncrement || e.op == UnaryOp::PreDecrement ||
+        e.op == UnaryOp::PostIncrement || e.op == UnaryOp::PostDecrement) {
+        if (!e.operand->isLValue()) {
+            if (e.operand->type != &Types::INT_TYPE) {
+                throw KMYCompileError("Increment/decrement operator requires an int operand for now..... ");
+            }
+            throw KMYCompileError("Increment/decrement operator requires an lvalue operand.");
+        }
+    }
     if (e.op == UnaryOp::ForceUnwrap) {
         if (!e.operand->type || e.operand->type->kind != TypeKind::NULLABLE)
             throw KMYCompileError("!! requires a nullable operand.");
@@ -689,17 +697,15 @@ void Resolver::visit(FunctionExpr& e) {
 }
 
 void Resolver::visit(ThisExpr& e) {
-    // In pass 2.
-    /*
     if (!currentThis) {
-        throw KMYCompileError("\"this\" used outside of method... :(");
+        throw KMYCompileError("\"this\" used outside of an aggregate member.");
     }
-    std::cout << "this symbol=" << currentThis
-              << " type=" << static_cast<InstanceType*>(currentThis->type)->name << '\n';
 
+    // Resolver must establish this again instead of assuming the previous
+    // declaration-type pass left a usable type on this exact AST node.
+    // Get/assignment resolution immediately dereferences its receiver type.
     e.symbol = currentThis;
     e.type = currentThis->type;
-    */
 }
 
 void Resolver::visit(NewExpr& e) {

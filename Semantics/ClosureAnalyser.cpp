@@ -370,13 +370,20 @@ void ClosureAnalyser::visit(Aggregate& s) {
 
     for (auto& method : s.methodMembers) {
         method.methodExpr->accept(*this);
+        // The symbol is shared by all importing modules, unlike an IRBuilder
+        // instance.  Preserve the emitted native label on that symbol.
+        method.symbol->nativeFunctionId = method.methodExpr->functionId;
     }
 
     for (auto& method : s.constructorMembers) {
+        method.initFuncExpr->isConstructor = true;
         method.initFuncExpr->accept(*this);
+        method.symbol->nativeFunctionId = method.initFuncExpr->functionId;
     }
 
     s.fieldInitFunc->accept(*this);
+    auto* aggregateType = static_cast<InstanceType*>(s.typeSymbol->type);
+    aggregateType->fieldInitializerFunctionId = s.fieldInitFunc->functionId;
 
     s.fieldCount = offset;
     std::cout << "member check done" << std::endl;

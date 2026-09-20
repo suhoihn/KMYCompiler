@@ -1,0 +1,52 @@
+fun binarySearch(values: int[], length: int, target: int): int {
+    let low: int = 0;
+    let high: int = length - 1;
+    while (low <= high) {
+        let mid: int = low + (high - low) / 2;
+        if (values[mid] == target) {
+            return mid;
+        }
+        if (values[mid] < target) {
+            low = mid + 1;
+        }
+        else {
+            high = mid - 1;
+        }
+    }
+    return -1;
+}
+fun bubbleSort(values: int[], length: int) {
+    let end: int = length - 1;
+    while (end > 0) {
+        let i: int = 0;
+        while (i < end) {
+            if (values[i] > values[i + 1]) {
+                let swap: int = values[i];
+                values[i] = values[i + 1];
+                values[i + 1] = swap;
+            }
+            i += 1;
+        }
+        end -= 1;
+    }
+}
+fun sum(values: int[], length: int): int {
+    let result: int = 0;
+    let i: int = 0;
+    while (i < length) {
+        result += values[i];
+        i += 1;
+    }
+    return result;
+}
+fun countEven(values: int[], length: int): int {
+    let result: int = 0;
+    let i: int = 0;
+    while (i < length) {
+        if (values[i] % 2 == 0) {
+            result += 1;
+        }
+        i += 1;
+    }
+    return result;
+}

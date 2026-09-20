@@ -1,0 +1,13 @@
+import "../../stdlib/collections/IntArrayList.kmy" as list;
+import "../../stdlib/collections/IntStack.kmy" as stack;
+import "../../stdlib/collections/IntQueue.kmy" as queue;
+import "../../stdlib/collections/IntDeque.kmy" as deque;
+import "../../stdlib/collections/IntLinkedList.kmy" as linked;
+
+let values: list::IntArrayList = new list::IntArrayList();
+let i: int = 0; while (i < 6) { values.add(i); i += 1; }
+print(values.removeAt(2)); print(values.get(2)); print(values.length());
+let top: stack::IntStack = new stack::IntStack(); top.push(7); top.push(9); print(top.pop()); print(top.peek());
+let fifo: queue::IntQueue = new queue::IntQueue(); fifo.enqueue(4); fifo.enqueue(5); print(fifo.dequeue());
+let both: deque::IntDeque = new deque::IntDeque(); both.pushBack(2); both.pushFront(1); print(both.popBack()); print(both.popFront());
+let chain: linked::IntLinkedList = new linked::IntLinkedList(); chain.append(11); chain.append(12); print(chain.removeFirst()); print(chain.first());

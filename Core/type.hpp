@@ -199,6 +199,12 @@ struct InstanceType : Type {
     std::unordered_map<std::string, VarSymbol*> methodMap;
     std::vector<VarSymbol*> constructorVec;
     std::unordered_map<std::string, TypeSymbol*> enumMap;
+
+    // Native code generation metadata.  These are assigned once by closure
+    // analysis, then remain usable when another module constructs this type.
+    FunctionType* fieldInitializerType = nullptr;
+    // `type.hpp` is included before Ast.hpp declares INVALID_SLOT.
+    int fieldInitializerFunctionId = -1;
     std::string name = "<UNDEFINED>"; // Purely for debug. trust me.
 
     InstanceType() : Type(TypeKind::INSTANCE) {}

@@ -13,6 +13,8 @@ enum class TokenType {
     // Arithmetic Operators
     Plus,
     Minus,
+    PlusPlus,   // ++
+    MinusMinus, // --
     Star,
     Slash,
     Percent,

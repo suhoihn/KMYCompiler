@@ -1,0 +1,65 @@
+class StringIntHashMap {
+    let keys: string[] = new string[8];
+    let values: int[] = new int[8];
+    let states: int[] = new int[8];
+    let capacity: int = 8;
+    let size: int = 0;
+    init() {
+    }
+    fun hash(key: string): int {
+        let result: int = 0;
+        let i: int = 0;
+        while (i < strlen(key)) {
+            result = (result * 31 + strByteAt(key, i)) % this.capacity;
+            i += 1;
+        }
+        return result;
+    }
+    fun find(key: string): int {
+        let index: int = this.hash(key);
+        let probes: int = 0;
+        while (probes < this.capacity) {
+            if (this.states[index] == 0) {
+                return -1;
+            }
+            if (this.states[index] == 1 && streq(this.keys[index], key)) {
+                return index;
+            }
+            index = (index + 1) % this.capacity;
+            probes += 1;
+        }
+        return -1;
+    }
+    fun put(key: string, value: int): bool {
+        let existing: int = this.find(key);
+        if (existing != -1) {
+            this.values[existing] = value;
+            return false;
+        }
+        if ((this.size + 1) * 10 >= this.capacity * 7) {
+            return false;
+        }
+        let index: int = this.hash(key);
+        while (this.states[index] == 1) {
+            index = (index + 1) % this.capacity;
+        }
+        this.keys[index] = key;
+        this.values[index] = value;
+        this.states[index] = 1;
+        this.size += 1;
+        return true;
+    }
+    fun getOr(key: string, fallback: int): int {
+        let index: int = this.find(key);
+        if (index == -1) {
+            return fallback;
+        }
+        return this.values[index];
+    }
+    fun contains(key: string): bool {
+        return this.find(key) != -1;
+    }
+    fun length(): int {
+        return this.size;
+    }
+};

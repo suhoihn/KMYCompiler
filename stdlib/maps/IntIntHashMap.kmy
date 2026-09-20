@@ -1,0 +1,81 @@
+class IntIntHashMap {
+    let keys: int[] = new int[8];
+    let values: int[] = new int[8];
+    let states: int[] = new int[8];
+    let capacity: int = 8;
+    let size: int = 0;
+    init() {
+    }
+    fun hash(key: int): int {
+        let value: int = key % this.capacity;
+        if (value < 0) {
+            value += this.capacity;
+        }
+        return value;
+    }
+    fun find(key: int): int {
+        let index: int = this.hash(key);
+        let probes: int = 0;
+        while (probes < this.capacity) {
+            if (this.states[index] == 0) {
+                return -1;
+            }
+            if (this.states[index] == 1 && this.keys[index] == key) {
+                return index;
+            }
+            index = (index + 1) % this.capacity;
+            probes += 1;
+        }
+        return -1;
+    }
+    fun rehash(newCapacity: int) {
+        let oldKeys: int[] = this.keys;
+        let oldValues: int[] = this.values;
+        let oldStates: int[] = this.states;
+        let oldCapacity: int = this.capacity;
+        this.keys = new int[newCapacity];
+        this.values = new int[newCapacity];
+        this.states = new int[newCapacity];
+        this.capacity = newCapacity;
+        this.size = 0;
+        let i: int = 0;
+        while (i < oldCapacity) {
+            if (oldStates[i] == 1) {
+                this.put(oldKeys[i], oldValues[i]);
+            }
+            i += 1;
+        }
+    }
+    fun put(key: int, value: int): bool {
+        let existing: int = this.find(key);
+        if (existing != -1) {
+            this.values[existing] = value;
+            return false;
+        }
+        if ((this.size + 1) * 10 >= this.capacity * 7) {
+            this.rehash(this.capacity * 2);
+        }
+        let index: int = this.hash(key);
+        while (this.states[index] == 1) {
+            index = (index + 1) % this.capacity;
+        }
+        this.keys[index] = key;
+        this.values[index] = value;
+        this.states[index] = 1;
+        this.size += 1;
+        return true;
+    }
+    fun getOr(key: int, fallback: int): int {
+        let index: int = this.find(key);
+        if (index == -1) {
+            return fallback;
+        }
+        return this.values[index];
+    }
+    fun contains(key: int): bool {
+        return this.find(key) != -1;
+    }
+    fun length(): int {
+        return this.size;
+    }
+};

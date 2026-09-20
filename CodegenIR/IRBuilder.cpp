@@ -479,7 +479,140 @@ void IRBuilder::visit(BinaryExpr& e) {
 }
 
 void IRBuilder::visit(UnaryExpr& e) {
-    if (e.op == UnaryOp::AddressOf) {
+    // Increment/decrement are read-modify-write expressions.  The lvalue
+    // address/identity must be evaluated once: `values[nextIndex()]++` must
+    // call nextIndex() once, then load and store that same array element.
+    auto lowerIntMutation = [&](IROp arithmetic, bool returnsOldValue) {
+        if (!e.operand->isLValue()) {
+            throw KMYCompileError("Increment/decrement operator requires an lvalue operand.");
+        }
+
+        auto makeUpdatedValue = [&](HIROperand oldValue) {
+            IRValue one = makeValue(&Types::INT_TYPE);
+            emit({ .op = IROp::CONST_INT, .dst = one, .imm = 1 });
+
+            IRValue updated = makeValue(e.type);
+            emit({ .op = arithmetic, .dst = updated, .args = { oldValue, one } });
+            return updated;
+        };
+
+        // Variable destination: the storage can be an SSA local, heap cell,
+        // upvalue cell, or persistent module-global slot.
+        if (e.operand->kind == ExprKind::Variable) {
+            auto variable = std::static_pointer_cast<Variable>(e.operand);
+            if (!variable->symbol->isMutable) {
+                throw KMYCompileError("Increment/decrement of constant variable \"" + variable->name + "\"");
+            }
+
+            variable->accept(*this);
+            HIROperand oldValue = getLastValue();
+            IRValue updated = makeUpdatedValue(oldValue);
+
+            if (variable->symbol->isModuleGlobal) {
+                emit({
+                    .op = IROp::STORE_GLOBAL,
+                    .args = { updated },
+                    .imm = variable->symbol->moduleGlobalSlot
+                });
+            } else if (auto upvalue = currCtx->upvalues.find(variable->symbol);
+                       upvalue != currCtx->upvalues.end()) {
+                emit({ .op = IROp::STORE_CELL, .args = { upvalue->second, updated } });
+            } else {
+                // Ordinary locals are represented by SSA definitions, not by
+                // currCtx->locals storage. Do not use that map to decide how
+                // to write: rebinding is the local write operation.
+                bindLocalDefinition(variable->symbol, updated);
+            }
+
+            setLastValue(returnsOldValue ? oldValue : HIROperand{updated});
+            return;
+        }
+
+        // Field destination: retain the evaluated receiver before loading,
+        // updating, and storing its field at the known byte offset.
+        if (e.operand->kind == ExprKind::Get) {
+            auto get = std::static_pointer_cast<Get>(e.operand);
+            if (get->resolvedMethod || get->obj->type->kind != TypeKind::INSTANCE) {
+                throw KMYCompileError("Increment/decrement requires a mutable instance field.");
+            }
+            auto* instanceType = static_cast<InstanceType*>(get->obj->type);
+            auto field = instanceType->fieldMap.find(get->name);
+            if (field == instanceType->fieldMap.end() || !field->second->isMutable) {
+                throw KMYCompileError("Increment/decrement of constant or unknown field \"" + get->name + "\"");
+            }
+
+            get->obj->accept(*this);
+            HIROperand object = getLastValue();
+            IRValue oldValue = makeValue(e.type);
+            emit({ .op = IROp::LOAD_FIELD, .dst = oldValue, .args = { object },
+                   .imm = static_cast<int64_t>(get->fieldIdx) * 8 });
+            IRValue updated = makeUpdatedValue(oldValue);
+            emit({ .op = IROp::STORE_FIELD, .args = { object, updated },
+                   .imm = static_cast<int64_t>(get->fieldIdx) * 8 });
+            setLastValue(returnsOldValue ? HIROperand{oldValue} : HIROperand{updated});
+            return;
+        }
+
+        // Indexed destination: retain both array and index before the load so
+        // a side-effecting index expression is never evaluated a second time.
+        if (e.operand->kind == ExprKind::Index) {
+            auto indexExpr = std::static_pointer_cast<Index>(e.operand);
+            auto* arrayType = static_cast<ArrayType*>(indexExpr->obj->type);
+            size_t elementSize = TypeLayout::sizeOf(arrayType->elementType);
+            if (elementSize != PTR_SIZE) {
+                throw KMYCompileError("Native array elements must fit in one machine word.");
+            }
+
+            indexExpr->obj->accept(*this);
+            HIROperand array = getLastValue();
+            indexExpr->index->accept(*this);
+            HIROperand index = getLastValue();
+            IRValue oldValue = makeValue(e.type);
+            emit({ .op = IROp::LOAD_ARRAY_INDEX, .dst = oldValue, .args = { array, index },
+                   .imm = static_cast<int64_t>(elementSize) });
+            IRValue updated = makeUpdatedValue(oldValue);
+            emit({ .op = IROp::STORE_ARRAY_INDEX, .args = { array, index, updated },
+                   .imm = static_cast<int64_t>(elementSize) });
+            setLastValue(returnsOldValue ? HIROperand{oldValue} : HIROperand{updated});
+            return;
+        }
+
+        // Dereferenced destination: evaluate the pointer once, then perform
+        // the read-modify-write sequence through that same pointer.
+        if (e.operand->kind == ExprKind::UnaryExpr) {
+            auto dereference = std::static_pointer_cast<UnaryExpr>(e.operand);
+            if (dereference->op == UnaryOp::Dereference) {
+                dereference->operand->accept(*this);
+                HIROperand pointer = getLastValue();
+                IRValue oldValue = makeValue(e.type);
+                emit({ .op = IROp::LOAD_INDIRECT, .dst = oldValue, .args = { pointer } });
+                IRValue updated = makeUpdatedValue(oldValue);
+                emit({ .op = IROp::STORE_INDIRECT, .args = { pointer, updated } });
+                setLastValue(returnsOldValue ? HIROperand{oldValue} : HIROperand{updated});
+                return;
+            }
+        }
+
+        throw KMYCompileError("Unsupported increment/decrement lvalue.");
+    };
+
+    if (e.op == UnaryOp::PreIncrement) {
+        // ++x: mutate x, then the expression yields the new value.
+        lowerIntMutation(IROp::ADD, false);
+        return;
+    } else if (e.op == UnaryOp::PreDecrement) {
+        // --x: mutate x, then the expression yields the new value.
+        lowerIntMutation(IROp::SUB, false);
+        return;
+    } else if (e.op == UnaryOp::PostIncrement) {
+        // x++: mutate x, but the expression yields its old value.
+        lowerIntMutation(IROp::ADD, true);
+        return;
+    } else if (e.op == UnaryOp::PostDecrement) {
+        // x--: mutate x, but the expression yields its old value.
+        lowerIntMutation(IROp::SUB, true);
+        return;
+    } else if (e.op == UnaryOp::AddressOf) {
         // Taking the address must not first load the lvalue's value.
         if (e.operand->kind == ExprKind::Variable) {
             auto var = std::static_pointer_cast<Variable>(e.operand);
@@ -961,9 +1094,8 @@ void IRBuilder::visit(Get& e) {
         if (methodIt == instanceType->methodMap.end()) {
             throw KMYCompileError("Method metadata missing for native codegen.");
         }
-        auto fnIt = methodFunctions.find(methodIt->second);
-        if (fnIt == methodFunctions.end()) {
-            throw KMYCompileError("Method prototype missing for native codegen.");
+        if (methodIt->second->nativeFunctionId == INVALID_SLOT) {
+            throw KMYCompileError("Method native function label missing for native codegen.");
         }
 
         IRValue closure = makeValue(e.type);
@@ -981,7 +1113,7 @@ void IRBuilder::visit(Get& e) {
             .op = IROp::FUNC_LABEL,
             .dst = closure,
             .args = { env },
-            .imm = fnIt->second->functionId
+            .imm = methodIt->second->nativeFunctionId
         });
         setLastValue(closure);
         return;
@@ -1439,16 +1571,7 @@ void IRBuilder::visit(FunctionExpr& e) {
 
     // implicit return
     if (!hasTerminator(currCtx->currBlock)) {
-        bool isConstructor = false;
-        for (const auto& [symbol, fn] : constructorFunctions) {
-            (void)symbol;
-            if (fn == &e) {
-                isConstructor = true;
-                break;
-            }
-        }
-
-        if (isConstructor && !e.params.empty()) {
+        if (e.isConstructor && !e.params.empty()) {
             currCtx->currBlock->term = ReturnTerm{
                 currCtx->locals.at(e.params[0].symbol).value
             };
@@ -1560,8 +1683,11 @@ void IRBuilder::visit(NewExpr& e) {
     //     });
     // }
 
-    auto emitClosure = [&](FunctionExpr* fn) {
-        IRValue closure = makeValue(fn->type);
+    auto emitClosure = [&](Type* functionType, int functionId) {
+        if (functionId == INVALID_SLOT) {
+            throw KMYCompileError("Native function label missing for aggregate construction.");
+        }
+        IRValue closure = makeValue(functionType);
         HIROperand env;
         if (currCtx->env.has_value()) {
             env = currCtx->env.value();
@@ -1574,16 +1700,19 @@ void IRBuilder::visit(NewExpr& e) {
             .op = IROp::FUNC_LABEL,
             .dst = closure,
             .args = { env },
-            .imm = fn->functionId
+            .imm = functionId
         });
         return closure;
     };
 
-    auto fieldInitIt = fieldInitFunctions.find(instanceType);
-    if (fieldInitIt == fieldInitFunctions.end()) {
+    if (!instanceType->fieldInitializerType ||
+        instanceType->fieldInitializerFunctionId == INVALID_SLOT) {
         throw KMYCompileError("Field initializer prototype missing for native codegen.");
     }
-    IRValue fieldInit = emitClosure(fieldInitIt->second);
+    IRValue fieldInit = emitClosure(
+        instanceType->fieldInitializerType,
+        instanceType->fieldInitializerFunctionId
+    );
     IRValue fieldInitResult = makeValue(&Types::VOID_TYPE);
     emit({
         .op = IROp::CALL,
@@ -1591,13 +1720,12 @@ void IRBuilder::visit(NewExpr& e) {
         .args = { fieldInit, object }
     });
 
-    FunctionExpr* constructor = nullptr;
+    VarSymbol* constructor = nullptr;
     for (auto* constructorSymbol : instanceType->constructorVec) {
         auto* fnType = static_cast<FunctionType*>(constructorSymbol->type);
         if (fnType->paramTypes.size() == e.args.size() + 1) {
-            auto it = constructorFunctions.find(constructorSymbol);
-            if (it != constructorFunctions.end()) {
-                constructor = it->second;
+            if (constructorSymbol->nativeFunctionId != INVALID_SLOT) {
+                constructor = constructorSymbol;
                 break;
             }
         }
@@ -1606,7 +1734,10 @@ void IRBuilder::visit(NewExpr& e) {
         throw KMYCompileError("Cannot find a constructor matching native new expression.");
     }
 
-    IRValue constructorClosure = emitClosure(constructor);
+    IRValue constructorClosure = emitClosure(
+        constructor->type,
+        constructor->nativeFunctionId
+    );
     std::vector<HIROperand> callArgs = { constructorClosure, object };
     for (auto& arg : e.args) {
         arg->accept(*this);
@@ -1966,19 +2097,11 @@ void IRBuilder::visit(Aggregate& s) {
     bool oldMemberMode = compilingAggregateMember;
     compilingAggregateMember = true;
 
-    // Register every method prototype before lowering any method body.
-    // A parser method such as primary() may call expression(), even when
-    // expression() is declared later in the class.
-    for (auto& method : s.methodMembers) {
-        methodFunctions[method.symbol] = method.methodExpr.get();
-    }
     for (auto& method : s.methodMembers) {
         method.methodExpr->accept(*this);
     }
-    fieldInitFunctions[static_cast<InstanceType*>(s.typeSymbol->type)] = s.fieldInitFunc.get();
     s.fieldInitFunc->accept(*this);
     for (auto& constructor : s.constructorMembers) {
-        constructorFunctions[constructor.symbol] = constructor.initFuncExpr.get();
         constructor.initFuncExpr->accept(*this);
     }
 

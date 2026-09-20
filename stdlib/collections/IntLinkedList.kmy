@@ -1,0 +1,49 @@
+class IntListNode {
+    let value: int = 0;
+    let next: IntListNode? = null;
+    init(value: int) {
+        this.value = value;
+    }
+};
+class IntLinkedList {
+    let head: IntListNode? = null;
+    let tail: IntListNode? = null;
+    let size: int = 0;
+    init() {
+    }
+    fun append(value: int) {
+        let node: IntListNode = new IntListNode(value);
+        if (this.tail) {
+            this.tail!!.next = node;
+        }
+        else {
+            this.head = node;
+        }
+        this.tail = node;
+        this.size += 1;
+    }
+    fun removeFirst(): int {
+        if (this.size == 0) {
+            return -1;
+        }
+        let node: IntListNode = this.head!!;
+        this.head = node.next;
+        this.size -= 1;
+        if (this.size == 0) {
+            this.tail = null;
+        }
+        return node.value;
+    }
+    fun first(): int {
+        if (this.head) {
+            return this.head!!.value;
+        }
+        return -1;
+    }
+    fun length(): int {
+        return this.size;
+    }
+    fun isEmpty(): bool {
+        return this.size == 0;
+    }
+};

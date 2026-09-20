@@ -586,6 +586,8 @@ int Parser::get_binding_power(TokenType type) {
         case TokenType::LeftBracket:
         case TokenType::Dot:
         case TokenType::ForceUnwrap:
+        case TokenType::PlusPlus:
+        case TokenType::MinusMinus:
             return BP_POSTFIX;
 
         default:
@@ -734,6 +736,10 @@ return left
 ExprPtr Parser::parse_expression(int minBP) {
     ExprPtr left = parse_prefix();
 
+    // Accept operators at least as strong as minBP. A stronger operator is
+    // consumed by the recursive RHS; a weaker one breaks for the caller.
+    // Equal precedence stays here for left-associative ops, but belongs to
+    // the RHS for right-associative assignments.
     while (true) {
         TokenType op = peek().type;
         int bp = get_binding_power(op);
@@ -749,7 +755,8 @@ ExprPtr Parser::parse_expression(int minBP) {
 
         advance();
 
-        // Call
+        // This part is postfix parsing, which parses stuff right after the left expression,
+        // which are basically postfix operators ((), [], ., !!, ++, --)
         if (op == TokenType::LeftParen) {
             left = finishCall(std::move(left));
             continue;
@@ -772,6 +779,16 @@ ExprPtr Parser::parse_expression(int minBP) {
 
         if (op == TokenType::ForceUnwrap) {
             left = std::make_shared<UnaryExpr>(UnaryOp::ForceUnwrap, std::move(left));
+            continue;
+        }
+
+        if (op == TokenType::PlusPlus || op == TokenType::MinusMinus) {
+            left = std::make_shared<UnaryExpr>(
+                op == TokenType::PlusPlus
+                    ? UnaryOp::PostIncrement
+                    : UnaryOp::PostDecrement,
+                std::move(left)
+            );
             continue;
         }
 
@@ -925,11 +942,20 @@ ExprPtr Parser::parse_prefix() {
         case TokenType::Bang:
         case TokenType::BitNot: // ~
         case TokenType::BitAnd: // &
-        case TokenType::Star: { // *
+        case TokenType::Star: {
             ExprPtr right = parse_expression(BP_UNARY);
             return std::make_shared<UnaryExpr>(toUnaryOp(tok.type), std::move(right));
         }
-
+        case TokenType::PlusPlus: {
+            // Prefix increment: ++x
+            ExprPtr right = parse_expression(BP_UNARY);
+            return std::make_shared<UnaryExpr>(UnaryOp::PreIncrement, std::move(right));
+        }
+        case TokenType::MinusMinus: {
+            // Prefix decrement: --x
+            ExprPtr right = parse_expression(BP_UNARY);
+            return std::make_shared<UnaryExpr>(UnaryOp::PreDecrement, std::move(right));
+        }
         default:
             throw KMYParseError("Unexpected token in expression", tok.line, tok.startIdx, tok.endIdx);
     }

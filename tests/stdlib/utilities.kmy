@@ -1,0 +1,9 @@
+import "../../stdlib/core/IntMath.kmy" as math;
+import "../../stdlib/core/Contracts.kmy" as contracts;
+import "../../stdlib/strings/StringUtils.kmy" as strings;
+import "../../stdlib/algorithms/IntAlgorithms.kmy" as algorithms;
+import "../../stdlib/algorithms/IntStatistics.kmy" as stats;
+
+print(math::gcd(84, 30)); print(math::powInt(3, 4)); print(contracts::capacityFor(5));
+print(strings::stringIndexOf("kmy standard", "stand")); print(strings::stringEndsWith("queue", "ue"));
+let raw: int[] = [5, 1, 4, 2, 3]; algorithms::bubbleSort(raw, 5); print(algorithms::binarySearch(raw, 5, 4)); print(algorithms::sum(raw, 5)); print(stats::average(raw, 5));

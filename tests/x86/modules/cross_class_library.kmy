@@ -1,0 +1,14 @@
+// Kept deliberately small: this isolates imported aggregate construction from
+// unrelated aggregate/array stress cases in the example library.
+class Counter {
+    let value: int = 0;
+
+    init(start: int) {
+        this.value = start;
+    }
+
+    fun bump(): int {
+        this.value += 1;
+        return this.value;
+    }
+};

@@ -180,6 +180,7 @@ void DeclTypeResolver::visit(Aggregate& s) {
     currentThis = s.fieldInitFunc->params[0].symbol;
     currentThis->type = currentAggregate;
     s.fieldInitFunc->accept(*this);
+    aggType->fieldInitializerType = static_cast<FunctionType*>(s.fieldInitFunc->type);
 
     currentThis = oldThis;
     currentAggregate = oldAgg;

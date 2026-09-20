@@ -1,0 +1,15 @@
+fun rangeSum(start: int, endExclusive: int): int {
+    let total: int = 0;
+    let value: int = start;
+    while (value < endExclusive) {
+        total += value;
+        value += 1;
+    }
+    return total;
+}
+fun rangeCount(start: int, endExclusive: int): int {
+    if (endExclusive <= start) {
+        return 0;
+    }
+    return endExclusive - start;
+}

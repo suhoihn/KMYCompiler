@@ -121,6 +121,8 @@ constexpr int MAX_SYMBOL_LENGTH = 3;
 static std::unordered_map<std::string, TokenType> symbols = {
     {"+", TokenType::Plus},
     {"-", TokenType::Minus},
+    {"++", TokenType::PlusPlus},
+    {"--", TokenType::MinusMinus},
     {"*", TokenType::Star},
     {"/", TokenType::Slash},
     {"%", TokenType::Percent},

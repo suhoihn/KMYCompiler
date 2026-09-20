@@ -1,5 +1,6 @@
-// Expected native parser rejection: qualified constructor names are not yet
-// accepted after `new`, even though `library::Counter` resolves as a type.
+// Historical focused probe for qualified imported construction. This now
+// parses and resolves; the automated equivalent is tests/x86/modules/
+// cross_class_main.kmy, which keeps its dependency intentionally minimal.
 import "library.kmy" as library;
 
 let counter: library::Counter = new library::Counter(5);

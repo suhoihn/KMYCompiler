@@ -1,0 +1,43 @@
+// Prefix returns the new value; postfix returns the old value.
+let local: int = 5;
+print(++local);
+print(local++);
+print(local);
+print(--local);
+print(local--);
+print(local);
+
+// The write is an SSA definition and must merge correctly after a branch.
+let branchValue: int = 10;
+if (true) {
+    branchValue++;
+} else {
+    branchValue--;
+}
+print(branchValue);
+
+class Counter {
+    let value: int = 0;
+
+    init(start: int) {
+        this.value = start;
+    }
+
+    fun test(): int {
+        let old: int = this.value++;
+        return old * 10 + ++this.value;
+    }
+};
+
+let counter: Counter = new Counter(3);
+print(counter.test());
+
+let values: int[] = [4, 7];
+let index: int = 0;
+print(values[index]++);
+print(values[index]);
+
+let pointer: int* = malloc(8);
+*pointer = 20;
+print((*pointer)--);
+print(*pointer);

@@ -1,0 +1,6 @@
+// The class itself is parsed and compiled in another module.
+import "cross_class_library.kmy" as library;
+
+let counter: library::Counter = new library::Counter(5);
+print(counter.bump());
+print(counter.bump());

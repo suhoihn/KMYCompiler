@@ -1,10 +1,10 @@
 # Native module stress showcase
 
 `main.kmy` intentionally exercises exported globals, functions, closures,
-enums, arrays, and control flow through one import alias. `library.kmy` also
-declares a class. `cross_module_class_not_yet.kmy` is a retained negative probe:
-the parser and resolver now accept `new library::Counter(...)`, but native
-codegen still lacks cross-module constructor/field-initializer lookup.
+enums, arrays, and control flow through one import alias. The focused native
+test `tests/x86/modules/cross_class_main.kmy` constructs and calls
+`library::Counter`, proving that imported aggregate methods, constructors, and
+field initializers use their compilation-wide native labels.
 
 Expected runnable output is checked by `module_showcase` in the native test
 runner. Its imported library includes an enum-backed ArrayList-style class,
@@ -18,5 +18,4 @@ Run with native code generation:
 kmyc Examples/ModuleShowcase/main.kmy -asm -o build/module_showcase.exe
 ```
 
-This is also a compatibility probe: if a cross-module capability is unfinished,
-the compiler error identifies the next native module boundary to implement.
+This is also a compatibility probe for cross-module aggregate construction.

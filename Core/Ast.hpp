@@ -238,6 +238,10 @@ struct FunctionExpr : ExprHelper<FunctionExpr, ExprKind::FunctionExpr> {
     int functionId = INVALID_SLOT; 
     bool isEntry = false;
 
+    // Set for the compiler-generated function behind an aggregate init(...).
+    // Constructors return their implicit `this` when control reaches the end.
+    bool isConstructor = false;
+
     FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType, bool isEntry=false);
 
     // ExprPtr clone() const override;
