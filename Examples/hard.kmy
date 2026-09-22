@@ -18,12 +18,12 @@ fun cube(x) {
     return x * x * x;
 }
 
-let funcs = [fact2, square2, cube];
+var funcs = [fact2, square2, cube];
 
-let k = 0;
+var k = 0;
 
 while (k < 6) {
-    let fn = funcs[k % 3];
+    var fn = funcs[k % 3];
 
     if (k % 3 == 0) {
         print("fact");

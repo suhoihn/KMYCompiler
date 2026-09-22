@@ -1,18 +1,18 @@
 // A small self-hosted KMY lexer. It prints one token per line.
 class TokenBuffer {
-    let kinds: string[] = new string[4];
-    let lexemes: string[] = new string[4];
-    let size: int = 0;
-    let capacity: int = 4;
+    var kinds: string[] = new string[4];
+    var lexemes: string[] = new string[4];
+    var size: int = 0;
+    var capacity: int = 4;
 
     init() {}
 
     fun add(kind: string, lexeme: string) {
         if (this.size >= this.capacity) {
-            let newCapacity: int = this.capacity * 2;
-            let newKinds: string[] = new string[newCapacity];
-            let newLexemes: string[] = new string[newCapacity];
-            let i: int = 0;
+            var newCapacity: int = this.capacity * 2;
+            var newKinds: string[] = new string[newCapacity];
+            var newLexemes: string[] = new string[newCapacity];
+            var i: int = 0;
             while (i < this.size) {
                 newKinds[i] = this.kinds[i];
                 newLexemes[i] = this.lexemes[i];
@@ -28,7 +28,7 @@ class TokenBuffer {
     }
 
     fun dump() {
-        let i: int = 0;
+        var i: int = 0;
         while (i < this.size) {
             print(strconcat(strconcat(this.kinds[i], " "), this.lexemes[i]));
             i += 1;
@@ -37,10 +37,10 @@ class TokenBuffer {
 };
 
 class Lexer {
-    let source: string;
-    let length: int = 0;
-    let position: int = 0;
-    let tokens: TokenBuffer;
+    var source: string;
+    var length: int = 0;
+    var position: int = 0;
+    var tokens: TokenBuffer;
 
     init(input: string) {
         this.source = input;
@@ -63,7 +63,7 @@ class Lexer {
 
     fun keyword(text: string): string {
         if (streq(text, "let")) { return "LET"; }
-        if (streq(text, "const")) { return "CONST"; }
+        if (streq(text, "var")) { return "VAR"; }
         if (streq(text, "fun")) { return "FUN"; }
         if (streq(text, "class")) { return "CLASS"; }
         if (streq(text, "if")) { return "IF"; }
@@ -78,14 +78,14 @@ class Lexer {
     }
 
     fun scanIdentifier() {
-        let start: int = this.position;
+        var start: int = this.position;
         while (this.position < this.length &&
                (this.isLetter(strByteAt(this.source, this.position)) ||
                 this.isDigit(strByteAt(this.source, this.position)))) {
             this.position += 1;
         }
-        let text: string = "";
-        let i: int = start;
+        var text: string = "";
+        var i: int = start;
         while (i < this.position) {
             text = strconcat(text, strFromByte(strByteAt(this.source, i)));
             i += 1;
@@ -94,13 +94,13 @@ class Lexer {
     }
 
     fun scanNumber() {
-        let start: int = this.position;
+        var start: int = this.position;
         while (this.position < this.length &&
                this.isDigit(strByteAt(this.source, this.position))) {
             this.position += 1;
         }
-        let text: string = "";
-        let i: int = start;
+        var text: string = "";
+        var i: int = start;
         while (i < this.position) {
             text = strconcat(text, strFromByte(strByteAt(this.source, i)));
             i += 1;
@@ -110,7 +110,7 @@ class Lexer {
 
     fun scan() {
         while (this.position < this.length) {
-            let value: int = strByteAt(this.source, this.position);
+            var value: int = strByteAt(this.source, this.position);
 
             if (value == 32 || value == 9 || value == 10 || value == 13) {
                 this.position += 1;
@@ -197,13 +197,13 @@ class Lexer {
 // Public module entry point. `SelfHosting/main.kmy` imports this file and
 // calls `lexer::lexFile(path)` without needing to expose Lexer itself.
 fun lexFile(path: string) {
-    let lexer: Lexer = new Lexer(readFile(path));
+    var lexer: Lexer = new Lexer(readFile(path));
     lexer.scan();
     lexer.dump();
 }
 
-let path: string = "build/kmy_lexer_input.kmy";
-let sample: string = "let total = 3 + 4; // comment
+var path: string = "build/kmy_lexer_input.kmy";
+var sample: string = "let total = 3 + 4; // comment
 if (total >= 7) { return total; }";
 writeFile(path, sample);
 lexFile(path);

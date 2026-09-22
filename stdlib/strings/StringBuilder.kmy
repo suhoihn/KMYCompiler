@@ -1,5 +1,5 @@
 class StringBuilder {
-    let value: string = "";
+    var value: string = "";
     init() {
     }
     fun append(part: string) {

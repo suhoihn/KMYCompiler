@@ -5,14 +5,14 @@ enum Signal {
     ERROR
 };
 
-let answer: int = 42;
+var answer: int = 42;
 
 fun triple(value: int): int {
     return value * 3;
 }
 
 fun makeStepper(start: int): () -> int {
-    let state: int = start;
+    var state: int = start;
     return fun(): int {
         state += 2;
         return state;
@@ -20,7 +20,7 @@ fun makeStepper(start: int): () -> int {
 }
 
 class Counter {
-    let value: int = 0;
+    var value: int = 0;
 
     init(start: int) {
         this.value = start;
@@ -36,8 +36,8 @@ class Counter {
 // that imported functions can exercise aggregate/array/method machinery even
 // before cross-module `new library::Counter()` codegen is completed.
 class SignalList {
-    let values: Signal[] = new Signal[8];
-    let count: int = 0;
+    var values: Signal[] = new Signal[8];
+    var count: int = 0;
 
     init() {}
 
@@ -49,8 +49,8 @@ class SignalList {
     }
 
     fun score(): int {
-        let total: int = 0;
-        let index: int = 0;
+        var total: int = 0;
+        var index: int = 0;
         while (index < this.count) {
             if (this.values[index] == Signal::ERROR) {
                 total += 20;
@@ -66,17 +66,17 @@ class SignalList {
 };
 
 fun runAggregateStress(): int {
-    let signals: SignalList = new SignalList();
+    var signals: SignalList = new SignalList();
     signals.add(Signal::LOW);
     signals.add(Signal::HIGH);
     signals.add(Signal::ERROR);
 
-    let counter: Counter = new Counter(3);
+    var counter: Counter = new Counter(3);
     return signals.score() + counter.bump() + counter.bump();
 }
 
 fun runPointerStress(): int {
-    let pointer: int* = malloc(8);
+    var pointer: int* = malloc(8);
     *pointer = 99;
     return *pointer;
 }

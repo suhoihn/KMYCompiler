@@ -2,18 +2,18 @@
 // State 0 = never used, 1 = occupied, 2 = deleted (a tombstone).
 // Deleted slots must not stop a lookup: another colliding key may follow them.
 class StringIntHashMap {
-    let keys: string[] = new string[8];
-    let values: int[] = new int[8];
-    let states: int[] = new int[8];
-    let capacity: int = 8;
-    let size: int = 0;
-    let tombstones: int = 0;
+    var keys: string[] = new string[8];
+    var values: int[] = new int[8];
+    var states: int[] = new int[8];
+    var capacity: int = 8;
+    var size: int = 0;
+    var tombstones: int = 0;
 
     init() {}
 
     fun hash(key: string): int {
-        let result: int = 0;
-        let i: int = 0;
+        var result: int = 0;
+        var i: int = 0;
         while (i < strlen(key)) {
             // Reduce at each byte so ordinary keys do not overflow int.
             result = (result * 31 + strByteAt(key, i)) % this.capacity;
@@ -23,8 +23,8 @@ class StringIntHashMap {
     }
 
     fun findIndex(key: string): int {
-        let index: int = this.hash(key);
-        let probes: int = 0;
+        var index: int = this.hash(key);
+        var probes: int = 0;
         while (probes < this.capacity) {
             if (this.states[index] == 0) { return -1; }
             if (this.states[index] == 1 && streq(this.keys[index], key)) {
@@ -38,8 +38,8 @@ class StringIntHashMap {
 
     // Only called when the key is absent and at least one slot is free.
     fun insertAbsent(key: string, value: int) {
-        let index: int = this.hash(key);
-        let firstDeleted: int = -1;
+        var index: int = this.hash(key);
+        var firstDeleted: int = -1;
         while (this.states[index] != 0) {
             if (firstDeleted == -1 && this.states[index] == 2) {
                 firstDeleted = index;
@@ -57,10 +57,10 @@ class StringIntHashMap {
     }
 
     fun rehash(newCapacity: int) {
-        let oldKeys: string[] = this.keys;
-        let oldValues: int[] = this.values;
-        let oldStates: int[] = this.states;
-        let oldCapacity: int = this.capacity;
+        var oldKeys: string[] = this.keys;
+        var oldValues: int[] = this.values;
+        var oldStates: int[] = this.states;
+        var oldCapacity: int = this.capacity;
         this.keys = new string[newCapacity];
         this.values = new int[newCapacity];
         this.states = new int[newCapacity];
@@ -68,7 +68,7 @@ class StringIntHashMap {
         this.size = 0;
         this.tombstones = 0;
 
-        let i: int = 0;
+        var i: int = 0;
         while (i < oldCapacity) {
             if (oldStates[i] == 1) {
                 this.insertAbsent(oldKeys[i], oldValues[i]);
@@ -80,7 +80,7 @@ class StringIntHashMap {
 
     // Returns true for a new key, false when an existing value was replaced.
     fun put(key: string, value: int): bool {
-        let existing: int = this.findIndex(key);
+        var existing: int = this.findIndex(key);
         if (existing != -1) {
             this.values[existing] = value;
             return false;
@@ -102,13 +102,13 @@ class StringIntHashMap {
     }
 
     fun getOrDefault(key: string, fallback: int): int {
-        let index: int = this.findIndex(key);
+        var index: int = this.findIndex(key);
         if (index == -1) { return fallback; }
         return this.values[index];
     }
 
     fun remove(key: string): bool {
-        let index: int = this.findIndex(key);
+        var index: int = this.findIndex(key);
         if (index == -1) { return false; }
         this.states[index] = 2;
         this.keys[index] = "";
@@ -121,7 +121,7 @@ class StringIntHashMap {
     fun length(): int { return this.size; }
 };
 
-let map: StringIntHashMap = new StringIntHashMap();
+var map: StringIntHashMap = new StringIntHashMap();
 // These keys all hash to bucket 1 at capacity 8.
 print(map.put("a", 10));
 print(map.put("i", 20));
@@ -138,9 +138,9 @@ print(map.getOrDefault("y", -1));
 print(map.getOrDefault("missing", -99));
 
 // Force several growths, then verify both new and old entries survive.
-let i: int = 0;
+var i: int = 0;
 while (i < 40) {
-    let key: string = strconcat("key", strFromByte(65 + i));
+    var key: string = strconcat("key", strFromByte(65 + i));
     map.put(key, i * 3);
     i += 1;
 }

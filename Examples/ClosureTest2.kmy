@@ -13,7 +13,7 @@ print(add(1, 2)); // 3
 // FIRST-CLASS FUNCTION VALUE
 // =====================================================
 
-let f: (int, int) -> int = add;
+var f: (int, int) -> int = add;
 print(f(3, 4)); // 7
 
 
@@ -27,7 +27,7 @@ fun makePrinter(x: int): () -> void {
     };
 }
 
-let p: () -> void = makePrinter(42);
+var p: () -> void = makePrinter(42);
 p();
 
 
@@ -41,7 +41,7 @@ fun makeAdder(x: int): (int) -> int {
     };
 }
 
-let add10: (int) -> int = makeAdder(10);
+var add10: (int) -> int = makeAdder(10);
 print(add10(5));
 
 
@@ -55,7 +55,7 @@ fun makeSum(a: int, b: int): () -> int {
     };
 }
 
-let sum: () -> int = makeSum(3, 7);
+var sum: () -> int = makeSum(3, 7);
 print(sum());
 
 
@@ -67,7 +67,7 @@ print(sum());
 // e.g. () -> (() -> void)
 
 fun outer(): () -> () -> void {
-    let x: int = 100;
+    var x: int = 100;
 
     return fun(): () -> void {
         return fun(): void {
@@ -76,7 +76,7 @@ fun outer(): () -> () -> void {
     };
 }
 
-let mid: () -> void = outer()();
+var mid: () -> void = outer()();
 mid();
 
 
@@ -90,7 +90,7 @@ fun makeMul(x: int): (int) -> int {
     };
 }
 
-let mul3: (int) -> int = makeMul(3);
+var mul3: (int) -> int = makeMul(3);
 print(mul3(7));
 
 
@@ -98,17 +98,17 @@ print(mul3(7));
 // CAPTURE SHADOWING
 // =====================================================
 
-let v: int = 999;
+var v: int = 999;
 
 fun shadowTest(): () -> void {
-    let v: int = 123;
+    var v: int = 123;
 
     return fun(): void {
         print(v);
     };
 }
 
-let s: () -> void = shadowTest();
+var s: () -> void = shadowTest();
 
 s();
 print(v);

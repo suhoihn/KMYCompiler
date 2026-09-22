@@ -1,6 +1,6 @@
-let value: int? = null;
+var value: int? = null;
 value = 3;
-let fallback: int = value ?? 7;
-let required: int = value!!;
+var fallback: int = value ?? 7;
+var required: int = value!!;
 print(fallback);
 print(required);

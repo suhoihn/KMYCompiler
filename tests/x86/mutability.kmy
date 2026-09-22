@@ -1,0 +1,29 @@
+// `let` is immutable; `var` permits rebinding and mutation operators.
+let stable: int = 40;
+var counter: int = 1;
+counter++;
+
+class Box {
+    let fixed: int = 7;
+    var changing: int = 2;
+
+    init() {}
+
+    fun bump() {
+        this.changing++;
+    }
+};
+
+let box: Box = new Box();
+box.bump();
+
+fun incrementParameter(var value: int): int {
+    value++;
+    return value;
+}
+
+print(stable);
+print(counter);
+print(box.fixed);
+print(box.changing);
+print(incrementParameter(9));

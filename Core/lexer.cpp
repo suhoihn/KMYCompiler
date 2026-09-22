@@ -74,6 +74,7 @@ static std::unordered_map<std::string, TokenType> keywords = {
     {"false", TokenType::KeywordFalse},
     {"null", TokenType::KeywordNull},
     {"let", TokenType::KeywordLet},
+    {"var", TokenType::KeywordVar},
     //{"mut", TokenType::KeywordMut},
     {"const", TokenType::KeywordConst},
     {"fun", TokenType::KeywordFun},

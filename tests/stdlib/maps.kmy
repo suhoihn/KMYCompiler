@@ -3,7 +3,7 @@ import "../../stdlib/maps/StringIntHashMap.kmy" as strings;
 import "../../stdlib/maps/IntSet.kmy" as intSet;
 import "../../stdlib/maps/StringSet.kmy" as stringSet;
 
-let numbers: ints::IntIntHashMap = new ints::IntIntHashMap(); numbers.put(-2, 20); numbers.put(6, 60); print(numbers.getOr(-2, -1)); print(numbers.length());
-let names: strings::StringIntHashMap = new strings::StringIntHashMap(); names.put("kmy", 1); print(names.getOr("kmy", -1));
-let seen: intSet::IntSet = new intSet::IntSet(); print(seen.add(4)); print(seen.add(4));
-let tags: stringSet::StringSet = new stringSet::StringSet(); tags.add("x"); print(tags.contains("x"));
+var numbers: ints::IntIntHashMap = new ints::IntIntHashMap(); numbers.put(-2, 20); numbers.put(6, 60); print(numbers.getOr(-2, -1)); print(numbers.length());
+var names: strings::StringIntHashMap = new strings::StringIntHashMap(); names.put("kmy", 1); print(names.getOr("kmy", -1));
+var seen: intSet::IntSet = new intSet::IntSet(); print(seen.add(4)); print(seen.add(4));
+var tags: stringSet::StringSet = new stringSet::StringSet(); tags.add("x"); print(tags.contains("x"));

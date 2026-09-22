@@ -11,7 +11,7 @@ fun nonNegative(value: int): int {
     return value;
 }
 fun capacityFor(required: int): int {
-    let capacity: int = 4;
+    var capacity: int = 4;
     while (capacity < required) {
         capacity *= 2;
     }

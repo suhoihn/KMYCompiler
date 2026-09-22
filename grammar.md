@@ -10,7 +10,7 @@ program         → statement* EOF
 statement       → block
                 | printStmt | ifStmt | whileStmt | forStmt
                 | breakStmt | continueStmt | returnStmt
-                | letStmt | functionDecl
+                | bindingDecl | functionDecl
                 | classDecl | recordDecl | enumDecl | typealiasDecl
                 | expression ";"
 
@@ -19,12 +19,12 @@ printStmt       → "print" "(" expression ")" ";"
 ifStmt          → "if" "(" expression ")" block ("else" statement)?
 whileStmt       → "while" "(" expression ")" block
 forStmt         → "for" "(" forInit expression? ";" expression? ")" block
-forInit         → ";" | letStmt | expression ";"
+forInit         → ";" | bindingDecl | expression ";"
 breakStmt       → "break" ";"
 continueStmt    → "continue" ";"
 returnStmt      → "return" expression? ";"
 
-letStmt         → "let" "const"? IDENTIFIER (":" type)? ("=" expression)? ";"
+bindingDecl     → ("let" | "var") IDENTIFIER (":" type)? ("=" expression)? ";"
 functionDecl    → "fun" IDENTIFIER "(" parameters? ")" (":" type)? block
 typealiasDecl   → "typealias" IDENTIFIER "=" type ";"
 enumDecl        → "enum" IDENTIFIER "{" enumValues? "}" ";"
@@ -32,17 +32,17 @@ enumValues      → IDENTIFIER ("," IDENTIFIER)*
 
 classDecl       → "class" IDENTIFIER "{" aggregateMember* "}" ";"
 recordDecl      → "record" IDENTIFIER "{" aggregateMember* "}" ";"
-aggregateMember → letStmt | functionDecl | initDecl | enumDecl
+aggregateMember → bindingDecl | functionDecl | initDecl | enumDecl
 initDecl        → "init" "(" parameters? ")" (":" type)? block
 
 parameters      → parameter ("," parameter)*
-parameter       → "const"? IDENTIFIER (":" type)? ("=" expression)?
-                | "const"? "..." IDENTIFIER (":" type)?
+parameter       → "var"? IDENTIFIER (":" type)? ("=" expression)?
+                | "var"? "..." IDENTIFIER (":" type)?
 
 */
 ```
 
-`if`, `while`, and `for` require a block for their main body. `else` calls the general statement parser, so `else if (...) { ... }` works. A variadic parameter must be last, and a parameter without a default cannot follow one with a default. Parameter types are syntactically optional, but later semantic passes currently require explicit types in function signatures. `for` is lowered by the parser into a block plus `while`.
+`let` declares an immutable binding or field; `var` declares a mutable one. Function parameters are immutable unless prefixed with `var`. `if`, `while`, and `for` require a block for their main body. `else` calls the general statement parser, so `else if (...) { ... }` works. A variadic parameter must be last, and a parameter without a default cannot follow one with a default. Parameter types are syntactically optional, but later semantic passes currently require explicit types in function signatures. `for` is lowered by the parser into a block plus `while`.
 
 ```text
 /*

@@ -1,7 +1,7 @@
 // Kept deliberately small: this isolates imported aggregate construction from
 // unrelated aggregate/array stress cases in the example library.
 class Counter {
-    let value: int = 0;
+    var value: int = 0;
 
     init(start: int) {
         this.value = start;

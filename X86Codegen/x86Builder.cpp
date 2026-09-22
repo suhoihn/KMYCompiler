@@ -454,6 +454,16 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             break;
         }
 
+        case MIROp::FREE: {
+            // Pass the raw pointer in Windows x64's first argument register.
+            // C free(NULL) is defined as a no-op, so no explicit null branch.
+            emit("mov rcx, " + loc(instr.args[0]));
+            emit("sub rsp, 32"); // Required Windows x64 shadow space.
+            emit("call free");
+            emit("add rsp, 32");
+            break;
+        }
+
         case MIROp::FORCE_UNWRAP: {
             // `expr!!` is an unchecked programmer assertion. Its semantic
             // type changes from T? to T, but x86 performs only a copy: a null

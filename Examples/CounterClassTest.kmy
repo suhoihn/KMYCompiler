@@ -1,6 +1,6 @@
 class Counter {
-    let name: string;
-    let value: int;
+    var name: string;
+    var value: int;
 
     init(name: string, start: int) {
         print("Constructing " + name);
@@ -18,8 +18,8 @@ class Counter {
     }
 };
 
-let a: Counter = new Counter("A", 10);
-let b: Counter = new Counter("B", 100);
+var a: Counter = new Counter("A", 10);
+var b: Counter = new Counter("B", 100);
 
 print(a.get());
 print(b.get());

@@ -1,8 +1,8 @@
 // Whole-file text I/O. readFile/writeFile close their handles internally.
-let path: string = "build/kmy_file_io.tmp";
-let message: string = "hello from KMY";
+var path: string = "build/kmy_file_io.tmp";
+var message: string = "hello from KMY";
 
 print(writeFile(path, message));
-let loaded: string = readFile(path);
+var loaded: string = readFile(path);
 print(loaded);
 print(strlen(loaded));

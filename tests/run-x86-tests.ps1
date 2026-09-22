@@ -23,6 +23,7 @@ $compilerSources = @(
     'Semantics/MethodLower.cpp',
     'Semantics/SymbolScopeBuilder.cpp',
     'Semantics/Resolver.cpp',
+    'Semantics/ReferenceChecker.cpp',
     'Semantics/ClosureAnalyser.cpp',
     'Semantics/TypeInterner.cpp',
     'Semantics/DeclTypeResolver.cpp',
@@ -131,8 +132,10 @@ try {
         @{ Name = 'pointers'; Source = 'tests/x86/pointers.kmy'; Expected = 'tests/x86/pointers.expected' },
         @{ Name = 'pointers_nasty'; Source = 'tests/x86/pointers_nasty.kmy'; Expected = 'tests/x86/pointers_nasty.expected' },
         @{ Name = 'increment_decrement'; Source = 'tests/x86/increment_decrement.kmy'; Expected = 'tests/x86/increment_decrement.expected' },
+        @{ Name = 'mutability'; Source = 'tests/x86/mutability.kmy'; Expected = 'tests/x86/mutability.expected' },
         @{ Name = 'malloc'; Source = 'tests/x86/malloc.kmy'; Expected = 'tests/x86/malloc.expected' },
         @{ Name = 'malloc_shadow'; Source = 'tests/x86/malloc_shadow.kmy'; Expected = 'tests/x86/malloc_shadow.expected' },
+        @{ Name = 'free'; Source = 'tests/x86/free.kmy'; Expected = 'tests/x86/free.expected' },
         @{ Name = 'dynamic_array'; Source = 'Examples/DynamicArray.kmy'; Expected = 'tests/x86/dynamic_array.expected' },
         @{ Name = 'data_structures'; Source = 'Examples/DataStructures.kmy'; Expected = 'tests/x86/data_structures.expected' },
         @{ Name = 'linked_list'; Source = 'Examples/LinkedList.kmy'; Expected = 'tests/x86/linked_list.expected' },
@@ -210,7 +213,13 @@ try {
 
     $rejectedTests = @(
         @{ Name = 'malloc_wrong_arg'; Source = 'tests/x86/malloc_wrong_arg.kmy'; Diagnostic = 'Argument type mismatch.' },
+        @{ Name = 'free_wrong_arg'; Source = 'tests/x86/free_wrong_arg.kmy'; Diagnostic = 'Argument type mismatch.' },
         @{ Name = 'malloc_opaque_deref'; Source = 'tests/x86/malloc_opaque_deref.kmy'; Diagnostic = 'Cannot dereference any*' }
+        @{ Name = 'immutable_assignment'; Source = 'tests/x86/immutable_assignment.kmy'; Diagnostic = 'immutable binding "answer"' }
+        @{ Name = 'immutable_increment'; Source = 'tests/x86/immutable_increment.kmy'; Diagnostic = 'immutable binding "answer"' }
+        @{ Name = 'immutable_field_assignment'; Source = 'tests/x86/immutable_field_assignment.kmy'; Diagnostic = 'immutable field "value"' }
+        @{ Name = 'immutable_parameter_assignment'; Source = 'tests/x86/immutable_parameter_assignment.kmy'; Diagnostic = 'immutable binding "value"' }
+        @{ Name = 'immutable_without_initializer'; Source = 'tests/x86/immutable_without_initializer.kmy'; Diagnostic = 'requires an initializer' }
     )
     foreach ($test in $rejectedTests) {
         $source = Join-Path $repoRoot $test.Source

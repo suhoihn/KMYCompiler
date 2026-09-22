@@ -1,15 +1,15 @@
 fun concat(a, b, c) {
-    let result = [];
+    var result = [];
 
-    for (let i = 0; i < len(a); i = i + 1) {
+    for (var i = 0; i < len(a); i = i + 1) {
         append(result, a[i]);
     }
 
-    for (let i = 0; i < len(b); i = i + 1) {
+    for (var i = 0; i < len(b); i = i + 1) {
         append(result, b[i]);
     }
 
-    for (let i = 0; i < len(c); i = i + 1) {
+    for (var i = 0; i < len(c); i = i + 1) {
         append(result, c[i]);
     }
 
@@ -22,14 +22,14 @@ fun quicksort(arr) {
         return arr;
     }
 
-    let pivot = arr[0];
+    var pivot = arr[0];
 
-    let less = [];
-    let equal = [];
-    let greater = [];
+    var less = [];
+    var equal = [];
+    var greater = [];
 
     // Partition
-    for (let i = 0; i < len(arr); i = i + 1) {
+    for (var i = 0; i < len(arr); i = i + 1) {
         if (arr[i] < pivot) {
             append(less, arr[i]);
         } else if (arr[i] > pivot) {
@@ -40,17 +40,17 @@ fun quicksort(arr) {
     }
 
     // Recursively sort subarrays
-    let sortedLess = quicksort(less);
-    let sortedGreater = quicksort(greater);
+    var sortedLess = quicksort(less);
+    var sortedGreater = quicksort(greater);
 
     // Return a NEW sorted array
     return concat(sortedLess, equal, sortedGreater);
 }
 
 // --- test ---
-let input = [5, 3, 8, 1, 2, 7, 4, 6];
+var input = [5, 3, 8, 1, 2, 7, 4, 6];
 
-let output = quicksort(input);
+var output = quicksort(input);
 
 print(output);   // [1,2,3,4,5,6,7,8]
 print(input);    // original unchanged (important!)

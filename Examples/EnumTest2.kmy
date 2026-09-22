@@ -35,11 +35,11 @@ class Main {
         MACHO
     };
 
-    let g: Main::Gender;
-    let p: Main::Power;
+    var g: Main::Gender;
+    var p: Main::Power;
 
     // Good note: Supports just Gender
-    init(const g: Gender, const p: Main::Power) {
+    init(g: Gender, p: Main::Power) {
         this.g = g;
         this.p = p;
     }
@@ -47,7 +47,7 @@ class Main {
 
 typealias x = Main;
 
-let i = new Main(Main::Gender::MALE, Main::Power::PYEONGBUM);
+var i = new Main(Main::Gender::MALE, Main::Power::PYEONGBUM);
 print(i);
 
 enum X{a,b,c};

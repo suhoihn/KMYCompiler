@@ -72,7 +72,7 @@
     "keywords": {
       "patterns": [
         {
-          "match": "\\b(if|else|while|for|break|continue|return|let|const|fun|class|init|new|this|record|enum|typealias|import|as|from)\\b",
+          "match": "\\b(if|else|while|for|break|continue|return|let|var|const|fun|class|init|new|this|record|enum|typealias|import|as|from)\\b",
           "name": "keyword.control.kmy"
         }
       ]

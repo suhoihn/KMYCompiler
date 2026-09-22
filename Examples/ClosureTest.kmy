@@ -1,5 +1,5 @@
-let obj = { x: 1, y: 2, z: { nigga: "nigga" } };
-let otherObj = obj;
+var obj = { x: 1, y: 2, z: { nigga: "nigga" } };
+var otherObj = obj;
 
 print(obj.x);
 print(obj.z.nigga);
@@ -13,12 +13,12 @@ fun makeObjCopy(): {x:int, y:int, z:{nigga:any}} {
     return obj; // obj = {x:1 y:2, z: {nigga: "Don't use bad words"}}
 }
 
-let suho = makeObjCopy();
+var suho = makeObjCopy();
 suho.x = 99999;
 suho.z.nigga = { nested: "nested Again?" };
 print(suho);
 
-let anotherSuho = suho;
+var anotherSuho = suho;
 // TODO: suho.z.nigga.nested = "something" -> this fails.
 // Make GET_PROPERTY_DYNAMIC.
 suho.z.nigga = "i modified u";
@@ -28,14 +28,14 @@ print(anotherSuho);
 
 fun main(): (int, int) -> int {
     print("hi");
-    let x: int = 3;
-    let inner = fun(a:int , b:int): int { return a + b + x; };
+    var x: int = 3;
+    var inner = fun(a:int , b:int): int { return a + b + x; };
     return inner;
 }
 
 fun endPrinter(): void { print("bye"); }
 
 print("Do I even run");
-let add = main();
+var add = main();
 print(add);
 print(add(1, 2));

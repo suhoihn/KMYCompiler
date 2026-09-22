@@ -202,7 +202,7 @@ void Compiler::visit(Assignment& e) {
         // Stack: [...] [ value ]
         
         auto var = std::static_pointer_cast<Variable>(e.left);
-        if (!var->symbol->isMutable) {
+        if (!e.isInitialisation && !var->symbol->isMutable) {
             throw KMYCompileError("Assignment to a constant variable \"" + var->name + "\"");
         }
         //assert(var->symbol->isMutable);

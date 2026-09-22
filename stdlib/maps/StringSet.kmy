@@ -1,10 +1,10 @@
 class StringSet {
-    let values: string[] = new string[8];
-    let size: int = 0;
+    var values: string[] = new string[8];
+    var size: int = 0;
     init() {
     }
     fun contains(value: string): bool {
-        let i: int = 0;
+        var i: int = 0;
         while (i < this.size) {
             if (streq(this.values[i], value)) {
                 return true;

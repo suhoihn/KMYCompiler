@@ -88,6 +88,7 @@ const char* tokenTypeName(TokenType type) {
         case TokenType::KeywordFalse: return "KeywordFalse";
         case TokenType::KeywordNull: return "KeywordNull";
         case TokenType::KeywordLet: return "KeywordLet";
+        case TokenType::KeywordVar: return "KeywordVar";
         case TokenType::KeywordConst: return "KeywordConst";
         case TokenType::KeywordFun: return "KeywordFun";
         case TokenType::KeywordReturn: return "KeywordReturn";

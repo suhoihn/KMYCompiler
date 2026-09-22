@@ -68,6 +68,7 @@ enum class TokenType {
     KeywordFalse,
     KeywordNull,
     KeywordLet,
+    KeywordVar,
     KeywordConst,// Old: KeywordMut,
     KeywordFun,
     KeywordReturn,

@@ -1,6 +1,6 @@
 // Native string runtime smoke test.
-let hello: string = "hello";
-let world: string = "world";
+var hello: string = "hello";
+var world: string = "world";
 
 print(hello);
 print(strconcat(hello, " "));

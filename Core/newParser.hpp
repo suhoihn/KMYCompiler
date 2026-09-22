@@ -114,7 +114,9 @@ private:
     StmtPtr parse_block();
     void consumeSemicolon();
     StmtPtr parse_statement();
-    StmtPtr parse_let();
+    // The caller consumes `let` or `var` and tells this shared declaration
+    // parser whether the resulting binding may be reassigned.
+    StmtPtr parse_let(bool isMutable);
     StmtPtr parse_functionDecl(); // "fun f(a,b) {}" form
     StmtPtr parse_for();
     StmtPtr parse_aggregate(AggregateKind kind);

@@ -1,13 +1,13 @@
 class StringStack {
-    let data: string[] = new string[4];
-    let size: int = 0;
-    let capacity: int = 4;
+    var data: string[] = new string[4];
+    var size: int = 0;
+    var capacity: int = 4;
     init() {
     }
     fun push(value: string) {
         if (this.size == this.capacity) {
-            let next: string[] = new string[this.capacity * 2];
-            let i: int = 0;
+            var next: string[] = new string[this.capacity * 2];
+            var i: int = 0;
             while (i < this.size) {
                 next[i] = this.data[i];
                 i += 1;

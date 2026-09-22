@@ -222,7 +222,9 @@ StmtPtr Parser::parse_statement() {
         return std::make_shared<Continue>();
     
     } else if (match(TokenType::KeywordLet)) {
-        return parse_let();
+        return parse_let(false);
+    } else if (match(TokenType::KeywordVar)) {
+        return parse_let(true);
     } else if (match(TokenType::KeywordFun)) {
         return parse_functionDecl();
     } else if (match(TokenType::KeywordReturn)) {
@@ -249,11 +251,10 @@ StmtPtr Parser::parse_statement() {
     }
 }
 
-StmtPtr Parser::parse_let() {
-    // consume(TokenType::KeywordLet, "Expected Let keyword. If this error is thrown in normal var decl, contact KMY");
-
-    bool isMutable = !match(TokenType::KeywordConst);
-
+StmtPtr Parser::parse_let(bool isMutable) {
+    // `let` and `var` share the rest of their grammar. The declaration
+    // keyword was consumed by parse_statement(), parse_for(), or the
+    // aggregate-member parser.
     Token varToken = consume(TokenType::Identifier, "Expected an identifier");
 
     TypeNodePtr type = nullptr;
@@ -308,8 +309,9 @@ StmtPtr Parser::parse_for() {
     if (match(TokenType::Semicolon)) {
         initialiser = nullptr;
     } else if (match(TokenType::KeywordLet)) {
-        // Kinda cheating, but only allowing let statements.
-        initialiser = parse_let(); // This consumes ';'
+        initialiser = parse_let(false); // This consumes ';'
+    } else if (match(TokenType::KeywordVar)) {
+        initialiser = parse_let(true); // This consumes ';'
     } else {
         initialiser = std::make_shared<ExprStmt>(parse_expression());
         consumeSemicolon();
@@ -390,7 +392,7 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
             );
 
         } else if (match(TokenType::KeywordLet)) {
-            std::shared_ptr<Let> letStmt = std::static_pointer_cast<Let>(parse_let());
+            std::shared_ptr<Let> letStmt = std::static_pointer_cast<Let>(parse_let(false));
             /*
             Token name = consume(TokenType::Identifier, "Expected an identifier");
             
@@ -421,16 +423,68 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
             */
 
             if (letStmt->expr) {
+                auto initialisation = std::make_shared<Assignment>(
+                    AssignmentOp::Assign,
+                    std::make_shared<Get>(
+                        std::make_shared<ThisExpr>(),
+                        letStmt->name
+                    ),
+                    std::move(letStmt->expr)
+                );
+                initialisation->isInitialisation = true;
+                initStmts.push_back(std::make_shared<ExprStmt>(std::move(initialisation)));
+            }
+
+            fieldMembers.push_back(
+                FieldMember(
+                    move(letStmt->annotatedType),
+                    letStmt->name,
+                    move(letStmt->expr),
+                    letStmt->isMutable
+                )
+            );
+        } else if (match(TokenType::KeywordVar)) {
+            std::shared_ptr<Let> letStmt = std::static_pointer_cast<Let>(parse_let(true));
+            /*
+            Token name = consume(TokenType::Identifier, "Expected an identifier");
+            
+            TypeNodePtr typeAnnotation = nullptr;
+            if (match(TokenType::Colon)) {
+                typeAnnotation = parse_type();
+            }
+            
+            ExprPtr initExpr = nullptr;
+            if (match(TokenType::Assign)) {
+                initExpr = parse_expression();
+            }
+
+            consumeSemicolon();
+            
+            if (initExpr) {
                 initStmts.push_back(std::make_shared<ExprStmt>(
                     std::make_shared<Assignment>(
                         AssignmentOp::Assign,
                         std::make_shared<Get>(
                             std::make_shared<ThisExpr>(),
-                            letStmt->name
+                            name.lexeme
                         ),
-                        std::move(letStmt->expr)
+                        std::move(initExpr)
                     )
                 ));
+            }
+            */
+
+            if (letStmt->expr) {
+                auto initialisation = std::make_shared<Assignment>(
+                    AssignmentOp::Assign,
+                    std::make_shared<Get>(
+                        std::make_shared<ThisExpr>(),
+                        letStmt->name
+                    ),
+                    std::move(letStmt->expr)
+                );
+                initialisation->isInitialisation = true;
+                initStmts.push_back(std::make_shared<ExprStmt>(std::move(initialisation)));
             }
 
             fieldMembers.push_back(
@@ -459,7 +513,7 @@ StmtPtr Parser::parse_aggregate(AggregateKind kind) {
             );
         } else {
             throw KMYParseError(
-                "Only field declarations (let), method declarations (fun), and enum declarations (enum) are allowed in aggregates... FOR NOW!!!!",
+                "Only field declarations (let/var), method declarations (fun), and enum declarations (enum) are allowed in aggregates... FOR NOW!!!!",
                 peek().line, // This isnt previous().
                 peek().startIdx,
                 peek().endIdx
@@ -1130,7 +1184,7 @@ TypeNodePtr Parser::parse_type(bool parseArraySuffix) {
 /*
 fnExpr → "fun" '(' params? ')' block
 params → param (',' param)*
-param  → "const"? ( ( IDENTIFIER (':' type)? ('=' expression)? ) | "..." IDENTIFIER (':' type)? )
+param  → "var"? ( ( IDENTIFIER (':' type)? ('=' expression)? ) | "..." IDENTIFIER (':' type)? )
 
 fnExpr is more like a lambda function!
 */
@@ -1141,7 +1195,9 @@ ExprPtr Parser::parse_functionExpr() {
     bool defaultSeen = false;
     if (!check(TokenType::RightParen)) {
         do {
-            bool isMutable = !match(TokenType::KeywordConst);
+            // Parameters are immutable bindings unless explicitly introduced
+            // with `var`, matching ordinary let/var declarations.
+            bool isMutable = match(TokenType::KeywordVar);
             if (match(TokenType::Ellipsis)) {
 
                 Token name = consume(TokenType::Identifier, "Expected an identifier");

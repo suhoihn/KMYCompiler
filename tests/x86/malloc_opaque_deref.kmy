@@ -1,2 +1,2 @@
-let p = malloc(8);
+var p = malloc(8);
 print(*p);

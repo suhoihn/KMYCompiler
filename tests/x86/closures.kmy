@@ -1,5 +1,5 @@
 fun makeCounter(start: int): () -> int {
-    let value = start;
+    var value = start;
 
     return fun(): int {
         value += 1;
@@ -8,7 +8,7 @@ fun makeCounter(start: int): () -> int {
 }
 
 fun makeAccumulator(seed: int): () -> int {
-    let state = seed;
+    var state = seed;
 
     fun next(): int {
         state += 5;
@@ -19,7 +19,7 @@ fun makeAccumulator(seed: int): () -> int {
 }
 
 fun makeNestedStepper(start: int): () -> () -> int {
-    let value = start;
+    var value = start;
 
     return fun(): () -> int {
         return fun(): int {
@@ -30,17 +30,17 @@ fun makeNestedStepper(start: int): () -> () -> int {
 }
 
 fun main(): int {
-    let first = makeCounter(10);
-    let second = makeCounter(100);
+    var first = makeCounter(10);
+    var second = makeCounter(100);
     print(first());
     print(second());
     print(first());
 
-    let accumulator = makeAccumulator(0);
+    var accumulator = makeAccumulator(0);
     print(accumulator());
     print(accumulator());
 
-    let nested = makeNestedStepper(1)();
+    var nested = makeNestedStepper(1)();
     print(nested());
     print(nested());
 

@@ -1,6 +1,6 @@
 class IntPair {
-    let first: int = 0;
-    let second: int = 0;
+    var first: int = 0;
+    var second: int = 0;
     init(first: int, second: int) {
         this.first = first;
         this.second = second;
@@ -9,7 +9,7 @@ class IntPair {
         return this.first + this.second;
     }
     fun swap() {
-        let value: int = this.first;
+        var value: int = this.first;
         this.first = this.second;
         this.second = value;
     }

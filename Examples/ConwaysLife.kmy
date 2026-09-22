@@ -5,8 +5,8 @@
 // This keeps the example runnable on the native x86 backend, which currently
 // has integer/bool output but no native string formatting.
 class Life {
-    let cells: int[25] = new int[25];
-    let generation: int = 0;
+    var cells: int[25] = new int[25];
+    var generation: int = 0;
 
     init() {
         // A glider, which moves diagonally as the simulation advances.
@@ -25,11 +25,11 @@ class Life {
     }
 
     fun neighbors(x: int, y: int): int {
-        let total: int = 0;
-        let dy: int = -1;
+        var total: int = 0;
+        var dy: int = -1;
 
         while (dy <= 1) {
-            let dx: int = -1;
+            var dx: int = -1;
             while (dx <= 1) {
                 if (dx != 0 || dy != 0) {
                     total += this.at(x + dx, y + dy);
@@ -43,14 +43,14 @@ class Life {
     }
 
     fun step() {
-        let next: int[25] = new int[25];
-        let y: int = 0;
+        var next: int[25] = new int[25];
+        var y: int = 0;
 
         while (y < 5) {
-            let x: int = 0;
+            var x: int = 0;
             while (x < 5) {
-                let here: int = this.at(x, y);
-                let nearby: int = this.neighbors(x, y);
+                var here: int = this.at(x, y);
+                var nearby: int = this.neighbors(x, y);
 
                 if ((here == 1 && (nearby == 2 || nearby == 3)) ||
                     (here == 0 && nearby == 3)) {
@@ -66,8 +66,8 @@ class Life {
     }
 
     fun rowBits(row: int): int {
-        let bits: int = 0;
-        let x: int = 0;
+        var bits: int = 0;
+        var x: int = 0;
 
         while (x < 5) {
             if (this.cells[row * 5 + x] == 1) {
@@ -80,8 +80,8 @@ class Life {
     }
 
     fun population(): int {
-        let total: int = 0;
-        let i: int = 0;
+        var total: int = 0;
+        var i: int = 0;
         while (i < 25) {
             total += this.cells[i];
             i += 1;
@@ -90,7 +90,7 @@ class Life {
     }
 };
 
-let world: Life = new Life();
+var world: Life = new Life();
 
 // Print generation 0, then three successive generations.  Each group is the
 // five row masks followed by the live-cell count.

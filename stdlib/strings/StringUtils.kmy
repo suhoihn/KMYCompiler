@@ -17,7 +17,7 @@ fun stringStartsWith(value: string, prefix: string): bool {
     if (strlen(prefix) > strlen(value)) {
         return false;
     }
-    let i: int = 0;
+    var i: int = 0;
     while (i < strlen(prefix)) {
         if (strByteAt(value, i) != strByteAt(prefix, i)) {
             return false;
@@ -27,11 +27,11 @@ fun stringStartsWith(value: string, prefix: string): bool {
     return true;
 }
 fun stringEndsWith(value: string, suffix: string): bool {
-    let start: int = strlen(value) - strlen(suffix);
+    var start: int = strlen(value) - strlen(suffix);
     if (start < 0) {
         return false;
     }
-    let i: int = 0;
+    var i: int = 0;
     while (i < strlen(suffix)) {
         if (strByteAt(value, start + i) != strByteAt(suffix, i)) {
             return false;
@@ -41,8 +41,8 @@ fun stringEndsWith(value: string, suffix: string): bool {
     return true;
 }
 fun stringRepeat(value: string, count: int): string {
-    let result: string = "";
-    let i: int = 0;
+    var result: string = "";
+    var i: int = 0;
     while (i < count) {
         result = strconcat(result, value);
         i += 1;
@@ -53,9 +53,9 @@ fun stringIndexOf(value: string, needle: string): int {
     if (strlen(needle) == 0) {
         return 0;
     }
-    let i: int = 0;
+    var i: int = 0;
     while (i + strlen(needle) <= strlen(value)) {
-        let j: int = 0;
+        var j: int = 0;
         while (j < strlen(needle) && strByteAt(value, i + j) == strByteAt(needle, j)) {
             j += 1;
         }

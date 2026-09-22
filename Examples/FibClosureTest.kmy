@@ -1,9 +1,9 @@
 fun makeFib(): () -> int {
-    let a: int = 0;
-    let b: int = 1;
+    var a: int = 0;
+    var b: int = 1;
 
     fun next(): int {
-        let tmp: int = a + b;
+        var tmp: int = a + b;
         a = b;
         b = tmp;
         return a;
@@ -12,8 +12,8 @@ fun makeFib(): () -> int {
     return next;
 }
 
-let fib: () -> int = makeFib();
+var fib: () -> int = makeFib();
 
-for (let i: int = 0; i < 10; i += 1) {
+for (var i: int = 0; i < 10; i += 1) {
     print(fib());
 }

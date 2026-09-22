@@ -1,44 +1,43 @@
 // Pointer stress cases: fields, array elements, nested pointers, and
 // pointers to heap-allocated class references.
 class Box {
-    let value: int = 0;
+    var value: int = 0;
 
-    init(const initial: int) {
+    init(initial: int) {
         this.value = initial;
     }
 };
 
 // Address and mutate a class field.
-let box: Box = new Box(10);
-let fieldPointer = &box.value;
+var box: Box = new Box(10);
+var fieldPointer = &box.value;
 print(*fieldPointer);
 *fieldPointer += 5;
 print(box.value);
 
 // Address and mutate an array element.
-let numbers = [20, 30, 40];
-let elementPointer = &numbers[1];
+var numbers = [20, 30, 40];
+var elementPointer = &numbers[1];
 print(*elementPointer);
 *elementPointer = 35;
 print(numbers[1]);
 
 // A pointer to a pointer should preserve the original address.
-let pointerPointer = &elementPointer;
+var pointerPointer = &elementPointer;
 print(**pointerPointer);
 **pointerPointer = 36;
 print(numbers[1]);
 
 // A class variable contains a heap-object pointer. Taking its address gives
 // a pointer to that reference; dereferencing it recovers the object reference.
-let boxReferencePointer = &box;
+var boxReferencePointer = &box;
 print((*boxReferencePointer).value);
 (*boxReferencePointer).value = 25;
 print(box.value);
 
 // Arrays of class references can also be addressed element-wise.
-let boxes = [new Box(1), new Box(2)];
-let secondBoxPointer = &boxes[1];
+var boxes = [new Box(1), new Box(2)];
+var secondBoxPointer = &boxes[1];
 print((*secondBoxPointer).value);
 (*secondBoxPointer).value += 7;
 print(boxes[1].value);
-

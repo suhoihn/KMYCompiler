@@ -3,8 +3,8 @@
 // =======================
 print("=== BASIC EXPRESSIONS ===");
 
-let x = 10;
-let y = 20;
+var x = 10;
+var y = 20;
 
 print(x + y);
 print(x * y);
@@ -15,7 +15,7 @@ print((x + y) / 2);
 // =======================
 print("=== IF / ELSE IF / ELSE ===");
 
-let a = 15;
+var a = 15;
 
 if (a < 10) {
     print("small");
@@ -30,7 +30,7 @@ if (a < 10) {
 // =======================
 print("=== WHILE LOOP ===");
 
-let i = 0;
+var i = 0;
 
 while (i < 5) {
     print(i);
@@ -74,7 +74,7 @@ print(fact(5));
 // =======================
 print("=== STRINGS ===");
 
-let name = "world";
+var name = "world";
 print("hello " + name);
 print(name + "!");
 
@@ -83,7 +83,7 @@ print(name + "!");
 // =======================
 print("=== ARRAYS ===");
 
-let arr = [1, 2, 3, 4, 5];
+var arr = [1, 2, 3, 4, 5];
 
 print(arr[0]);
 print(arr[3]);
@@ -123,7 +123,7 @@ fun mulf(x, y) {
     return x * y;
 }
 
-let ops = [addf, subf, mulf];
+var ops = [addf, subf, mulf];
 
 print(ops[0](10, 5));
 print(ops[1](10, 5));
@@ -139,7 +139,7 @@ fun choose(f) {
     return f;
 }
 
-let f = choose(addf);
+var f = choose(addf);
 print(f(7, 8));
 
 // =======================
@@ -155,7 +155,7 @@ fun fib(n) {
     }
 }
 
-let j = 0;
+var j = 0;
 
 while (j < 8) {
     print(fib(j));
@@ -182,11 +182,11 @@ fun cube(x) {
     return x * x * x;
 }
 
-let funcs = [fact2, square2, cube];
+var funcs = [fact2, square2, cube];
 
-let k = 6;
+var k = 6;
 
-let fn;
+var fn;
 while (k < 6) {
     fn = funcs[k % 3];
 

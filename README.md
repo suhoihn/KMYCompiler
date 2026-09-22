@@ -24,6 +24,20 @@ native backend.
 Enum variants are represented as ordinal integer constants on x86, matching
 the VM behavior; enum payloads and pattern matching are not implemented yet.
 
+Bindings are immutable by default. Use `let` for an immutable binding and
+`var` when reassignment or `++`/`--` is required:
+
+```kmy
+let answer = 42;
+var counter = 0;
+counter++;
+
+fun accumulate(value: int, var total: int): int {
+    total += value;
+    return total;
+}
+```
+
 Rust-style native-width aliases are accepted: `i64` and `u64` currently map to
 KMY's existing integer representation, `f64` maps to `double`, and `byte` maps
 to the current integer representation. True width-specific and unsigned

@@ -1,7 +1,7 @@
 fun main(): int {
-    let total = 0;
+    var total = 0;
 
-    for (let i = 0; i < 5; i += 1) {
+    for (var i = 0; i < 5; i += 1) {
         if (i % 2 == 0) {
             total += i;
         } else {
@@ -13,7 +13,7 @@ fun main(): int {
         }
     }
 
-    let j = 0;
+    var j = 0;
     while (j < 3) {
         if (j == 1) {
             total += 200;
@@ -25,9 +25,9 @@ fun main(): int {
 
     print(total);
 
-    let scopedTotal = 0;
-    for (let outer = 0; outer < 3; outer += 1) {
-        let inner = 0;
+    var scopedTotal = 0;
+    for (var outer = 0; outer < 3; outer += 1) {
+        var inner = 0;
         while (inner < 3) {
             inner += 1;
 

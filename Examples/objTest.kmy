@@ -1,6 +1,6 @@
 // ===== BASIC OBJECT + METHOD =====
 // TODO
-let obj = {
+var obj = {
     x: 10,
     getX: fun() {
         return this.x;
@@ -20,12 +20,12 @@ print(obj.getX());   // expect: 42
 
 
 // ===== DETACHED METHOD (BOUND FUNCTION TEST) =====
-let f = obj.getX;
+var f = obj.getX;
 print(f());          // expect: 42 (only works if bound function is correct)
 
 
 // ===== NESTED OBJECT =====
-let outer = {
+var outer = {
     inner: {
         val: 99,
         getVal: fun() {
@@ -38,7 +38,7 @@ print(outer.inner.getVal());   // expect: 99
 
 
 // ===== ARRAY + OBJECT =====
-let arr = [
+var arr = [
     {v: 1},
     {v: 2},
     {v: 3}
@@ -60,7 +60,7 @@ print(arr[0].v);   // expect: 2
 
 
 // ===== CHAINED ACCESS =====
-let deep = {
+var deep = {
     a: {
         b: {
             c: 7,
@@ -85,7 +85,7 @@ fun makeCounter(start) {
     };
 }
 
-let counter = makeCounter(5);
+var counter = makeCounter(5);
 print(counter.inc());   // expect: 6
 print(counter.inc());   // expect: 7
 

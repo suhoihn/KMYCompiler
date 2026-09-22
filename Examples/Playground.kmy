@@ -1,12 +1,12 @@
-let matrix = [
+var matrix = [
     [1, 2, 3],
     [4, 5, 6],
     [7, 8, 9]
 ];
 
-let matrixp = &matrix;
-let rowp = &((*matrixp)[1]);
-let elemp = &((*rowp)[2]);
+var matrixp = &matrix;
+var rowp = &((*matrixp)[1]);
+var elemp = &((*rowp)[2]);
 
 *elemp = 69;
 
@@ -19,14 +19,14 @@ enum Color {
     Blue
 };
 
-let x = Color::Red;
-let const px = &x;
-let const y = Color::Red;
-let const py = &y;
+var x = Color::Red;
+let px = &x;
+let y = Color::Red;
+let py = &y;
 
 print(px == py); // false
 
-fun printColor(const c: Color*) {
+fun printColor(c: Color*) {
     if (*c == Color::Red) {
         print("Red");
     } else if (*c == Color::Green) {

@@ -892,7 +892,8 @@ void IRBuilder::visit(Assignment& e) {
 
         auto* instanceType = static_cast<InstanceType*>(get->obj->type);
         auto fieldIt = instanceType->fieldMap.find(get->name);
-        if (fieldIt != instanceType->fieldMap.end() && !fieldIt->second->isMutable) {
+        if (!e.isInitialisation && fieldIt != instanceType->fieldMap.end() &&
+            !fieldIt->second->isMutable) {
             throw KMYCompileError("Assignment to a constant field \"" + get->name + "\"");
         }
 
@@ -1018,14 +1019,14 @@ void IRBuilder::visit(Call& e) {
             (builtin->name == "streq" || builtin->name == "strconcat" ||
             builtin->name == "strlen" || builtin->name == "strByteAt" ||
             builtin->name == "strFromByte" || builtin->name == "readFile" ||
-            builtin->name == "writeFile" || builtin->name == "malloc")) {
+            builtin->name == "writeFile" || builtin->name == "malloc" ||
+            builtin->name == "free")) {
             std::vector<HIROperand> args;
             for (const auto& arg : e.args) {
                 arg->accept(*this);
                 args.push_back(getLastValue());
             }
 
-            IRValue result = makeValue(e.type);
             IROp op = IROp::STRING_EQUAL;
             if (builtin->name == "strconcat") op = IROp::STRING_CONCAT;
             if (builtin->name == "strlen") op = IROp::STRING_LENGTH;
@@ -1034,6 +1035,16 @@ void IRBuilder::visit(Call& e) {
             if (builtin->name == "readFile") op = IROp::FILE_READ;
             if (builtin->name == "writeFile") op = IROp::FILE_WRITE;
             if (builtin->name == "malloc") op = IROp::MALLOC_BYTES;
+            if (builtin->name == "free") op = IROp::FREE;
+
+            // free returns void, so emitting a destination would create an
+            // invalid SSA value for an expression that produces no value.
+            if (op == IROp::FREE) {
+                emit({ .op = op, .args = std::move(args) });
+                return;
+            }
+
+            IRValue result = makeValue(e.type);
             emit({
                 .op = op,
                 .dst = result,

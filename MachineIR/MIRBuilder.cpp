@@ -272,6 +272,9 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         case IROp::MALLOC_BYTES:
             return { make(MIROp::MALLOC_BYTES) };
 
+        case IROp::FREE:
+            return { make(MIROp::FREE) };
+
         case IROp::ALLOC_ARRAY_DYNAMIC: {
             MIRInstr alloc;
             alloc.op = MIROp::ALLOC_DYNAMIC;

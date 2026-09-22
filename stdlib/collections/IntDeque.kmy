@@ -1,13 +1,13 @@
 class IntDeque {
-    let data: int[] = new int[4];
-    let head: int = 0;
-    let size: int = 0;
-    let capacity: int = 4;
+    var data: int[] = new int[4];
+    var head: int = 0;
+    var size: int = 0;
+    var capacity: int = 4;
     init() {
     }
     fun grow() {
-        let next: int[] = new int[this.capacity * 2];
-        let i: int = 0;
+        var next: int[] = new int[this.capacity * 2];
+        var i: int = 0;
         while (i < this.size) {
             next[i] = this.data[(this.head + i) % this.capacity];
             i += 1;
@@ -35,7 +35,7 @@ class IntDeque {
         if (this.size == 0) {
             return -1;
         }
-        let value: int = this.data[this.head];
+        var value: int = this.data[this.head];
         this.head = (this.head + 1) % this.capacity;
         this.size -= 1;
         return value;
@@ -44,7 +44,7 @@ class IntDeque {
         if (this.size == 0) {
             return -1;
         }
-        let index: int = (this.head + this.size - 1) % this.capacity;
+        var index: int = (this.head + this.size - 1) % this.capacity;
         this.size -= 1;
         return this.data[index];
     }

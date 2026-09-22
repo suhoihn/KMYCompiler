@@ -2,7 +2,7 @@
 // It parses source text; it does not execute or type-check that source.
 // Grammar:
 //   program    -> statement* EOF
-//   statement  -> 'let' IDENT (':' IDENT '*')? ('=' expression)? ';'
+//   statement  -> ('let' | 'var') IDENT (':' IDENT '*')? ('=' expression)? ';'
 //               | expression ';'
 //   expression -> assignment
 //   assignment -> additive ('=' assignment)?
@@ -14,19 +14,19 @@
 // Calls are deliberately limited to zero or one argument in this slice.
 
 class KmyTokenBuffer {
-    let kinds: string[] = new string[4];
-    let lexemes: string[] = new string[4];
-    let size: int = 0;
-    let capacity: int = 4;
+    var kinds: string[] = new string[4];
+    var lexemes: string[] = new string[4];
+    var size: int = 0;
+    var capacity: int = 4;
 
     init() {}
 
     fun add(kind: string, lexeme: string) {
         if (this.size == this.capacity) {
-            let newCapacity: int = this.capacity * 2;
-            let newKinds: string[] = new string[newCapacity];
-            let newLexemes: string[] = new string[newCapacity];
-            let i: int = 0;
+            var newCapacity: int = this.capacity * 2;
+            var newKinds: string[] = new string[newCapacity];
+            var newLexemes: string[] = new string[newCapacity];
+            var i: int = 0;
             while (i < this.size) {
                 newKinds[i] = this.kinds[i];
                 newLexemes[i] = this.lexemes[i];
@@ -43,10 +43,10 @@ class KmyTokenBuffer {
 };
 
 class KmySourceLexer {
-    let source: string;
-    let length: int = 0;
-    let position: int = 0;
-    let tokens: KmyTokenBuffer;
+    var source: string;
+    var length: int = 0;
+    var position: int = 0;
+    var tokens: KmyTokenBuffer;
 
     init(source: string) {
         this.source = source;
@@ -64,7 +64,7 @@ class KmySourceLexer {
     }
 
     fun scanWord() {
-        let word: string = "";
+        var word: string = "";
         while (this.position < this.length &&
                (this.isLetter(strByteAt(this.source, this.position)) ||
                 this.isDigit(strByteAt(this.source, this.position)))) {
@@ -73,13 +73,15 @@ class KmySourceLexer {
         }
         if (streq(word, "let")) {
             this.tokens.add("LET", word);
+        } else if (streq(word, "var")) {
+            this.tokens.add("VAR", word);
         } else {
             this.tokens.add("IDENT", word);
         }
     }
 
     fun scanNumber() {
-        let number: string = "";
+        var number: string = "";
         while (this.position < this.length &&
                this.isDigit(strByteAt(this.source, this.position))) {
             number = strconcat(number, strFromByte(strByteAt(this.source, this.position)));
@@ -90,7 +92,7 @@ class KmySourceLexer {
 
     fun scan() {
         while (this.position < this.length) {
-            let value: int = strByteAt(this.source, this.position);
+            var value: int = strByteAt(this.source, this.position);
             if (value == 32 || value == 9 || value == 10 || value == 13) {
                 this.position += 1;
             } else if (value == 47 && this.position + 1 < this.length &&
@@ -143,11 +145,11 @@ class KmySourceLexer {
 };
 
 class KmyAstNode {
-    let kind: string;
-    let text: string;
-    let left: KmyAstNode? = null;
-    let right: KmyAstNode? = null;
-    let next: KmyAstNode? = null;
+    var kind: string;
+    var text: string;
+    var left: KmyAstNode? = null;
+    var right: KmyAstNode? = null;
+    var next: KmyAstNode? = null;
 
     // Native calls currently fit only the env, receiver, and two explicit
     // arguments in registers. Attach child nodes after construction.
@@ -205,8 +207,8 @@ class KmyAstNode {
             return this.text;
         }
 
-        let ownPrecedence: int = this.precedence();
-        let body: string = "";
+        var ownPrecedence: int = this.precedence();
+        var body: string = "";
         if (this.isUnary()) {
             body = strconcat(this.operatorSymbol(), this.left!!.renderSource(ownPrecedence));
         } else if (streq(this.kind, "call")) {
@@ -216,8 +218,8 @@ class KmyAstNode {
             }
             body = strconcat(body, ")");
         } else if (this.isBinary()) {
-            let leftPrecedence: int = ownPrecedence;
-            let rightPrecedence: int = ownPrecedence + 1;
+            var leftPrecedence: int = ownPrecedence;
+            var rightPrecedence: int = ownPrecedence + 1;
             if (streq(this.kind, "assign")) {
                 // Assignment is right-associative: a = b = c.
                 leftPrecedence = ownPrecedence + 1;
@@ -239,7 +241,7 @@ class KmyAstNode {
 
     fun renderStatement(): string {
         if (streq(this.kind, "let")) {
-            let result: string = strconcat("let ", this.text);
+            var result: string = strconcat("let ", this.text);
             if (streq(this.right!!.text, "inferred") == false) {
                 result = strconcat(strconcat(result, ": "), this.right!!.text);
             }
@@ -253,7 +255,7 @@ class KmyAstNode {
 
     fun treeLabel(): string {
         if (streq(this.kind, "let")) {
-            let result: string = strconcat("let ", this.text);
+            var result: string = strconcat("let ", this.text);
             if (streq(this.right!!.text, "inferred") == false) {
                 result = strconcat(strconcat(result, ": "), this.right!!.text);
             }
@@ -273,11 +275,11 @@ class KmyAstNode {
     // `role` makes child relationships visible instead of relying on the
     // reader to remember S-expression argument positions.
     fun renderTree(indent: string, role: string): string {
-        let output: string = strconcat(strconcat(indent, role), this.treeLabel());
+        var output: string = strconcat(strconcat(indent, role), this.treeLabel());
         output = strconcat(output, strFromByte(10));
-        let childIndent: string = strconcat(indent, "  ");
+        var childIndent: string = strconcat(indent, "  ");
         if (this.left) {
-            let leftRole: string = "left: ";
+            var leftRole: string = "left: ";
             if (streq(this.kind, "let")) { leftRole = "initializer: "; }
             if (streq(this.kind, "call")) { leftRole = "callee: "; }
             if (this.isUnary()) { leftRole = "operand: "; }
@@ -285,7 +287,7 @@ class KmyAstNode {
             output = strconcat(output, this.left!!.renderTree(childIndent, leftRole));
         }
         if (this.right && streq(this.kind, "let") == false) {
-            let rightRole: string = "right: ";
+            var rightRole: string = "right: ";
             if (streq(this.kind, "call")) { rightRole = "argument: "; }
             if (streq(this.kind, "assign")) { rightRole = "value: "; }
             output = strconcat(output, this.right!!.renderTree(childIndent, rightRole));
@@ -295,11 +297,11 @@ class KmyAstNode {
 };
 
 class KmySourceParser {
-    let tokens: KmyTokenBuffer;
-    let position: int = 0;
-    let failed: bool = false;
-    let error: string = "";
-    let first: KmyAstNode? = null;
+    var tokens: KmyTokenBuffer;
+    var position: int = 0;
+    var failed: bool = false;
+    var error: string = "";
+    var first: KmyAstNode? = null;
 
     init(tokens: KmyTokenBuffer) {
         this.tokens = tokens;
@@ -332,7 +334,7 @@ class KmySourceParser {
             this.fail(kind);
             return "";
         }
-        let value: string = this.tokens.lexemes[this.position];
+        var value: string = this.tokens.lexemes[this.position];
         this.position += 1;
         return value;
     }
@@ -349,7 +351,7 @@ class KmySourceParser {
             return new KmyAstNode("name", this.consume("IDENT"));
         }
         if (this.match("LPAREN")) {
-            let inside: KmyAstNode = this.expression();
+            var inside: KmyAstNode = this.expression();
             this.consume("RPAREN");
             return inside;
         }
@@ -358,9 +360,9 @@ class KmySourceParser {
     }
 
     fun call(): KmyAstNode {
-        let callee: KmyAstNode = this.primary();
+        var callee: KmyAstNode = this.primary();
         while (this.failed == false && this.match("LPAREN")) {
-            let argument: KmyAstNode? = null;
+            var argument: KmyAstNode? = null;
             if (this.check("RPAREN") == false) {
                 argument = this.expression();
             }
@@ -387,7 +389,7 @@ class KmySourceParser {
     }
 
     fun product(): KmyAstNode {
-        let left: KmyAstNode = this.unary();
+        var left: KmyAstNode = this.unary();
         while (this.failed == false && (this.check("STAR") || this.check("SLASH"))) {
             if (this.match("STAR")) {
                 left = new KmyAstNode("multiply", "").withLeft(left).withRight(this.unary());
@@ -400,7 +402,7 @@ class KmySourceParser {
     }
 
     fun additive(): KmyAstNode {
-        let left: KmyAstNode = this.product();
+        var left: KmyAstNode = this.product();
         while (this.failed == false && (this.check("PLUS") || this.check("MINUS"))) {
             if (this.match("PLUS")) {
                 left = new KmyAstNode("add", "").withLeft(left).withRight(this.product());
@@ -413,7 +415,7 @@ class KmySourceParser {
     }
 
     fun expression(): KmyAstNode {
-        let left: KmyAstNode = this.additive();
+        var left: KmyAstNode = this.additive();
         if (this.failed == false && this.match("ASSIGN")) {
             if (streq(left.kind, "name") == false && streq(left.kind, "deref") == false) {
                 this.fail("a variable or dereference on the left of '='");
@@ -425,16 +427,16 @@ class KmySourceParser {
     }
 
     fun statement(): KmyAstNode {
-        if (this.match("LET")) {
-            let name: string = this.consume("IDENT");
-            let typeName: string = "inferred";
+        if (this.match("LET") || this.match("VAR")) {
+            var name: string = this.consume("IDENT");
+            var typeName: string = "inferred";
             if (this.match("COLON")) {
                 typeName = this.consume("IDENT");
                 while (this.match("STAR")) {
                     typeName = strconcat(typeName, "*");
                 }
             }
-            let initializer: KmyAstNode? = null;
+            var initializer: KmyAstNode? = null;
             if (this.match("ASSIGN")) {
                 initializer = this.expression();
             }
@@ -443,15 +445,15 @@ class KmySourceParser {
                 .withLeft(initializer)
                 .withRight(new KmyAstNode("type", typeName));
         }
-        let value: KmyAstNode = this.expression();
+        var value: KmyAstNode = this.expression();
         this.consume("SEMI");
         return value;
     }
 
     fun parse() {
-        let last: KmyAstNode? = null;
+        var last: KmyAstNode? = null;
         while (this.failed == false && this.check("EOF") == false) {
-            let node: KmyAstNode = this.statement();
+            var node: KmyAstNode = this.statement();
             if (this.failed == false) {
                 if (last) {
                     last!!.next = node;
@@ -464,12 +466,12 @@ class KmySourceParser {
     }
 
     fun render(): string {
-        let newline: string = strFromByte(10);
-        let preview: string = strconcat(strconcat("KMY preview", newline),
+        var newline: string = strFromByte(10);
+        var preview: string = strconcat(strconcat("KMY preview", newline),
                                          strconcat("-----------", newline));
-        let tree: string = strconcat(strconcat(newline, "AST"),
+        var tree: string = strconcat(strconcat(newline, "AST"),
                                       strconcat(newline, strconcat("---", newline)));
-        let node: KmyAstNode? = this.first;
+        var node: KmyAstNode? = this.first;
         while (node) {
             preview = strconcat(preview, node!!.renderStatement());
             preview = strconcat(preview, strFromByte(10));
@@ -484,15 +486,15 @@ class KmySourceParser {
 // Public module entry point. Keeping the lexer, token buffer, and AST private
 // to this file avoids relying on unfinished cross-module class construction.
 fun parseFile(sourcePath: string, outputPath: string) {
-    let source: string = readFile(sourcePath);
-    let lexer: KmySourceLexer = new KmySourceLexer(source);
+    var source: string = readFile(sourcePath);
+    var lexer: KmySourceLexer = new KmySourceLexer(source);
     lexer.scan();
-    let parser: KmySourceParser = new KmySourceParser(lexer.tokens);
+    var parser: KmySourceParser = new KmySourceParser(lexer.tokens);
     parser.parse();
     if (parser.failed) {
         print(strconcat("PARSE ERROR: ", parser.error));
     } else {
-        let ast: string = parser.render();
+        var ast: string = parser.render();
         if (writeFile(outputPath, ast)) {
             print(ast);
         } else {

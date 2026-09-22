@@ -1,21 +1,21 @@
 class IntIntHashMap {
-    let keys: int[] = new int[8];
-    let values: int[] = new int[8];
-    let states: int[] = new int[8];
-    let capacity: int = 8;
-    let size: int = 0;
+    var keys: int[] = new int[8];
+    var values: int[] = new int[8];
+    var states: int[] = new int[8];
+    var capacity: int = 8;
+    var size: int = 0;
     init() {
     }
     fun hash(key: int): int {
-        let value: int = key % this.capacity;
+        var value: int = key % this.capacity;
         if (value < 0) {
             value += this.capacity;
         }
         return value;
     }
     fun find(key: int): int {
-        let index: int = this.hash(key);
-        let probes: int = 0;
+        var index: int = this.hash(key);
+        var probes: int = 0;
         while (probes < this.capacity) {
             if (this.states[index] == 0) {
                 return -1;
@@ -29,16 +29,16 @@ class IntIntHashMap {
         return -1;
     }
     fun rehash(newCapacity: int) {
-        let oldKeys: int[] = this.keys;
-        let oldValues: int[] = this.values;
-        let oldStates: int[] = this.states;
-        let oldCapacity: int = this.capacity;
+        var oldKeys: int[] = this.keys;
+        var oldValues: int[] = this.values;
+        var oldStates: int[] = this.states;
+        var oldCapacity: int = this.capacity;
         this.keys = new int[newCapacity];
         this.values = new int[newCapacity];
         this.states = new int[newCapacity];
         this.capacity = newCapacity;
         this.size = 0;
-        let i: int = 0;
+        var i: int = 0;
         while (i < oldCapacity) {
             if (oldStates[i] == 1) {
                 this.put(oldKeys[i], oldValues[i]);
@@ -47,7 +47,7 @@ class IntIntHashMap {
         }
     }
     fun put(key: int, value: int): bool {
-        let existing: int = this.find(key);
+        var existing: int = this.find(key);
         if (existing != -1) {
             this.values[existing] = value;
             return false;
@@ -55,7 +55,7 @@ class IntIntHashMap {
         if ((this.size + 1) * 10 >= this.capacity * 7) {
             this.rehash(this.capacity * 2);
         }
-        let index: int = this.hash(key);
+        var index: int = this.hash(key);
         while (this.states[index] == 1) {
             index = (index + 1) % this.capacity;
         }
@@ -66,7 +66,7 @@ class IntIntHashMap {
         return true;
     }
     fun getOr(key: int, fallback: int): int {
-        let index: int = this.find(key);
+        var index: int = this.find(key);
         if (index == -1) {
             return fallback;
         }

@@ -3,5 +3,5 @@
 // cross_class_main.kmy, which keeps its dependency intentionally minimal.
 import "library.kmy" as library;
 
-let counter: library::Counter = new library::Counter(5);
+var counter: library::Counter = new library::Counter(5);
 print(counter.bump());

@@ -1,6 +1,6 @@
 class IntOption {
-    let present: bool = false;
-    let value: int = 0;
+    var present: bool = false;
+    var value: int = 0;
     init() {
     }
     fun set(value: int) {

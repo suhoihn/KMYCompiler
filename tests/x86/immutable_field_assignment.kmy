@@ -1,0 +1,6 @@
+class Box {
+    let value: int = 42;
+};
+
+let box: Box = new Box();
+box.value = 43;

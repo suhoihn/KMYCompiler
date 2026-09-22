@@ -1,23 +1,23 @@
 // Singly linked list of integers. Each node is a heap-allocated class value;
 // the nullable next field is either another node or the end of the list.
 class ListNode {
-    let value: int = 0;
-    let next: ListNode? = null;
+    var value: int = 0;
+    var next: ListNode? = null;
 
-    init(const value: int) {
+    init(value: int) {
         this.value = value;
     }
 };
 
 class LinkedList {
-    let head: ListNode? = null;
-    let tail: ListNode? = null;
-    let size: int = 0;
+    var head: ListNode? = null;
+    var tail: ListNode? = null;
+    var size: int = 0;
 
     init() {}
 
     fun append(value: int) {
-        let node: ListNode = new ListNode(value);
+        var node: ListNode = new ListNode(value);
         if (this.tail) {
             this.tail!!.next = node;
         } else {
@@ -32,7 +32,7 @@ class LinkedList {
             return -1;
         }
 
-        let first: ListNode = this.head!!;
+        var first: ListNode = this.head!!;
         this.head = first.next;
         this.size -= 1;
         if (this.size == 0) {
@@ -46,7 +46,7 @@ class LinkedList {
     }
 
     fun printAll() {
-        let current: ListNode? = this.head;
+        var current: ListNode? = this.head;
         while (current) {
             print(current!!.value);
             current = current!!.next;
@@ -54,7 +54,7 @@ class LinkedList {
     }
 };
 
-let list: LinkedList = new LinkedList();
+var list: LinkedList = new LinkedList();
 print(list.length());
 list.append(10);
 list.append(20);

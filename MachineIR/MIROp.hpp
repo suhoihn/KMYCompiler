@@ -57,6 +57,7 @@ enum class MIROp {
     LEA,
     ALLOC, // Allocates zero-initialized heap memory with a given size
     MALLOC_BYTES, // Allocates uninitialized heap memory from a runtime byte count
+    FREE, // Releases one raw heap pointer through the C runtime
     ALLOC_DYNAMIC, // Allocates zeroed memory for runtime count * element size
 
     // Stack / calling convention
@@ -133,6 +134,7 @@ inline const char* toString(MIROp op) {
         case MIROp::LEA: return "LEA";
         case MIROp::ALLOC: return "ALLOC";
         case MIROp::MALLOC_BYTES: return "MALLOC_BYTES";
+        case MIROp::FREE: return "FREE";
         case MIROp::ALLOC_DYNAMIC: return "ALLOC_DYNAMIC";
 
 

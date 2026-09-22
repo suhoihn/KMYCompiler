@@ -1,7 +1,7 @@
 // ===== Native function tests =====
 
-let a = isAlpha("A");
-let b = isAlpha("1");
+var a = isAlpha("A");
+var b = isAlpha("1");
 
 print("isAlpha tests:");
 print(a);   // true
@@ -10,10 +10,10 @@ print(b);   // false
 
 // ===== substring tests =====
 
-let s = "hello";
+var s = "hello";
 
-let x = subString(s, 0, 2);
-let y = subString(s, 1, 3);
+var x = subString(s, 0, 2);
+var y = subString(s, 1, 3);
 
 print("substring tests:");
 print(x);   // "he"
@@ -38,9 +38,9 @@ print(subString("hi", 0, 100));     // "hi"
 // ===== chaining =====
 
 print("chaining test:");
-let x2 = subString("abcdefghijklmnopqrstuvwxyz", 0, 5);
-let y2 = subString(x2, 1, 3);
-let z2 = isAlpha(y2);
+var x2 = subString("abcdefghijklmnopqrstuvwxyz", 0, 5);
+var y2 = subString(x2, 1, 3);
+var z2 = isAlpha(y2);
 
 print(x2);  // abcde
 print(y2);  // bcd
@@ -50,7 +50,7 @@ print(z2);  // true
 // ===== mixed stress =====
 
 print("stress:");
-let t = subString("Z9helloX", 1, 5);
+var t = subString("Z9helloX", 1, 5);
 print(t);               // 9hell
 print(isAlpha(t));      // false
 
@@ -58,7 +58,7 @@ print(isAlpha(t));      // false
 // ===== function-as-value behavior test =====
 // (only if your language allows it)
 
-let f: (string) -> bool = isAlpha;
+var f: (string) -> bool = isAlpha;
 print(f("Z"));          // true
 print(f("9"));          // false
 

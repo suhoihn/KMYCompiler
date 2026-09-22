@@ -6,15 +6,15 @@ print(library::answer);
 print(library::triple(7));
 print(library::Signal::HIGH);
 
-let step: () -> int = library::makeStepper(10);
+var step: () -> int = library::makeStepper(10);
 print(step());
 print(step());
 print(library::runAggregateStress());
 print(library::runPointerStress());
 
-let values: int[] = [1, 2, 3, 4];
-let sum: int = 0;
-let index: int = 0;
+var values: int[] = [1, 2, 3, 4];
+var sum: int = 0;
+var index: int = 0;
 while (index < 4) {
     if (values[index] % 2 == 0) {
         sum += values[index];

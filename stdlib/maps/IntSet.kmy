@@ -1,10 +1,10 @@
 class IntSet {
-    let values: int[] = new int[8];
-    let size: int = 0;
+    var values: int[] = new int[8];
+    var size: int = 0;
     init() {
     }
     fun contains(value: int): bool {
-        let i: int = 0;
+        var i: int = 0;
         while (i < this.size) {
             if (this.values[i] == value) {
                 return true;

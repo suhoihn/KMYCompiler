@@ -1,12 +1,12 @@
-let x = 1;
+var x = 1;
 print(x);        // 1
 
 {
-    let x = 2;
+    var x = 2;
     print(x);    // 2
 
     {
-        let x = 3;
+        var x = 3;
         print(x); // 3
     }
 
@@ -17,7 +17,7 @@ print(x);        // 1
 
 
 // mutation across scopes
-let y = 10;
+var y = 10;
 
 {
     y = 20;
@@ -28,10 +28,10 @@ print(y);        // 20
 
 
 // shadow + assignment expression
-let z = 5;
+var z = 5;
 
 {
-    let z = 100;
+    var z = 100;
     z = z + 1;
     print(z);    // 101
 }
@@ -40,13 +40,13 @@ print(z);        // 5
 
 
 // nested shadow + reuse
-let a = 1;
+var a = 1;
 
 {
-    let a = 2;
+    var a = 2;
 
     {
-        let a = 3;
+        var a = 3;
         print(a); // 3
     }
 
@@ -58,7 +58,7 @@ print(a);         // 1
 
 // scope leak test (VERY IMPORTANT)
 {
-    let t = 999;
+    var t = 999;
     print(t);     // 999
 }
 
@@ -67,7 +67,7 @@ print(a);         // 1
 
 
 // const enforcement
-let const c = 50;
+let c = 50;
 print(c);         // 50
 
 // c = 60;           // ❌ should fail
@@ -75,6 +75,6 @@ print(c);         // 50
 
 // redeclaration in same scope
 {
-    let q = 1;
+    var q = 1;
     //let q = 2;    // ❌ should fail
 }

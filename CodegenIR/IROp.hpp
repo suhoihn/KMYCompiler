@@ -65,6 +65,7 @@ enum class IROp {
     STORE_INDIRECT, // Store one machine word through a pointer value
     ALLOC_HEAP, // Allocate imm bytes and return a pointer
     MALLOC_BYTES, // Allocate a runtime byte count without zero-initialization
+    FREE, // Release one raw heap pointer; has no result
     ALLOC_ARRAY, // Allocate and zero imm bytes for a fixed-size array
     ALLOC_ARRAY_DYNAMIC, // Allocate zeroed elementSize * count bytes
     LOAD_FIELD, // Load a pointer-sized aggregate field at byte offset imm
@@ -137,6 +138,7 @@ inline const char* toString(IROp op) {
         case IROp::STORE_INDIRECT:      return "STORE_INDIRECT";
         case IROp::ALLOC_HEAP:          return "ALLOC_HEAP";
         case IROp::MALLOC_BYTES:        return "MALLOC_BYTES";
+        case IROp::FREE:                return "FREE";
         case IROp::ALLOC_ARRAY:         return "ALLOC_ARRAY";
         case IROp::ALLOC_ARRAY_DYNAMIC: return "ALLOC_ARRAY_DYNAMIC";
         case IROp::LOAD_FIELD:          return "LOAD_FIELD";

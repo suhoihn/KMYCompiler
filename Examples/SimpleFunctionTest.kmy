@@ -14,15 +14,15 @@ fun printTwice(x: int) {
 fun main() {
 
     // ---- PARAM / CALL TEST ----
-    let a = 10;
-    let b = 20;
-    let c = add(a, b);
+    var a = 10;
+    var b = 20;
+    var c = add(a, b);
     print(c);
 
     printTwice(c);
 
     // ---- IF / ELSE ----
-    let x = 5;
+    var x = 5;
 
     if (x < 10) {
         print(1);
@@ -40,14 +40,14 @@ fun main() {
     }
 
     // ---- WHILE LOOP ----
-    let i = 0;
+    var i = 0;
     while (i < 5) {
         print(i);
         i = i + 1;
     }
 
     // ---- BREAK / CONTINUE TEST ----
-    let j = 0;
+    var j = 0;
     while (j < 10) {
         j = j + 1;
 
@@ -63,9 +63,9 @@ fun main() {
     }
 
     // ---- NESTED LOOPS ----
-    let m = 0;
+    var m = 0;
     while (m < 3) {
-        let n = 0;
+        var n = 0;
         while (n < 3) {
             print(m + n);
             n = n + 1;
@@ -74,10 +74,10 @@ fun main() {
     }
 
     // ---- SHADOWING TEST ----
-    let v = 100;
+    var v = 100;
 
     while (v > 0) {
-        let v = 1;   // shadow outer v
+        var v = 1;   // shadow outer v
         print(v);
         break;
     }

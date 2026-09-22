@@ -5,8 +5,8 @@ enum Color {
     BLUE
 };
 
-let first: Color = Color::RED;
-let second: Color = Color::GREEN;
+var first: Color = Color::RED;
+var second: Color = Color::GREEN;
 
 print(first);
 print(second);

@@ -15,7 +15,8 @@
 #include "../Semantics/SymbolScopeBuilder.hpp" // Pass 1
 #include "../Semantics/DeclTypeResolver.hpp" // Pass 2
 #include "../Semantics/Resolver.hpp" // Pass 3
-#include "../Semantics/ClosureAnalyser.hpp" // Pass 4
+#include "../Semantics/ReferenceChecker.hpp" // Pass 4
+#include "../Semantics/ClosureAnalyser.hpp" // Pass 6
 #include "../Semantics/MethodLower.hpp" // Pass 5
 // #include "../Semantics/typechecker.hpp" // Planned pass 5
 #include "compiler.hpp" // Code gen in pass 6
@@ -491,6 +492,15 @@ int main(int argc, char *argv[]) {
             }
         });
 
+        // Reference legality is a semantic concern: run it after names/types
+        // are resolved and before lowering rewrites source-level expressions.
+        // It is traversal-only until KMY gains a source-level T& type.
+        runPass("ReferenceChecker", debugOutput, [&] {
+            for (auto& [modulePath, module] : modules) {
+                ReferenceChecker checker(module);
+                checker.check();
+            }
+        });
 
         //3-3.5(?). Method lowering
         runPass("MethodLower", debugOutput, [&] {

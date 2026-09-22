@@ -1,6 +1,6 @@
 class StringIntPair {
-    let key: string = "";
-    let value: int = 0;
+    var key: string = "";
+    var value: int = 0;
     init(key: string, value: int) {
         this.key = key;
         this.value = value;

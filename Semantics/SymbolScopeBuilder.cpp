@@ -22,7 +22,8 @@ SymbolScopeBuilder::SymbolScopeBuilder(
     for (const auto& name : {std::string("streq"), std::string("strconcat"),
                              std::string("strlen"), std::string("strByteAt"),
                              std::string("strFromByte"), std::string("readFile"),
-                             std::string("writeFile"), std::string("malloc")}) {
+                             std::string("writeFile"), std::string("malloc"),
+                             std::string("free")}) {
         auto& info = nativeFnTypes.at(name);
         VarSymbol* sym = declareVar(name, false);
 

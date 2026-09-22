@@ -191,6 +191,9 @@ struct Assignment : ExprHelper<Assignment, ExprKind::Assignment> {
     AssignmentOp op; // e.g., +=, -=, etc.
     ExprPtr left;
     ExprPtr right;
+    // True only for compiler-generated stores of declaration initializers,
+    // which may write an immutable field exactly once during construction.
+    bool isInitialisation = false;
 
     Assignment(AssignmentOp op, ExprPtr left, ExprPtr right);
 
@@ -202,7 +205,7 @@ struct Parameter {
     TypeNodePtr type;
     std::string name;
     bool isVariadic = false;
-    bool isMutable = true; // Mutable by default
+    bool isMutable = false; // Immutable unless declared with `var`.
     bool defaultExists = false;
 
     bool implicitThis = false; // For methods and arg check

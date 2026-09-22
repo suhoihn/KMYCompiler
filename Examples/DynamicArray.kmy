@@ -1,6 +1,6 @@
 // Runtime-sized array allocation: the bracket expression is evaluated at runtime.
-let count: int = 3;
-let values: int[] = new int[count + 1];
+var count: int = 3;
+var values: int[] = new int[count + 1];
 
 values[0] = 10;
 values[1] = 20;

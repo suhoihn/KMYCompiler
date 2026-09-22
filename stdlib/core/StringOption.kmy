@@ -1,6 +1,6 @@
 class StringOption {
-    let present: bool = false;
-    let value: string = "";
+    var present: bool = false;
+    var value: string = "";
     init() {
     }
     fun set(value: string) {

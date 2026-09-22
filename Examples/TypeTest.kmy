@@ -1,23 +1,23 @@
 typealias IntArray = int[];
 
-let arr: IntArray = [];
+var arr: IntArray = [];
 
-let xs: int[] = [1,2,3];
+var xs: int[] = [1,2,3];
 print(xs[0]);
 
 // TODO: Prevent {x: int, x: string} type error in type annotation.
 typealias InIA = {x:int, y: int[]};
 typealias InIAs = InIA[];
-let p: InIA = {
+var p: InIA = {
     y: [1,2,3],
     x: 1
 };
 
-let ps: InIAs = [p];
+var ps: InIAs = [p];
 
-let const PI: double = 3.141592653589793238462643383279502884197169399375105820974944;
+let PI: double = 3.141592653589793238462643383279502884197169399375105820974944;
 record Circle {
-    let r: double = 0;
+    var r: double = 0;
 
     init(r: double) {
         this.r = r;
@@ -29,18 +29,18 @@ record Circle {
     }
 };
 
-let c1: Circle = new Circle(5);
-let c2: Circle = new Circle(1);
-let c3: Circle = new Circle(10);
+var c1: Circle = new Circle(5);
+var c2: Circle = new Circle(1);
+var c3: Circle = new Circle(10);
 
 typealias CircleArray = Circle[];
 
-let circles: CircleArray[] = [[c1, c2, c3]];
+var circles: CircleArray[] = [[c1, c2, c3]];
 
 // TODO: Implement ++, --;
 // TODO: non 0.0 fails and interprets as 0
-let sum: double = 0;
-for (let i = 0; i < 3; i += 1) {
+var sum: double = 0;
+for (var i = 0; i < 3; i += 1) {
     sum += circles[0][i].area();
 }
 print(sum);

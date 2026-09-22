@@ -1,1 +1,1 @@
-let p: int* = malloc("eight");
+var p: int* = malloc("eight");

@@ -199,6 +199,11 @@ Value mallocNative(int, Value*) {
     throw std::runtime_error("malloc is currently supported only by the x86 backend");
 }
 
+Value freeNative(int, Value*) {
+    // The bytecode VM has no raw address value or allocator ownership model.
+    throw std::runtime_error("free is currently supported only by the x86 backend");
+}
+
 std::unordered_map<std::string, NativeEntry> nativeFnTypes = {
     {
         "malloc",
@@ -209,6 +214,19 @@ std::unordered_map<std::string, NativeEntry> nativeFnTypes = {
             ),
             &mallocNative,
             11
+        }
+    },
+    {
+        "free",
+        {
+            // any* is KMY's opaque/raw pointer. Resolver allows any T* to be
+            // passed here, while preventing dereference until it is typed.
+            TypeInterner::getFunctionType(
+                {TypeInterner::getPointerType(&Types::ANY_TYPE)},
+                &Types::VOID_TYPE
+            ),
+            &freeNative,
+            12
         }
     },
     {

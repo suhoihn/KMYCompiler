@@ -1,17 +1,17 @@
 // Resizable integer ArrayList for the native x86 backend.
 // Growth uses allocate-copy-replace with a doubling capacity.
 class ArrayList {
-    let data: int[] = new int[4];
-    let size: int = 0;
-    let capacity: int = 4;
+    var data: int[] = new int[4];
+    var size: int = 0;
+    var capacity: int = 4;
 
     init() {}
 
     fun add(value: int): bool {
         if (this.size >= this.capacity) {
-            let newCapacity: int = this.capacity * 2;
-            let newData: int[] = new int[newCapacity];
-            let i: int = 0;
+            var newCapacity: int = this.capacity * 2;
+            var newData: int[] = new int[newCapacity];
+            var i: int = 0;
             while (i < this.size) {
                 newData[i] = this.data[i];
                 i = i + 1;
@@ -46,8 +46,8 @@ class ArrayList {
             return -1;
         }
 
-        let removed: int = this.data[index];
-        let i: int = index;
+        var removed: int = this.data[index];
+        var i: int = index;
 
         while (i + 1 < this.size) {
             this.data[i] = this.data[i + 1];
@@ -72,7 +72,7 @@ class ArrayList {
     }
 
     fun contains(value: int): bool {
-        let i: int = 0;
+        var i: int = 0;
         while (i < this.size) {
             if (this.data[i] == value) {
                 return true;
@@ -83,7 +83,7 @@ class ArrayList {
     }
 
     fun indexOf(value: int): int {
-        let i: int = 0;
+        var i: int = 0;
         while (i < this.size) {
             if (this.data[i] == value) {
                 return i;
@@ -94,7 +94,7 @@ class ArrayList {
     }
 };
 
-let list: ArrayList = new ArrayList();
+var list: ArrayList = new ArrayList();
 list.add(10);
 list.add(20);
 list.add(30);

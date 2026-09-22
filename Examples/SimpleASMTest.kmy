@@ -1,7 +1,7 @@
 class Counter {
-    let value: int = 10;
+    var value: int = 10;
 
-    init(const start: int) {
+    init(start: int) {
         this.value = start;
     }
 
@@ -16,7 +16,7 @@ class Counter {
     }
 };
 
-let c: Counter = new Counter(4);
+var c: Counter = new Counter(4);
 while (c.dec() > 0) {
     print(c.inc());
 }

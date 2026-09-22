@@ -29,10 +29,10 @@ fun sign(value: int): int {
     return 0;
 }
 fun gcd(left: int, right: int): int {
-    let a: int = abs(left);
-    let b: int = abs(right);
+    var a: int = abs(left);
+    var b: int = abs(right);
     while (b != 0) {
-        let next: int = a % b;
+        var next: int = a % b;
         a = b;
         b = next;
     }
@@ -45,9 +45,9 @@ fun lcm(left: int, right: int): int {
     return abs(left / gcd(left, right) * right);
 }
 fun powInt(base: int, exponent: int): int {
-    let result: int = 1;
-    let value: int = base;
-    let power: int = exponent;
+    var result: int = 1;
+    var value: int = base;
+    var power: int = exponent;
     while (power > 0) {
         if (power % 2 == 1) {
             result *= value;
