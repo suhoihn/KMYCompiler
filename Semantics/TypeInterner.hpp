@@ -85,6 +85,7 @@ struct RecordKeyHash {
 namespace TypeInterner {
 //private:
     inline std::unordered_map<Type*, PointerType*> pointerCache;
+    inline std::unordered_map<Type*, SharedType*> sharedCache;
     inline std::unordered_map<ArrayKey, ArrayType*, ArrayKeyHash> arrayCache;
     inline std::unordered_map<FunctionKey, FunctionType*, FunctionHash> fnCache;
     inline std::unordered_map<RecordKey, StructualType*, RecordKeyHash> recordCache;
@@ -92,6 +93,7 @@ namespace TypeInterner {
 // public:
     extern ArrayType* getArrayType(Type* elementType, std::optional<size_t> fixedLength = std::nullopt);
     extern PointerType* getPointerType(Type* pointee);
+    extern SharedType* getSharedType(Type* innerType);
     extern FunctionType* getFunctionType(std::vector<Type*> paramTypes, Type* returnType);
     extern StructualType* getStructualType(std::unordered_map<std::string, Type*> raw);
 };

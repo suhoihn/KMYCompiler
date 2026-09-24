@@ -160,6 +160,12 @@ static Opcode unaryOpToOpcode(UnaryOp op) {
 }
 
 void Compiler::visit(UnaryExpr& e) { 
+    if (e.op == UnaryOp::AddressOf || e.op == UnaryOp::Dereference) {
+        throw KMYCompileError(
+            "The VM backend does not support raw pointer operations; compile this program with `-asm`."
+        );
+    }
+
     e.operand->accept(*this);
     emit( unaryOpToOpcode(e.op) );
 }

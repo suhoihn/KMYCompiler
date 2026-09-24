@@ -14,6 +14,15 @@ PointerType* TypeInterner::getPointerType(Type* pointee) {
     return pointer;
 }
 
+SharedType* TypeInterner::getSharedType(Type* innerType) {
+    auto it = sharedCache.find(innerType);
+    if (it != sharedCache.end()) return it->second;
+
+    auto* shared = new SharedType(innerType);
+    sharedCache[innerType] = shared;
+    return shared;
+}
+
 ArrayType* TypeInterner::getArrayType(Type* elementType, std::optional<size_t> fixedLength) {
     ArrayKey key{elementType, fixedLength};
     auto it = arrayCache.find(key);

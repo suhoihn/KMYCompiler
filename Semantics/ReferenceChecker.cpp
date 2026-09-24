@@ -6,11 +6,105 @@
 ReferenceChecker::ReferenceChecker(Module& module)
     : module(module) {}
 
+OwnershipKind ReferenceChecker::ownershipKind(const Type* type) const {
+    if (!type) {
+        throw KMYCompileError("Cannot classify ownership of an unresolved type.");
+    }
+
+    switch (type->kind) {
+        // Plain machine values may be duplicated without ownership work.
+        case TypeKind::INT:
+        case TypeKind::DOUBLE:
+        case TypeKind::BOOL:
+        case TypeKind::POINTER:
+        case TypeKind::CELL:
+        case TypeKind::NULLTYPE:
+        case TypeKind::VOID:
+        case TypeKind::ENUM:
+            return OwnershipKind::Copy;
+
+        case TypeKind::SHARED:
+            return OwnershipKind::Shared;
+
+        // A nullable value keeps the ownership policy of the value it wraps.
+        case TypeKind::NULLABLE:
+            return ownershipKind(static_cast<const NullableType*>(type)->innerType);
+
+        // KMY strings currently have no owned-string representation: literals
+        // and runtime-produced char pointers share the same semantic type.
+        // Preserve today's copy behaviour until that representation is split.
+        case TypeKind::STRING:
+            return OwnershipKind::Copy;
+
+        // Heap aggregates, arrays, closures/functions, structural values, and
+        // dynamically typed values are conservatively move-only by default.
+        case TypeKind::ARRAY:
+        case TypeKind::STRUCTUAL:
+        case TypeKind::INSTANCE:
+        case TypeKind::FUNCTION:
+        case TypeKind::ANY:
+            return OwnershipKind::Unique;
+
+        case TypeKind::UNKNOWN:
+        case TypeKind::UNINITIALISED:
+            throw KMYCompileError("Cannot classify ownership before a value has a resolved type.");
+    }
+
+    throw KMYCompileError("Unknown type ownership classification.");
+}
+
+void ReferenceChecker::requireAvailable(
+    const VarSymbol* symbol,
+    const std::string& name
+) const {
+    auto found = currentMap.find(symbol);
+
+    // Built-ins, imported values, and hoisted declarations may not have a
+    // source-order entry in this function's map. Resolver already validated
+    // that those names exist, so this pass only diagnoses states it tracks.
+    if (found == currentMap.end()) return;
+
+    switch (found->second) {
+        case BindingAvailability::Available:
+            return;
+        case BindingAvailability::Uninitialized:
+            throw KMYCompileError("Use of uninitialized value \"" + name + "\".");
+        case BindingAvailability::Moved:
+            throw KMYCompileError("Use of moved value \"" + name + "\".");
+        case BindingAvailability::MaybeUnavailable:
+            throw KMYCompileError(
+                "Value \"" + name + "\" is not available on every control-flow path."
+            );
+    }
+}
+
+void ReferenceChecker::consumeValue(const ExprPtr& expression) {
+    // First validate every ordinary read nested inside the expression.
+    expression->accept(*this);
+
+    // This first ownership step supports whole-variable moves only. Calls and
+    // temporaries transfer fresh results, while field/index partial moves will
+    // receive their own explicit rules later.
+    if (expression->kind != ExprKind::Variable) return;
+
+    const auto variable = std::static_pointer_cast<Variable>(expression);
+    if (ownershipKind(variable->type) == OwnershipKind::Unique) {
+        requireAvailable(variable->symbol, variable->name);
+        currentMap[variable->symbol] = BindingAvailability::Moved;
+    }
+    // Copy values leave the source available. Shared values will eventually
+    // cause IRBuilder to emit RETAIN and also leave the source available.
+}
+
 void ReferenceChecker::check() {
     // Visit real module statements, not the legacy synthetic program wrapper.
     for (const StmtPtr& statement : module.topLevelStatements) {
         statement->accept(*this);
     }
+}
+
+void ReferenceChecker::visit(Variable& e) {
+    requireAvailable(e.symbol, e.name);
 }
 
 void ReferenceChecker::requireMutableLValue(
@@ -83,13 +177,17 @@ void ReferenceChecker::visit(FunctionExpr& e) {
     FunctionExpr* enclosingFunction = currentFunction;
     currentFunction = &e;
 
+    AvailabilityMap oldMap = currentMap;
+
     for (const Parameter& parameter : e.params) {
+        currentMap[parameter.symbol] = BindingAvailability::Available;
         if (parameter.defaultValue) {
             parameter.defaultValue->accept(*this);
         }
     }
     e.body->accept(*this);
 
+    currentMap = oldMap;
     currentFunction = enclosingFunction;
 }
 
@@ -103,9 +201,22 @@ void ReferenceChecker::visit(Let& s) {
         );
     }
 
-    if (s.expr) {
+    // The name exists after symbol building, but it does not own a usable
+    // value until its initializer has been checked and transferred.
+    currentMap[s.symbol] = BindingAvailability::Uninitialized;
+
+    if (!s.expr) return;
+
+    if (s.isFunctionDecl) {
+        // Function declarations are hoisted and may recursively reference
+        // their own binding while their function body is being checked.
+        currentMap[s.symbol] = BindingAvailability::Available;
         s.expr->accept(*this);
+        return;
     }
+
+    consumeValue(s.expr);
+    currentMap[s.symbol] = BindingAvailability::Available;
 }
 
 void ReferenceChecker::visit(Return& s) {

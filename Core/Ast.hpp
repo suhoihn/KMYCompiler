@@ -261,11 +261,14 @@ struct ThisExpr : ExprHelper<ThisExpr, ExprKind::ThisExpr> {
 
 struct NewExpr : ExprHelper<NewExpr, ExprKind::NewExpr> {
     std::string typeName;
+    // Complete parsed type for named allocations. `typeName` remains as the
+    // legacy lookup key until NewExpr semantic resolution is migrated.
+    TypeNodePtr allocatedType;
     TypeNodePtr arrayType;
     ExprPtr arraySize;
     std::vector<ExprPtr> args;
 
-    NewExpr(std::string typeName, std::vector<ExprPtr> args);
+    NewExpr(std::string typeName, std::vector<ExprPtr> args, TypeNodePtr allocatedType = nullptr);
     NewExpr(TypeNodePtr arrayType);
     NewExpr(TypeNodePtr arrayType, ExprPtr arraySize);
 

@@ -50,12 +50,16 @@ enum class MIROp {
     STORE,
     LOAD_GLOBAL,
     STORE_GLOBAL,
+    GLOBAL_ADDR,
     LOAD_INDIRECT,
     STORE_INDIRECT,
     LOAD_INDEX,
     STORE_INDEX,
     LEA,
     ALLOC, // Allocates zero-initialized heap memory with a given size
+    ALLOC_SHARED, // Allocates an RC payload; imm is its byte size
+    RETAIN, // Adds one strong owner for arg0
+    RELEASE, // Removes one strong owner for arg0
     MALLOC_BYTES, // Allocates uninitialized heap memory from a runtime byte count
     FREE, // Releases one raw heap pointer through the C runtime
     ALLOC_DYNAMIC, // Allocates zeroed memory for runtime count * element size
@@ -127,12 +131,16 @@ inline const char* toString(MIROp op) {
         case MIROp::STORE: return "STORE";
         case MIROp::LOAD_GLOBAL: return "LOAD_GLOBAL";
         case MIROp::STORE_GLOBAL: return "STORE_GLOBAL";
+        case MIROp::GLOBAL_ADDR: return "GLOBAL_ADDR";
         case MIROp::LOAD_INDIRECT: return "LOAD_INDIRECT";
         case MIROp::STORE_INDIRECT: return "STORE_INDIRECT";
         case MIROp::LOAD_INDEX: return "LOAD_INDEX";
         case MIROp::STORE_INDEX: return "STORE_INDEX";
         case MIROp::LEA: return "LEA";
         case MIROp::ALLOC: return "ALLOC";
+        case MIROp::ALLOC_SHARED: return "ALLOC_SHARED";
+        case MIROp::RETAIN: return "RETAIN";
+        case MIROp::RELEASE: return "RELEASE";
         case MIROp::MALLOC_BYTES: return "MALLOC_BYTES";
         case MIROp::FREE: return "FREE";
         case MIROp::ALLOC_DYNAMIC: return "ALLOC_DYNAMIC";

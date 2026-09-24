@@ -617,6 +617,20 @@ void IRBuilder::visit(UnaryExpr& e) {
         if (e.operand->kind == ExprKind::Variable) {
             auto var = std::static_pointer_cast<Variable>(e.operand);
 
+            if (var->symbol->isModuleGlobal) {
+                // Module globals live in kmy_globals rather than an SSA local
+                // stack slot. Keep that storage class explicit so SSA never
+                // tries to find a nonexistent local definition for &global.
+                IRValue dst = makeValue(e.type);
+                emit({
+                    .op = IROp::GET_GLOBAL_ADDR,
+                    .dst = dst,
+                    .imm = var->symbol->moduleGlobalSlot
+                });
+                setLastValue(dst);
+                return;
+            }
+
             auto upvalueIt = currCtx->upvalues.find(var->symbol);
             if (upvalueIt != currCtx->upvalues.end()) {
                 // Captured variables already live in heap cells; the cell

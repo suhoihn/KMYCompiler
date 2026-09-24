@@ -60,10 +60,14 @@ enum class IROp {
     GET_ENV, // Gets a value from environment in a given index (e.g., v1 = GET_ENV v0 1)
     CALL,
 
-    GET_ADDR, // Gets an address of a value (UNUSED)
+    GET_ADDR, // Gets the address of a local/field/index storage location
+    GET_GLOBAL_ADDR, // Gets the address of program-global slot imm
     LOAD_INDIRECT, // Load one machine word through a pointer value
     STORE_INDIRECT, // Store one machine word through a pointer value
     ALLOC_HEAP, // Allocate imm bytes and return a pointer
+    ALLOC_SHARED, // Allocate an imm-byte RC payload; destructor is null for now
+    RETAIN, // Add one strong owner for the shared payload in arg0
+    RELEASE, // Remove one strong owner for the shared payload in arg0
     MALLOC_BYTES, // Allocate a runtime byte count without zero-initialization
     FREE, // Release one raw heap pointer; has no result
     ALLOC_ARRAY, // Allocate and zero imm bytes for a fixed-size array
@@ -134,9 +138,13 @@ inline const char* toString(IROp op) {
         case IROp::CALL:                return "CALL";
 
         case IROp::GET_ADDR:            return "GET_ADDR";
+        case IROp::GET_GLOBAL_ADDR:     return "GET_GLOBAL_ADDR";
         case IROp::LOAD_INDIRECT:       return "LOAD_INDIRECT";
         case IROp::STORE_INDIRECT:      return "STORE_INDIRECT";
         case IROp::ALLOC_HEAP:          return "ALLOC_HEAP";
+        case IROp::ALLOC_SHARED:        return "ALLOC_SHARED";
+        case IROp::RETAIN:              return "RETAIN";
+        case IROp::RELEASE:             return "RELEASE";
         case IROp::MALLOC_BYTES:        return "MALLOC_BYTES";
         case IROp::FREE:                return "FREE";
         case IROp::ALLOC_ARRAY:         return "ALLOC_ARRAY";

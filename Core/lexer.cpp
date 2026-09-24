@@ -82,6 +82,7 @@ static std::unordered_map<std::string, TokenType> keywords = {
     {"this", TokenType::KeywordThis},
     {"class", TokenType::KeywordClass},
     {"new", TokenType::KeywordNew},
+    {"shared", TokenType::KeywordShared},
     {"typealias", TokenType::KeywordTypealias},
     {"record", TokenType::KeywordRecord},
     {"init", TokenType::KeywordInit},

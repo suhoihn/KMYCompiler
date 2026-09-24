@@ -17,6 +17,7 @@ enum class TypeNodeKind {
     RECORD, // Annonymous records ({x: int} forms). Will eventually be StructualType
     SCOPED, // For types with a scope (e.g., Foo::Bar. Notice that this is different from enum access like Color::Black)
     POINTER,
+    SHARED,
     NULLABLE
 };
 
@@ -81,11 +82,21 @@ struct PointerTypeNode : TypeNode {
         : TypeNode(TypeNodeKind::POINTER), pointee(std::move(pointee)) {}
 };
 
+// `shared T` is a real type wrapper, not a flag attached to arbitrary nodes.
+// This keeps nested forms such as `shared Foo?` structurally unambiguous.
+struct SharedTypeNode : TypeNode {
+    TypeNodePtr innerType;
+
+    explicit SharedTypeNode(TypeNodePtr inner)
+        : TypeNode(TypeNodeKind::SHARED), innerType(std::move(inner)) {}
+};
+
 enum class TypeKind {
     INT,
     DOUBLE,
     BOOL,
     POINTER, // Source-level T* pointers and internal codegen pointers.
+    SHARED, // RC-managed ownership wrapper around another semantic type.
     CELL, // NOTE: Only used in IR code gen! (TODO: Refactor to IRType or smth)
     STRING,
     NULLTYPE,
@@ -114,6 +125,16 @@ struct PointerType : Type {
     PointerType(Type* pointee)
         : Type(TypeKind::POINTER),
           pointee(pointee) {}
+};
+
+// Canonical semantic representation of `shared T`. The wrapper is distinct
+// from T so one use can be shared without mutating T's interned type object.
+struct SharedType : Type {
+    Type *innerType;
+
+    explicit SharedType(Type *innerType)
+        : Type(TypeKind::SHARED),
+          innerType(innerType) {}
 };
 
 // Temporary!

@@ -204,6 +204,9 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
         case IROp::STORE_GLOBAL:
             return { make(MIROp::STORE_GLOBAL) };
 
+        case IROp::GET_GLOBAL_ADDR:
+            return { make(MIROp::GLOBAL_ADDR) };
+
         case IROp::LOAD_CELL:
             // Load from a cell (dereference)
             // arg0: cell pointer
@@ -230,7 +233,6 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             };
 
 
-        // UNUSED
         case IROp::GET_ADDR:
             return { make(MIROp::LEA) };
 
@@ -260,6 +262,15 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
             alloc.imm = instr.imm.value();
             return { alloc };
         }
+
+        case IROp::ALLOC_SHARED:
+            return { make(MIROp::ALLOC_SHARED) };
+
+        case IROp::RETAIN:
+            return { make(MIROp::RETAIN) };
+
+        case IROp::RELEASE:
+            return { make(MIROp::RELEASE) };
 
         case IROp::ALLOC_ARRAY: {
             MIRInstr alloc;

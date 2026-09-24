@@ -236,6 +236,19 @@ inline std::ostream& operator<<(
             break;
         }
 
+        case IROp::ALLOC_SHARED: {
+            os << instr.dst.value();
+            printDefSym(os, instr);
+            os << " = alloc_shared " << instr.imm.value() << " bytes";
+            break;
+        }
+
+        case IROp::RETAIN:
+        case IROp::RELEASE: {
+            os << toString(instr.op) << " " << instr.args[0];
+            break;
+        }
+
         case IROp::RETURN: {
             os << "return";
 

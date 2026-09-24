@@ -81,7 +81,7 @@ recordFields    → recordField ("," recordField)*
 recordField     → IDENTIFIER ":" expression
 functionExpr    → "fun" "(" parameters? ")" (":" type)? block
 
-newExpr         → "new" IDENTIFIER "(" arguments? ")"
+newExpr         → "new" type "(" arguments? ")"
                 | "new" arrayElementType "[" expression "]"
 arrayElementType→ typeAtom "*"*
 
@@ -98,7 +98,7 @@ assignmentOp    → "=" | "+=" | "-=" | "*=" | "/="
 /*
 Format---------- Types
 
-type            → typeAtom typeSuffix* "?"?
+type            → "shared"? typeAtom typeSuffix* "?"?
 typeAtom        → builtInType | scopedType | functionType | recordType
 builtInType     → "int" | "double" | "bool" | "string" | "void" | "any"
                 | "i64" | "u64" | "f64" | "byte"
@@ -124,7 +124,7 @@ Examples:
 */
 ```
 
-Each `*` or array suffix wraps the type built so far; a single `?` may follow the complete type. `int?*` and repeated `??` are not currently type syntax. `new T[expression]` uses the expression grammar for the length, whereas `T[INTEGER]` in a type annotation accepts only an integer token. The lexer recognizes `...` in parameter lists, but `T[...]` is not currently parsed as a type.
+Each `*` or array suffix wraps the type built so far; a single `?` may follow the complete type. The optional `shared` prefix is currently retained by the syntax tree only; its semantic and RC behavior is intentionally unfinished. `int?*` and repeated `??` are not currently type syntax. `new T[expression]` uses the expression grammar for the length, whereas `T[INTEGER]` in a type annotation accepts only an integer token. The lexer recognizes `...` in parameter lists, but `T[...]` is not currently parsed as a type.
 
 ```text
 /*

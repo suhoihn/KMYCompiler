@@ -4,7 +4,9 @@
 #include <string.h>
 
 // gcc -c runtime.c -o runtime.o
-void runtime_0(int64_t x) {
+
+// Prints one KMY integer followed by a newline.
+void kmy_print_int(int64_t x) {
     printf("%lld\n", x);
     
     // Windows sometimes buffers standard output until the program 
@@ -12,17 +14,20 @@ void runtime_0(int64_t x) {
     fflush(stdout); 
 }
 
-void runtime_1(const char *value) {
+// Prints one nullable, null-terminated KMY string.
+void kmy_print_string(const char *value) {
     printf("%s\n", value ? value : "(null)");
     fflush(stdout);
 }
 
-int64_t runtime_2(const char *left, const char *right) {
+// Compares two nullable KMY strings by contents.
+int64_t kmy_string_equal(const char *left, const char *right) {
     if (left == NULL || right == NULL) return left == right;
     return strcmp(left, right) == 0;
 }
 
-const char *runtime_3(const char *left, const char *right) {
+// Allocates and returns the concatenation of two nullable KMY strings.
+const char *kmy_string_concat(const char *left, const char *right) {
     if (left == NULL) left = "";
     if (right == NULL) right = "";
 
@@ -37,18 +42,21 @@ const char *runtime_3(const char *left, const char *right) {
     return result;
 }
 
-int64_t runtime_4(const char *value) {
+// Returns the byte length of a nullable KMY string.
+int64_t kmy_string_length(const char *value) {
     return value ? (int64_t)strlen(value) : 0;
 }
 
-int64_t runtime_5(const char *value, int64_t index) {
+// Returns one unsigned string byte, or -1 when the index is invalid.
+int64_t kmy_string_byte_at(const char *value, int64_t index) {
     if (value == NULL || index < 0 || (size_t)index >= strlen(value)) {
         return -1;
     }
     return (unsigned char)value[index];
 }
 
-char *runtime_8(int64_t value) {
+// Allocates a one-byte KMY string, or an empty string for an invalid byte.
+char *kmy_string_from_byte(int64_t value) {
     char *result = malloc(2);
     if (result == NULL) return NULL;
     if (value < 0 || value > 255) {
@@ -60,7 +68,8 @@ char *runtime_8(int64_t value) {
     return result;
 }
 
-char *runtime_6(const char *path) {
+// Reads an entire file into a newly allocated, null-terminated string.
+char *kmy_read_file(const char *path) {
     if (path == NULL) return NULL;
     FILE *file = fopen(path, "rb");
     if (file == NULL) return NULL;
@@ -91,7 +100,8 @@ char *runtime_6(const char *path) {
     return contents;
 }
 
-int64_t runtime_7(const char *path, const char *contents) {
+// Writes a complete string to a file and reports whether it succeeded.
+int64_t kmy_write_file(const char *path, const char *contents) {
     if (path == NULL || contents == NULL) return 0;
     FILE *file = fopen(path, "wb");
     if (file == NULL) return 0;
@@ -99,4 +109,64 @@ int64_t runtime_7(const char *path, const char *contents) {
     size_t written = fwrite(contents, 1, length, file);
     int closeResult = fclose(file);
     return written == length && closeResult == 0;
+}
+
+typedef void (*KMYDestructor)(void *value);
+
+// Precedes every RC payload; KMY values point immediately after this header.
+typedef struct KMYRcHeader {
+    int64_t strongCount;
+    KMYDestructor destructor;
+} KMYRcHeader;
+
+// Recovers the hidden RC header from a public payload pointer.
+static KMYRcHeader *kmy_rc_header(void *value) {
+    return ((KMYRcHeader *)value) - 1;
+}
+
+// Allocates an uninitialized RC payload with one strong owner.
+void *kmy_rc_alloc(int64_t payloadSize, KMYDestructor destructor) {
+    if (payloadSize < 0 ||
+        (uint64_t)payloadSize > SIZE_MAX - sizeof(KMYRcHeader)) {
+        return NULL;
+    }
+
+    size_t allocationSize = sizeof(KMYRcHeader) + (size_t)payloadSize;
+    KMYRcHeader *mem = malloc(allocationSize);
+    if (mem == NULL) return NULL;
+
+    *mem = (struct KMYRcHeader) {
+        .strongCount = 1,
+        .destructor = destructor
+    };
+    return mem + 1;
+}
+
+// Adds one strong owner to a nullable RC payload.
+void kmy_rc_retain(void *value) {
+    if (value == NULL) return;
+
+    KMYRcHeader *header = kmy_rc_header(value);
+    if (header->strongCount <= 0 || header->strongCount == INT64_MAX) {
+        abort();
+    }
+    header->strongCount++;
+}
+
+// Removes one strong owner and destroys the payload when the count reaches zero.
+void kmy_rc_release(void *value) {
+    if (value == NULL) return;
+
+    KMYRcHeader *header = kmy_rc_header(value);
+    if (header->strongCount <= 0) {
+        abort();
+    }
+
+    header->strongCount--;
+    if (header->strongCount != 0) return;
+
+    if (header->destructor != NULL) {
+        header->destructor(value);
+    }
+    free(header);
 }

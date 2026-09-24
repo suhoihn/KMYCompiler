@@ -25,8 +25,10 @@ ScopeAccessExpr::ScopeAccessExpr(std::vector<std::string> parts): parts(parts) {
 FunctionExpr::FunctionExpr(const std::vector<Parameter>& params, StmtPtr body, TypeNodePtr annotatedReturnType, bool isEntry) 
     : params(move(params)), body(move(body)), annotatedReturnType(std::move(annotatedReturnType)), isEntry(isEntry) {}
 // Nothing for ThisLiteral.
-NewExpr::NewExpr(std::string typeName, std::vector<ExprPtr> args) : typeName(move(typeName)), args(move(args)) {}
-NewExpr::NewExpr(TypeNodePtr arrayType) : arrayType(move(arrayType)) {}
+NewExpr::NewExpr(std::string typeName, std::vector<ExprPtr> args, TypeNodePtr allocatedType)
+    : typeName(move(typeName)), allocatedType(move(allocatedType)), args(move(args)) {}
+NewExpr::NewExpr(TypeNodePtr arrayType)
+    : arrayType(move(arrayType)) {}
 NewExpr::NewExpr(TypeNodePtr arrayType, ExprPtr arraySize)
     : arrayType(move(arrayType)), arraySize(move(arraySize)) {}
 

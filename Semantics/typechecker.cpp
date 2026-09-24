@@ -1,6 +1,7 @@
 #include "typechecker.hpp"
 
 #include "../Core/errorhandler.hpp"
+#include "TypeInterner.hpp"
 #include <unordered_map>
 
 static std::unordered_map<ASTNode*, Type*> typeInfo;
@@ -72,6 +73,10 @@ Type* typeSigToType(const TypeNodePtr& type) {
             Type* returnType = typeSigToType(named.returnType);
             // TODO: Raw. new. memory leek guaraneed.
             return new FunctionType(paramTypes, returnType);
+        }
+        case TypeNodeKind::SHARED: {
+            const SharedTypeNode& shared = static_cast<SharedTypeNode&>(*type);
+            return TypeInterner::getSharedType(typeSigToType(shared.innerType));
         }
     }
 

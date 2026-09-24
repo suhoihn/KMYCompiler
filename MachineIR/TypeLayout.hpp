@@ -24,6 +24,7 @@ struct TypeLayout {
 
             // All pointers (inclding cells) are same size
             case TypeKind::POINTER:
+            case TypeKind::SHARED:
             case TypeKind::CELL:
                 return PTR_SIZE;
 

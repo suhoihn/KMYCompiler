@@ -26,46 +26,51 @@ std::string escaped(const std::string& value) {
 
 std::string typeSyntax(const TypeNodePtr& type) {
     if (!type) return "inferred";
-    switch (type->kind) {
-        case TypeNodeKind::NAMED:
-            return static_cast<const NamedTypeNode&>(*type).name;
-        case TypeNodeKind::SCOPED: {
-            std::string result;
-            for (const auto& part : static_cast<const ScopedTypeNode&>(*type).scopeParts) {
-                if (!result.empty()) result += "::";
-                result += part;
+    std::string syntax = [&]() -> std::string {
+        switch (type->kind) {
+            case TypeNodeKind::NAMED:
+                return static_cast<const NamedTypeNode&>(*type).name;
+            case TypeNodeKind::SCOPED: {
+                std::string result;
+                for (const auto& part : static_cast<const ScopedTypeNode&>(*type).scopeParts) {
+                    if (!result.empty()) result += "::";
+                    result += part;
+                }
+                return result;
             }
-            return result;
-        }
-        case TypeNodeKind::POINTER:
-            return typeSyntax(static_cast<const PointerTypeNode&>(*type).pointee) + "*";
-        case TypeNodeKind::NULLABLE:
-            return typeSyntax(static_cast<const NullableTypeNode&>(*type).innerType) + "?";
-        case TypeNodeKind::ARRAY: {
-            const auto& array = static_cast<const ArrayTypeNode&>(*type);
-            return typeSyntax(array.elementType) +
-                (array.isSizeDetermined ? "[" + std::to_string(array.size) + "]" : "[]");
-        }
-        case TypeNodeKind::FUNCTION: {
-            const auto& function = static_cast<const FunctionTypeNode&>(*type);
-            std::string result = "(";
-            for (size_t i = 0; i < function.params.size(); ++i) {
-                if (i) result += ", ";
-                result += typeSyntax(function.params[i]);
+            case TypeNodeKind::POINTER:
+                return typeSyntax(static_cast<const PointerTypeNode&>(*type).pointee) + "*";
+            case TypeNodeKind::SHARED:
+                return "shared " + typeSyntax(static_cast<const SharedTypeNode&>(*type).innerType);
+            case TypeNodeKind::NULLABLE:
+                return typeSyntax(static_cast<const NullableTypeNode&>(*type).innerType) + "?";
+            case TypeNodeKind::ARRAY: {
+                const auto& array = static_cast<const ArrayTypeNode&>(*type);
+                return typeSyntax(array.elementType) +
+                    (array.isSizeDetermined ? "[" + std::to_string(array.size) + "]" : "[]");
             }
-            return result + ") -> " + typeSyntax(function.returnType);
-        }
-        case TypeNodeKind::RECORD: {
-            const auto& record = static_cast<const RecordTypeNode&>(*type);
-            std::string result = "{";
-            for (size_t i = 0; i < record.paramTypePairs.size(); ++i) {
-                if (i) result += ", ";
-                result += record.paramTypePairs[i].first + ": " + typeSyntax(record.paramTypePairs[i].second);
+            case TypeNodeKind::FUNCTION: {
+                const auto& function = static_cast<const FunctionTypeNode&>(*type);
+                std::string result = "(";
+                for (size_t i = 0; i < function.params.size(); ++i) {
+                    if (i) result += ", ";
+                    result += typeSyntax(function.params[i]);
+                }
+                return result + ") -> " + typeSyntax(function.returnType);
             }
-            return result + "}";
+            case TypeNodeKind::RECORD: {
+                const auto& record = static_cast<const RecordTypeNode&>(*type);
+                std::string result = "{";
+                for (size_t i = 0; i < record.paramTypePairs.size(); ++i) {
+                    if (i) result += ", ";
+                    result += record.paramTypePairs[i].first + ": " + typeSyntax(record.paramTypePairs[i].second);
+                }
+                return result + "}";
+            }
         }
-    }
-    return "<?>";
+        return "<?>";
+    }();
+    return syntax;
 }
 
 const char* binarySymbol(BinaryOp op) {
@@ -194,7 +199,10 @@ void expr(std::ostream& out, const ExprPtr& node, int depth, const std::string& 
     } else if (dynamic_cast<const ThisExpr*>(raw)) {
         line(out, depth, role, "this" + type);
     } else if (const auto* n = dynamic_cast<const NewExpr*>(raw)) {
-        line(out, depth, role, "new " + (n->arrayType ? typeSyntax(n->arrayType) : n->typeName) + type);
+        const std::string allocatedType = n->arrayType
+            ? typeSyntax(n->arrayType)
+            : n->allocatedType ? typeSyntax(n->allocatedType) : n->typeName;
+        line(out, depth, role, "new " + allocatedType + type);
         if (n->arraySize) expr(out, n->arraySize, depth + 1, "size: ");
         for (size_t i = 0; i < n->args.size(); ++i)
             expr(out, n->args[i], depth + 1, "argument[" + std::to_string(i) + "]: ");
@@ -211,7 +219,7 @@ void stmt(std::ostream& out, const StmtPtr& node, int depth, const std::string& 
         for (size_t i = 0; i < n->statements.size(); ++i)
             stmt(out, n->statements[i], depth + 1, "statement[" + std::to_string(i) + "]: ");
     } else if (const auto* n = dynamic_cast<const Let*>(raw)) {
-        std::string label = std::string(n->isMutable ? "let " : "let const ") + n->name;
+        std::string label = std::string(n->isMutable ? "var " : "let ") + n->name;
         if (n->annotatedType) label += ": " + typeSyntax(n->annotatedType);
         if (n->symbol && n->symbol->type && !n->annotatedType) label += " : " + typeToString(n->symbol->type);
         line(out, depth, role, label);
@@ -238,7 +246,9 @@ void stmt(std::ostream& out, const StmtPtr& node, int depth, const std::string& 
     } else if (const auto* n = dynamic_cast<const Aggregate*>(raw)) {
         line(out, depth, role, std::string(n->kind == AggregateKind::CLASS ? "class " : "record ") + n->name);
         for (const auto& field : n->fieldMembers) {
-            line(out, depth + 1, "field: ", field.name + ": " + typeSyntax(field.annotatedType));
+            line(out, depth + 1, "field: ",
+                 std::string(field.isMutable ? "var " : "let ") +
+                 field.name + ": " + typeSyntax(field.annotatedType));
             if (field.initialiser) expr(out, field.initialiser, depth + 2, "initializer: ");
         }
         for (const auto& method : n->methodMembers)

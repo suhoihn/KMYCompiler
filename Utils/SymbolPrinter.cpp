@@ -28,6 +28,8 @@ std::string typeToString(Type* type) {
         case TypeKind::ANY: return "any";
         case TypeKind::UNKNOWN: return "unknown";
         case TypeKind::UNINITIALISED: return "uninitialised";
+        case TypeKind::SHARED:
+            return "shared " + typeToString(static_cast<const SharedType*>(type)->innerType);
         case TypeKind::NULLABLE:
             return typeToString(static_cast<const NullableType*>(type)->innerType) + "?";
 

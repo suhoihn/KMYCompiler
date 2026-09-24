@@ -75,6 +75,7 @@ enum class TokenType {
     KeywordThis,
     KeywordClass,
     KeywordNew,
+    KeywordShared,
     KeywordTypealias,
     KeywordRecord,
     KeywordInit,

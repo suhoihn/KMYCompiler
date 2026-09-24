@@ -18,6 +18,27 @@ static const std::vector<std::string> argRegs = {
     "rcx", "rdx", "r8", "r9"
 };
 
+// MIR keeps runtime intrinsics as compact numeric IDs, but emitted assembly
+// calls descriptive C symbols. Future RC MIR operations can likewise call
+// kmy_rc_alloc, kmy_rc_retain, and kmy_rc_release directly by symbol name.
+static const char *runtimeSymbol(int64_t id) {
+    switch (id) {
+        case 0: return "kmy_print_int";
+        case 1: return "kmy_print_string";
+        case 2: return "kmy_string_equal";
+        case 3: return "kmy_string_concat";
+        case 4: return "kmy_string_length";
+        case 5: return "kmy_string_byte_at";
+        case 6: return "kmy_read_file";
+        case 7: return "kmy_write_file";
+        case 8: return "kmy_string_from_byte";
+        default:
+            throw KMYCompileError(
+                "Unknown native runtime function ID " + std::to_string(id)
+            );
+    }
+}
+
 static int mirValToStackPos(int id) {
     return (id + 1) * 8;
 };
@@ -287,6 +308,15 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             break;
         }
 
+        case MIROp::GLOBAL_ADDR: {
+            const int slot = instr.imm.value();
+            // RIP-relative LEA computes the address of the global slot itself;
+            // unlike LOAD_GLOBAL, it does not read the value stored there.
+            emit("lea rax, [rip + kmy_globals + " + std::to_string(slot * 8) + "]");
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
         case MIROp::LOAD_INDIRECT: {
             // Load the pointer value from its MIR stack slot.
             emit("mov rcx, " + loc(instr.args[0]));
@@ -331,6 +361,50 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
             */
+        }
+
+        case MIROp::ALLOC_SHARED: {
+            // Windows x64 passes the first argument in RCX: payloadSize.
+            emit("mov rcx, " + std::to_string(instr.imm.value()));
+
+            // Windows x64 passes the second argument in RDX: destructor.
+            // XORing a register with itself produces zero, so this passes a
+            // null destructor until generated class destructors are wired in.
+            emit("xor rdx, rdx");
+
+            // Windows x64 requires the caller to reserve 32 bytes of shadow
+            // space before calling any external function.
+            emit("sub rsp, 32");
+            emit("call kmy_rc_alloc");
+            emit("add rsp, 32");
+
+            // kmy_rc_alloc returns the public payload pointer in RAX; keep the
+            // hidden reference-count header immediately before that pointer.
+            emit("mov " + loc(instr.dst.value()) + ", rax");
+            break;
+        }
+
+        case MIROp::RETAIN: {
+            // Pass the nullable shared payload as the first argument in RCX.
+            emit("mov rcx, " + loc(instr.args[0]));
+
+            // Reserve Windows x64 caller shadow space around the runtime call.
+            emit("sub rsp, 32");
+            emit("call kmy_rc_retain");
+            emit("add rsp, 32");
+            break;
+        }
+
+        case MIROp::RELEASE: {
+            // Pass the nullable shared payload as the first argument in RCX.
+            emit("mov rcx, " + loc(instr.args[0]));
+
+            // kmy_rc_release may invoke the destructor and free the hidden
+            // allocation when this operation removes the final strong owner.
+            emit("sub rsp, 32");
+            emit("call kmy_rc_release");
+            emit("add rsp, 32");
+            break;
         }
 
 
@@ -424,7 +498,10 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             }
 
             emit("sub rsp, 32");
-            emit("call runtime_" + std::to_string(instr.imm.value()));
+            // The linker resolves this descriptive symbol from runtime.o.
+            // KMY cannot call arbitrary C names yet because it has no general
+            // FFI declaration syntax; compiler-known intrinsics can call them.
+            emit("call " + std::string(runtimeSymbol(instr.imm.value())));
             emit("add rsp, 32");
 
             if (instr.dst.has_value()) {
@@ -432,7 +509,7 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             }
 
             // For linux
-            // emit("call runtime_" + std::to_string(instr.imm.value()));
+            // emit("call " + std::string(runtimeSymbol(instr.imm.value())));
             break;
         }
 

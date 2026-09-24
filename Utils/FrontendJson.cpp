@@ -95,6 +95,7 @@ const char* tokenTypeName(TokenType type) {
         case TokenType::KeywordThis: return "KeywordThis";
         case TokenType::KeywordClass: return "KeywordClass";
         case TokenType::KeywordNew: return "KeywordNew";
+        case TokenType::KeywordShared: return "KeywordShared";
         case TokenType::KeywordTypealias: return "KeywordTypealias";
         case TokenType::KeywordRecord: return "KeywordRecord";
         case TokenType::KeywordInit: return "KeywordInit";
@@ -234,49 +235,54 @@ std::string assignmentOpName(AssignmentOp op) {
 
 std::string typeName(const TypeNodePtr& type) {
     if (!type) return "inferred";
-    switch (type->kind) {
-        case TypeNodeKind::NAMED:
-            return std::static_pointer_cast<NamedTypeNode>(type)->name;
-        case TypeNodeKind::SCOPED: {
-            const auto node = std::static_pointer_cast<ScopedTypeNode>(type);
-            std::string result;
-            for (size_t i = 0; i < node->scopeParts.size(); ++i) {
-                if (i) result += "::";
-                result += node->scopeParts[i];
+    std::string syntax = [&]() -> std::string {
+        switch (type->kind) {
+            case TypeNodeKind::NAMED:
+                return std::static_pointer_cast<NamedTypeNode>(type)->name;
+            case TypeNodeKind::SCOPED: {
+                const auto node = std::static_pointer_cast<ScopedTypeNode>(type);
+                std::string result;
+                for (size_t i = 0; i < node->scopeParts.size(); ++i) {
+                    if (i) result += "::";
+                    result += node->scopeParts[i];
+                }
+                return result;
             }
-            return result;
-        }
-        case TypeNodeKind::ARRAY: {
-            const auto node = std::static_pointer_cast<ArrayTypeNode>(type);
-            std::string suffix = "[]";
-            if (node->isSizeDetermined) suffix = "[" + std::to_string(node->size) + "]";
-            else if (node->isDynamic) suffix = "[dynamic]";
-            return typeName(node->elementType) + suffix;
-        }
-        case TypeNodeKind::POINTER:
-            return typeName(std::static_pointer_cast<PointerTypeNode>(type)->pointee) + "*";
-        case TypeNodeKind::FUNCTION: {
-            const auto node = std::static_pointer_cast<FunctionTypeNode>(type);
-            std::string result = "(";
-            for (size_t i = 0; i < node->params.size(); ++i) {
-                if (i) result += ", ";
-                result += typeName(node->params[i]);
+            case TypeNodeKind::ARRAY: {
+                const auto node = std::static_pointer_cast<ArrayTypeNode>(type);
+                std::string suffix = "[]";
+                if (node->isSizeDetermined) suffix = "[" + std::to_string(node->size) + "]";
+                else if (node->isDynamic) suffix = "[dynamic]";
+                return typeName(node->elementType) + suffix;
             }
-            return result + ")->" + typeName(node->returnType);
-        }
-        case TypeNodeKind::RECORD: {
-            const auto node = std::static_pointer_cast<RecordTypeNode>(type);
-            std::string result = "{";
-            for (size_t i = 0; i < node->paramTypePairs.size(); ++i) {
-                if (i) result += ", ";
-                result += node->paramTypePairs[i].first + ": " + typeName(node->paramTypePairs[i].second);
+            case TypeNodeKind::POINTER:
+                return typeName(std::static_pointer_cast<PointerTypeNode>(type)->pointee) + "*";
+            case TypeNodeKind::SHARED:
+                return "shared " + typeName(std::static_pointer_cast<SharedTypeNode>(type)->innerType);
+            case TypeNodeKind::FUNCTION: {
+                const auto node = std::static_pointer_cast<FunctionTypeNode>(type);
+                std::string result = "(";
+                for (size_t i = 0; i < node->params.size(); ++i) {
+                    if (i) result += ", ";
+                    result += typeName(node->params[i]);
+                }
+                return result + ")->" + typeName(node->returnType);
             }
-            return result + "}";
+            case TypeNodeKind::RECORD: {
+                const auto node = std::static_pointer_cast<RecordTypeNode>(type);
+                std::string result = "{";
+                for (size_t i = 0; i < node->paramTypePairs.size(); ++i) {
+                    if (i) result += ", ";
+                    result += node->paramTypePairs[i].first + ": " + typeName(node->paramTypePairs[i].second);
+                }
+                return result + "}";
+            }
+            case TypeNodeKind::NULLABLE:
+                return typeName(std::static_pointer_cast<NullableTypeNode>(type)->innerType) + "?";
         }
-        case TypeNodeKind::NULLABLE:
-            return typeName(std::static_pointer_cast<NullableTypeNode>(type)->innerType) + "?";
-    }
-    return "unknown";
+        return "unknown";
+    }();
+    return syntax;
 }
 
 class AstJsonWriter {
@@ -348,7 +354,9 @@ public:
         } else if (dynamic_cast<const ThisExpr*>(raw)) {
             leaf("ThisExpr", "this");
         } else if (const auto* n = dynamic_cast<const NewExpr*>(raw)) {
-            std::string label = n->arrayType ? "new " + typeName(n->arrayType) : "new " + n->typeName;
+            std::string label = n->arrayType
+                ? "new " + typeName(n->arrayType)
+                : "new " + (n->allocatedType ? typeName(n->allocatedType) : n->typeName);
             begin("NewExpr", label); bool first = true;
             if (n->arraySize) child(first, "size", [&] { writeExpr(n->arraySize); });
             for (size_t i = 0; i < n->args.size(); ++i) child(first, "argument[" + std::to_string(i) + "]", [&] { writeExpr(n->args[i]); });

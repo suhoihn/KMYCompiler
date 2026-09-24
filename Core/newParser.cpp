@@ -1125,11 +1125,13 @@ TypeNodePtr Parser::parse_scopedType() {
     return std::make_shared<ScopedTypeNode>(std::move(parts));
 }
 
-// type -> baseType ( '*' | arraySuffix )* '?'?
+// type -> "shared"? baseType ( '*' | arraySuffix )* '?'?
 // Each '*' wraps the type parsed so far: `int**` is pointer-to-pointer,
 // `int*[]` is an array of pointers, and `int[]*` is pointer-to-array.
 // A trailing '?' wraps the complete type, e.g. `int*?` or `int[]?`.
+// `shared` wraps the completed base/suffix type in a SharedTypeNode.
 TypeNodePtr Parser::parse_type(bool parseArraySuffix) {
+    const bool hasSharedQualifier = match(TokenType::KeywordShared);
     TypeNodePtr result = nullptr;
     if (check(TokenType::LeftParen)) {
         result = parse_functionType();
@@ -1175,6 +1177,9 @@ TypeNodePtr Parser::parse_type(bool parseArraySuffix) {
         }
     }
 
+    if (hasSharedQualifier) {
+        result = std::make_shared<SharedTypeNode>(std::move(result));
+    }
     if (parseArraySuffix && match(TokenType::Nullable)) {
         result = std::make_shared<NullableTypeNode>(std::move(result));
     }
@@ -1319,8 +1324,14 @@ ExprPtr Parser::parse_newExpr() {
         return std::make_shared<NewExpr>(std::move(allocatedType));
     }
 
-    if (allocatedType->kind != TypeNodeKind::NAMED &&
-        allocatedType->kind != TypeNodeKind::SCOPED) {
+    // The ownership wrapper does not change which aggregate is constructed.
+    TypeNodePtr aggregateType = allocatedType;
+    if (aggregateType->kind == TypeNodeKind::SHARED) {
+        aggregateType = std::static_pointer_cast<SharedTypeNode>(aggregateType)->innerType;
+    }
+
+    if (aggregateType->kind != TypeNodeKind::NAMED &&
+        aggregateType->kind != TypeNodeKind::SCOPED) {
         throw KMYParseError(
             "Expected an aggregate type followed by constructor arguments or a fixed array type",
             previous().line,
@@ -1330,10 +1341,10 @@ ExprPtr Parser::parse_newExpr() {
     }
 
     std::string aggregateName;
-    if (allocatedType->kind == TypeNodeKind::NAMED) {
-        aggregateName = std::static_pointer_cast<NamedTypeNode>(allocatedType)->name;
+    if (aggregateType->kind == TypeNodeKind::NAMED) {
+        aggregateName = std::static_pointer_cast<NamedTypeNode>(aggregateType)->name;
     } else {
-        auto scopedType = std::static_pointer_cast<ScopedTypeNode>(allocatedType);
+        auto scopedType = std::static_pointer_cast<ScopedTypeNode>(aggregateType);
         aggregateName = scopedType->scopeParts.front();
         for (size_t i = 1; i < scopedType->scopeParts.size(); ++i) {
             aggregateName += "::" + scopedType->scopeParts[i];
@@ -1352,7 +1363,8 @@ ExprPtr Parser::parse_newExpr() {
 
     return std::make_shared<NewExpr>(
         std::move(aggregateName),
-        std::move(args)
+        std::move(args),
+        std::move(allocatedType)
     );
 }
 

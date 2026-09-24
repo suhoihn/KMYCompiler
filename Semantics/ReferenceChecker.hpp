@@ -5,6 +5,23 @@
 
 struct Module;
 
+// Whether a binding currently owns a value that may be consumed or read.
+// `MaybeUnavailable` is produced when control-flow paths disagree, such as
+// when one branch moves a value and another branch leaves it available.
+enum class BindingAvailability {
+    Uninitialized,
+    Available,
+    Moved,
+    MaybeUnavailable
+};
+
+// The type decides what a consuming context does to its source binding.
+enum class OwnershipKind {
+    Copy,
+    Unique,
+    Shared
+};
+
 // Semantic binding/reference-safety pass.
 //
 // This pass intentionally starts as a traversal-only skeleton because KMY does
@@ -16,6 +33,8 @@ struct Module;
 //   - a returned reference cannot originate from a dead local;
 //   - references cannot escape through fields/globals/closures unless allowed;
 //   - moved owners cannot be used again.
+
+using AvailabilityMap = std::unordered_map<const VarSymbol*, BindingAvailability>;
 class ReferenceChecker : public DefaultVisitor {
 public:
     explicit ReferenceChecker(Module& module);
@@ -26,11 +45,16 @@ private:
     Module& module;
     FunctionExpr* currentFunction = nullptr;
 
+    AvailabilityMap currentMap;
+    
+    OwnershipKind ownershipKind(const Type* type) const;
+    void requireAvailable(const VarSymbol* symbol, const std::string& name) const;
+    void consumeValue(const ExprPtr& expression);
     void requireMutableLValue(const ExprPtr& expression, const char* operation);
 
-    // These overrides are the control points where reference provenance and
-    // escape checks will be added once T& exists.  For now they only preserve
-    // complete AST traversal and therefore do not change language behaviour.
+    // Only nodes that enforce mutability now or will create/transfer/merge
+    // ownership state are overridden. Everything else uses DefaultVisitor.
+    void visit(Variable& e) override;
     void visit(UnaryExpr& e) override;
     void visit(Assignment& e) override;
     void visit(FunctionExpr& e) override;

@@ -109,6 +109,13 @@ inline Type* typeSigToType(Module& module, Scope* currScope, const TypeNodePtr& 
             return TypeInterner::getPointerType(typeSigToType(module, currScope, pointer.pointee));
         }
 
+        case TypeNodeKind::SHARED: {
+            const auto& shared = static_cast<SharedTypeNode&>(*type);
+            // This only interns the semantic wrapper. RC operations are emitted
+            // later by NewExpr, assignment, call, and scope-exit lowering.
+            return TypeInterner::getSharedType(typeSigToType(module, currScope, shared.innerType));
+        }
+
         case TypeNodeKind::NULLABLE: {
             const auto& nullable = static_cast<NullableTypeNode&>(*type);
             return new NullableType(typeSigToType(module, currScope, nullable.innerType));
