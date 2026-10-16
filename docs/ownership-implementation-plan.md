@@ -1,689 +1,464 @@
-# KMY Ownership Implementation Plan
+# KMY Memory Model and Ownership Plan
 
-This document turns `permissive-ownership-roadmap.md` into small milestones for improving the current compiler.
+Last consolidated: 2026-10-07.
 
-The current implementation objective is deliberately narrow:
+This is the single current memory-model document. It replaces the older
+reference-checker notes, daily schedule, and permissive-ownership roadmap.
+Examples describe the intended rules unless explicitly labelled implemented;
+successful parsing or checking does not prove automatic memory management exists.
 
-> Add explicit, non-atomic reference-counted ownership with correct retain/release behavior and a documented strong-cycle leak.
+## 1. Goal and boundaries
 
-This RC milestone comes before unique ownership and borrowing. It must not silently make ordinary `T` permanently reference-counted. Keep the internal ownership categories separate so later `T`, `shared T`, `&T`, `&mut T`, and `*T` can coexist.
+Ordinary objects use unique ownership and moves. Multiple object owners use
+explicit `shared T`. All callable values are shareable, including closures.
+Destruction is intended to be deterministic, without a tracing GC or built-in
+region/arena system. Manual allocation and raw pointers remain available.
 
-## Milestone 0: Stabilize the current compiler
+Later borrowing should prevent dangling references without copying all of
+Rust's exclusivity rules. General references are a separate future milestone,
+not a requirement for finishing unique/shared ownership.
 
-### Tasks
+This model does not promise zero leaks: strong RC cycles can leak. Current KMY
+also has unfinished destruction, allocated strings treated as Copy, and unchecked
+array indexing. It is not currently a memory-safe or leak-free language.
+A future safe subset must address bounds/invalidation as well as ownership.
+Raw/manual operations remain outside its guarantees.
 
-1. Classify existing tests as parser, semantics, VM, or x86 tests.
-2. Add a semantic-only mode resembling `kmyc --check file.kmy`.
-3. Make `--check` stop after parsing, symbol building, resolution, and the reference checker.
-4. Store a stable expected diagnostic fragment beside every negative test.
-5. Fix the known native array element-size failure before ownership changes obscure it.
-6. Document intentional VM/x86 feature differences.
-7. Never execute generated test programs unless execution was explicitly requested.
+## 2. Settled value rules
 
-Suggested backend table:
+| Value | Checker kind | Transfer to another owner | Original binding |
+|---|---|---|---|
+| Primitives, current ordinal enums | Copy | Copy bits | Available |
+| Raw `T*` | Copy | Copy pointer, not pointee | Available |
+| Ordinary class/object, array, structural value | Unique | Transfer ownership | Moved |
+| Explicit `shared T` | Shared | Copy handle and retain | Available |
+| Any function/closure value | Shared | Copy code/env; retain env | Available |
+| `T?` | Same as inner T | Apply inner ownership rule | Depends on inner |
+| String | Copy, temporarily | Copy pointer | Available |
 
-| Feature | VM | x86 |
-|---|---:|---:|
-| Raw pointers | No | Yes |
-| Modules | Limited | Yes |
-| Arrays | Yes | Yes |
-| Closures | Yes | Yes |
+Internal `CELL` is currently classified Copy by the checker. This is not a
+decision that heap-allocated capture cells have no lifetime owner.
+`ANY` is currently conservatively Unique; representation/conversion rules
+still need validation.
 
-### Done when
+`let` makes a binding immutable; `var` permits reassignment. Mutability and
+ownership are different: a Unique `let` can still be moved.
 
-- positive semantic tests pass;
-- native compile-only tests pass except for documented failures;
-- negative tests fail for their intended reason;
-- semantic tests cannot accidentally launch an executable.
-
-## Milestone RC-1: Explicit shared ownership (current priority)
-
-The first automatic-memory implementation is explicit RC:
+Current shared spelling:
 
 ```kmy
-var first: shared Foo = shared new Foo();
-var second = first;       // retain: both handles remain valid
+let first: shared Foo = new shared Foo();
+let second = first; // Shared copy; first remains usable.
 ```
 
-Strong cycles are a documented leak in this milestone. There is no cycle collector and no built-in region system.
+Do not use the older proposal `shared new Foo()`.
+No implicit unique-to-shared pointer cast is part of this plan. A future
+promotion must transfer ownership and establish a valid RC allocation/header.
 
-### RC-1.1 Add ownership categories
+Arrays own their slots and backing storage. An array of shared elements does
+not automatically have shared backing storage: container and element ownership
+are separate. Currently `new shared Foo[n]` parses as an array of shared Foo;
+shared-array allocation syntax is not finalized.
 
-Add an internal ownership enum containing at least:
+## 3. Type, availability, and runtime count are different
+
+`getOwnershipKind(expr)` computes Copy/Unique/Shared from the semantic type.
+Explicit object sharing uses `SharedType(innerType)`. Callable signatures stay
+`FunctionType`; the checker classifies FUNCTION as Shared without wrapping every
+function type in SharedType.
+
+The checker stores only binding availability:
 
 ```cpp
-enum class OwnershipKind {
-    Unique,
-    Shared,
-    Weak,
-    BorrowedRead,
-    BorrowedWrite,
-    Raw
-};
-```
-
-Only `Shared` needs complete behavior during this milestone. Reserving the other categories prevents architectural collapse into one generic pointer type.
-
-### RC-1.2 Choose explicit syntax
-
-Use or finalize syntax equivalent to:
-
-```kmy
-shared Foo
-shared new Foo()
-```
-
-Ordinary `Foo` remains reserved for later unique/move semantics.
-
-### RC-1.3 Add a shared allocation header
-
-A shared allocation needs conceptually:
-
-```text
-[strong count][destruction metadata][object fields...]
-```
-
-Use a non-atomic count. Thread-safe shared ownership is a separate future feature.
-
-### RC-1.4 Add runtime operations
-
-Implement operations equivalent to:
-
-```text
-retain(null)  -> no operation
-retain(value) -> strongCount++
-
-release(null)  -> no operation
-release(value) -> strongCount--
-                  if strongCount == 0:
-                      destroy owned fields
-                      free allocation
-```
-
-Add debug-only counters for allocations, retains, releases, destructions, and live allocations.
-
-### RC-1.5 Handle local bindings
-
-```kmy
-var value: shared Foo = shared new Foo(); // count = 1
-```
-
-Release `value` on every exit from its scope, including early `return`, `break`, and `continue` when applicable.
-
-### RC-1.6 Handle shared copies
-
-```kmy
-var second = first;
-```
-
-Retain the allocation so both handles stay valid.
-
-### RC-1.7 Handle overwrite safely
-
-For:
-
-```kmy
-destination = source;
-```
-
-Perform the conceptual order:
-
-```text
-retain(source)
-release(destination)
-destination = source
-```
-
-Retaining first makes self-assignment and aliasing safe.
-
-### RC-1.8 Handle arguments and returns
-
-Define whether each compiler-generated transfer is a copy or move. A copied shared handle retains. A moved shared handle transfers the handle without changing the count. Returning a fresh local should normally be emitted as a move when possible.
-
-### RC-1.9 Document cycle behavior
-
-This intentionally leaks:
-
-```kmy
-var first: shared Node = shared new Node();
-var second: shared Node = shared new Node();
-
-first.next = second;
-second.next = first;
-```
-
-The compiler does not need to detect arbitrary runtime cycles. Future `weak T` can express non-owning back-links.
-
-### RC-1.10 Defer advanced RC integration
-
-Do not add all of these at once. After locals, assignment, calls, and returns are stable, separately add:
-
-1. shared object fields;
-2. nullable shared handles;
-3. arrays of shared handles;
-4. closure captures;
-5. module globals;
-6. future weak handles.
-
-### Milestone RC-1 is complete when
-
-- acyclic shared objects are destroyed exactly once;
-- shared copies remain usable independently;
-- overwrite and self-assignment are correct;
-- arguments and returns have balanced counts;
-- early exits release all appropriate local handles;
-- strong cycles are documented and tested as retained allocations;
-- ordinary `T` has not been permanently redefined as shared RC.
-
-## Milestone 1: Classify Copy and owning types
-
-### Tasks
-
-1. Add one authoritative `isCopyType(Type *type)` helper.
-2. Initially classify `int`, `byte`, `bool`, `double`, plain enums, and raw pointers as Copy.
-3. Initially classify classes, arrays, strings, collections, and closures with owned captures as owning.
-4. Add `isOwningType(Type *type)` rather than repeating `TypeKind` checks.
-5. Classify nullable types recursively: `int?` is Copy, while `Foo?` is owning.
-6. Reserve a distinct classification for future safe references.
-
-Example:
-
-```kmy
-var first = 10;
-var second = first;
-print(first);             // valid: int copies
-```
-
-### Done when
-
-Every resolved value type is consistently categorized as Copy, owning, borrowed, raw, or non-value.
-
-## Milestone 2: Straight-line move checking
-
-Only handle local variables in straight-line code. Do not handle branches yet.
-
-### 2.1 Add ownership state
-
-```cpp
-enum class OwnershipState {
+enum class BindingAvailability {
     Uninitialized,
-    Live,
-    Moved
-};
-```
-
-Store state by resolved symbol identity, not source name:
-
-```cpp
-std::unordered_map<Symbol *, OwnershipState> ownershipStates;
-```
-
-### 2.2 Mark initialized owners live
-
-```kmy
-var value = new Foo();    // value = Live
-```
-
-### 2.3 Classify expression use
-
-The parent expression determines whether a value is read, moved, borrowed, or converted to a raw address:
-
-```cpp
-enum class ValueUse {
-    Read,
-    Move,
-    BorrowRead,
-    BorrowWrite,
-    RawAddress
-};
-```
-
-These consume an owning value:
-
-```kmy
-var second = value;
-consume(value);
-return value;
-```
-
-These do not inherently move it:
-
-```kmy
-value.field;
-inspect(&value);
-```
-
-### 2.4 Record moves
-
-```kmy
-var second = first;
-```
-
-Produces:
-
-```text
-first = Moved
-second = Live
-```
-
-Store the source location of the move for diagnostics.
-
-### 2.5 Reject use after move
-
-```kmy
-var first = new Foo();
-var second = first;
-use(first);               // error
-```
-
-Suggested diagnostic:
-
-```text
-Cannot use 'first': its value was moved on line N.
-```
-
-### 2.6 Permit reinitialization
-
-```kmy
-var first = new Foo();
-var second = first;
-first = new Foo();        // first becomes Live again
-use(first);               // valid
-```
-
-### 2.7 Preserve Copy behavior
-
-```kmy
-var first = 10;
-var second = first;
-use(first);               // valid
-```
-
-### Done when
-
-Straight-line use-after-move checking works without changing HIR, MIR, or generated code.
-
-## Milestone 3: Moves through calls
-
-### Tasks
-
-1. Passing an owner to an owning parameter moves it.
-2. Passing a Copy value copies it.
-3. Determine behavior from the resolved function symbol and parameter types, never the function name.
-4. Give built-in and native functions real parameter type metadata.
-5. Initially make ordinary method calls borrow their receiver rather than consume it.
-6. Add explicit consuming-receiver syntax only later.
-
-```kmy
-fun consume(value: Foo) {}
-fun consumeNumber(value: int) {}
-
-consume(foo);             // moves foo
-consumeNumber(number);    // copies number
-```
-
-### Done when
-
-Function calls consistently transfer ownership according to their resolved parameter types.
-
-## Milestone 4: Owned returns
-
-### Tasks
-
-1. Returning an owning local moves it into the caller.
-2. Returning a Copy value copies it.
-3. Record move state separately on every return path.
-4. Do not add destruction yet; first verify semantic ownership transfer.
-
-```kmy
-fun create(): Foo {
-    var result = new Foo();
-    return result;         // moves result to the caller
-}
-```
-
-Conditional owned returns must also be representable:
-
-```kmy
-fun choose(condition: bool, first: Foo, second: Foo): Foo {
-    if condition {
-        return first;
-    }
-
-    return second;
-}
-```
-
-### Done when
-
-Factories and conditional owner-returning functions pass move analysis.
-
-## Milestone 5: Merge ownership through control flow
-
-Add a conservative state:
-
-```cpp
-enum class OwnershipState {
-    Uninitialized,
-    Live,
+    Available,
     Moved,
-    MaybeMoved
+    MaybeUnavailable
+};
+
+using AvailabilityMap =
+    std::unordered_map<const VarSymbol*, BindingAvailability>;
+```
+
+Runtime strong counts live in allocation headers, never in this map.
+
+Do not add callable-kind flow maps or separate Copy/owning function signature
+types for the settled callable policy. Do not copy `nativeFnPtr` into aliases:
+it identifies a builtin declaration, not arbitrary stored callable values.
+
+## 4. Reads and ownership transfers
+
+Reading an available binding does not itself move it. A consuming context
+applies the ownership rule: declaration initializer, assignment RHS, by-value
+argument, return value, constructor argument, or array-literal element.
+
+```kmy
+var x = new Foo();
+let y = x;       // Unique transfer: x is Moved.
+x = new Foo();   // Whole-variable overwrite: x is Available again.
+
+let n = 42;
+let m = n;       // Copy: n remains Available.
+```
+
+Evaluate values in language evaluation order. Visit/check each argument or array
+element, then consume it before checking the next one. Thus repeated Unique
+sources in `f(x, x)` or `[x, x]` are rejected.
+
+Fresh `new`/call results have no existing source binding to invalidate.
+However, failure to resolve a place is NOT proof of a fresh temporary:
+computed object bases and forwarding expressions need explicit handling.
+
+Calls obey resolved parameter types; ordinary by-value Unique parameters take
+ownership, Copy parameters copy, and Shared parameters acquire shared ownership.
+Calling the callee does not consume its callable value. Parameters start
+Available in an isolated function context.
+
+Returns transfer the result before cleanup and terminate the current path.
+Both `return;` and `return value;` terminate. The returned owner must survive
+cleanup of the callee's remaining owners.
+
+Constructor arguments and array literals follow the same transfer rules.
+Record literals are deferred for the x86 milestone.
+
+## 5. Places, replacement, and partial moves
+
+A Place describes storage; it is not a new AST node or a backend address:
+
+```cpp
+struct Place {
+    VarSymbol* sym = nullptr;
+    Type* type = nullptr; // Type at the final projected location.
+    std::vector<Projection> projections;
 };
 ```
 
-### Branch algorithm
-
-1. Save the state entering the `if`.
-2. Analyze the `then` branch.
-3. Restore the incoming state.
-4. Analyze the `else` branch.
-5. Merge the two output states.
-
-Use an explicit merge table:
+Current projections are separate structs in a variant: Field (field index),
+Index (optional index expression, default nullptr), and Dereference. Index
+expressions do not prove equality across evaluations; assume potential overlap.
 
 ```text
-Live  + Live  = Live
-Moved + Moved = Moved
-Live  + Moved = MaybeMoved
-Moved + Live  = MaybeMoved
+x                  -> root x, []
+math::x            -> the same resolved binding, []
+object.items[i]    -> root object, [Field(items), Index(i)]
+(*pointer).field   -> root pointer, [Dereference, Field(field)]
 ```
 
-Do not merge a branch that cannot reach the following statement:
+Enum constants are values, not places. Computed bases are not fully represented.
+
+Replacing a slot is different from extracting its owner:
 
 ```kmy
-if condition {
-    consume(value);
-    return;
-}
-
-use(value);               // valid on every path reaching here
+arr[i] = new Foo(); // Replace one slot; arr stays Available.
+let item = arr[i];  // Reject if element is Unique: unsupported partial move.
 ```
 
-Initially treat loops conservatively:
+A projected write requires a live container and checks base/index evaluation.
+It consumes the RHS, but does not mark the entire container Available or Moved.
+Replacement must eventually destroy/release the previous slot value.
 
-```kmy
-while condition {
-    consume(value);
-}
+Plain whole-variable assignment need not read the old binding: it may restore
+a moved/uninitialized mutable variable. Compound assignment reads the old value
+and currently requires Copy operands. Unique self-move assignment is rejected.
 
-use(value);               // error: value may have moved
-```
+Initially reject Unique moves from fields, elements, or dereferences instead of
+silently copying an owning pointer. Copy/Shared projected loads remain reusable.
+Raw-pointer writes are currently rejected by this checker; their eventual
+unchecked/manual policy is separate from safe-place ownership.
 
-### Done when
+## 6. Control-flow analysis
 
-Move checking works across `if`, loops, early returns, `break`, and `continue`.
+`OwnershipFunctionContext currCtx` holds the active function, availability map,
+path reachability, and function-local loop stack. It is not a context per block.
 
-## Milestone 6: Deterministic automatic destruction
+`reachable` means: can the current path reach its next statement?
+Return/break/continue set it false. Block traversal stops on that path.
+Nested function analysis saves/resets/restores the enclosing context.
 
-Begin cleanup only after move analysis is stable.
-
-### Tasks
-
-1. Add a HIR `DROP value` operation.
-2. Display `DROP` in HIR debugging before lowering it.
-3. Calculate the still-live owners at every scope exit.
-4. Insert cleanup for normal exit, `return`, `break`, `continue`, and function end.
-5. Never drop a binding after its ownership moved elsewhere.
-6. Add hidden runtime drop flags for values that may be either live or moved.
-7. Lower destruction for classes first, then strings, arrays, owned fields, array elements, closures, and collections.
-
-Conditional example:
+An if analyses both branches from the state AFTER condition evaluation.
+Merge only pre-existing bindings and only paths reaching the next statement:
 
 ```text
-value_live = true
-
-if condition:
-    consume(value)
-    value_live = false
-
-if value_live:
-    drop value
+Available + Available -> Available
+Moved + Moved         -> Moved
+Available + Moved     -> MaybeUnavailable
+returned + Available  -> Available
+returned + returned   -> unreachable
 ```
 
-### Done when
+Other unequal availability states also become MaybeUnavailable. Reading it
+fails because availability is not proven on every surviving path.
 
-Ordinary owned programs require no explicit `free`, including programs with early returns and conditional moves.
-
-## Milestone 7: Add safe reference types
-
-Keep safe references distinct from existing raw pointers:
-
-```kmy
-&Foo       // shared safe reference
-&mut Foo   // writable safe reference; aliasing is permitted
-*Foo       // unchecked raw pointer
-```
-
-### Tasks
-
-1. Parse `&T` and `&mut T` as types.
-2. Parse `&value`, `&mut value`, and `&raw value` as expressions.
-3. Require the operand to be an addressable place.
-4. Initially reject references to literals, arithmetic temporaries, and returned temporaries.
-5. Require mutable storage for `&mut`.
-6. Permit aliases deliberately.
-7. Never lower ordinary `&mut` as C `restrict` or backend `noalias`.
-
-```kmy
-let fixed = new Foo();
-modify(&mut fixed);        // error
-
-var writable = new Foo();
-modify(&mut writable);     // valid
-```
-
-### Done when
-
-Safe references work as distinct semantic types and cannot be confused with raw pointers.
-
-## Milestone 8: Call-scoped borrowing
-
-Initially allow safe references only as temporary call arguments:
-
-```kmy
-inspect(&value);
-modify(&mut value);
-```
-
-Temporarily reject keeping them in local variables:
-
-```kmy
-var reference = &value;
-```
-
-Check that the owner is live, the operand is a place, the reference type matches, mutable access comes from mutable storage, and the callee cannot retain the reference.
-
-KMY deliberately permits aliasing:
-
-```kmy
-edit(&mut value, &mut value); // valid under KMY's policy
-```
-
-### Done when
-
-Large values can be passed efficiently without requiring general lifetime inference.
-
-## Milestone 9: Local references and last-use analysis
-
-### Tasks
-
-1. Allow `var reference = &value`.
-2. Record provenance such as `reference -> Local(value)`.
-3. Prevent moving or destroying an owner while a live safe reference may point into it.
-4. End the borrow at the reference's final use rather than the end of its lexical block.
-5. Begin with last-use analysis inside one basic block, then extend across the CFG.
-
-```kmy
-var reference = &value;
-use(reference);            // last use
-consume(value);            // valid
-```
-
-### Done when
-
-Local references work without unnecessarily locking their owners for an entire block.
-
-## Milestone 10: Simple returned references
-
-Support a return derived from exactly one input first:
-
-```kmy
-fun identity(value: &Foo): &Foo {
-    return value;
-}
-```
-
-Store hidden metadata:
+Loops have two merge sites:
 
 ```text
-returnOrigins = { Parameter(0) }
+continue + normal body completion -> back edges
+entry + previous head + back edges -> next head
+
+break + condition-false paths      -> state after loop
 ```
 
-Methods may return references derived from `this`:
+Head is the availability estimate before evaluating the condition. Reanalyse
+condition/body while nextHead differs from head. This is compiler fixed-point
+analysis, not execution of the source loop. Fixed keys and widening ensure
+convergence; an invariant guard bounds analysis passes.
+
+Return feeds neither loop merge. Break/continue target the innermost loop.
+Branch merging must preserve their collected snapshots even when the branch
+cannot fall through. Body-local declarations do not escape the loop.
+
+Logical `&&`, `||`, and `??` merge RHS-skipped and RHS-evaluated paths.
+Consuming a Unique `??` result additionally accounts for either selected owner,
+without evaluating the operands again.
+
+The analysis is deliberately conservative: it does not track condition
+correlations or prune constant paths. Even a literal-true loop currently retains
+a possible condition-false exit. Short-circuit compound assignments need their
+own path-aware handling.
+
+No dominance frontier or SSA phi insertion is required for these checker merges.
+
+## 7. All callable values are shareable
+
+This is the settled rule, independent of capture count or type annotation:
 
 ```kmy
-fun getName(): &String {
-    return &this.name;
-}
+fun addOne(x: int): int { return x + 1; }
+let a = addOne;
+let b = a;
+a(1);
+b(2); // Both valid; addOne also remains callable.
 ```
 
-Reject references to locals:
-
-```kmy
-fun broken(): &Foo {
-    var local = new Foo();
-    return &local;          // error
-}
-```
-
-### Done when
-
-Getters and basic container accessors safely return references without source-level lifetime annotations.
-
-## Milestone 11: Conditional returned references
-
-Collect every possible origin from reachable returns:
-
-```kmy
-fun choose(condition: bool, first: &Foo, second: &Foo): &Foo {
-    if condition {
-        return first;
-    }
-
-    return second;
-}
-```
-
-Store:
+A callable is conceptually a code pointer plus an environment pointer:
 
 ```text
-returnOrigins = { Parameter(0), Parameter(1) }
+plain function: { code, null }
+closure:        { code, RC-managed environment }
 ```
 
-At the call site, every possible source owner must remain alive until the returned reference's final use.
-
-### Done when
-
-Reference-returning functions support ordinary conditions and early returns.
-
-## Milestone 12: Safe resizable collections
-
-Give collection methods effect metadata:
+The signature type does not distinguish these representations. At construction,
+capture discovery/layout determines what environment is required.
+At copy/cleanup, null-safe retain/release handles both representations:
 
 ```text
-Vector.get     returns a reference derived from this
-Vector.set     preserves element addresses
-Vector.push    may relocate elements
-Vector.reserve may relocate elements
-Vector.remove  may invalidate elements
-Vector.clear   invalidates elements
+create closure a: env strong count = 1
+copy b = a:      retain(env), count = 2
+destroy a:      release(env), count = 1
+destroy b:      release(env), count = 0 -> destroy env and owned contents
 ```
 
-Reject invalidation while an interior reference remains live:
+Retain/release the environment, never the code address. Copies share captured
+state; they do not deep-copy captures. Sharing the environment does not
+automatically make every captured object a shared object.
+
+The actual backend may share a frame environment/cells among several closures.
+Their ownership edges and destruction glue must reflect that layout, not assume
+every closure has an independent capture payload.
+
+## 8. Capture rules: decisions still required
+
+Do not implement capture ownership merely from “a variable is outside this
+function.” Resolve these remaining questions before changing closure creation.
+
+| Case | Candidate rule discussed | Status |
+|---|---|---|
+| Immutable Copy capture | Copy its value into environment | Proposed |
+| Immutable Shared capture | Retain its owner into environment | Proposed |
+| Immutable Unique capture | Move into environment; invalidate outer source | Proposed |
+| Mutable outer binding | Shared stable cell, preserving observable mutation | Open |
+| Unique value read inside repeatable shared closure | Read without transferring its owner out | Required constraint |
+| Unique value moved out of repeatable shared closure | Reject initially; call-once support deferred | Required constraint |
+| Capturing a reference/raw pointer | Safe-reference escape rules later; raw use unchecked | Deferred |
+
+Example of the proposed Unique-capture rule:
 
 ```kmy
-var item = values.get(0);
-values.push(value);        // error: push may relocate item
-use(item);
+let object = new Foo();
+let f = fun() { object.someMethod(); };
+use(object); // Would fail AFTER capture transfer is implemented.
 ```
 
-Allow mutation after the final use:
+Example of a mutable-capture requirement, not yet a specified ownership rule:
 
 ```kmy
-var item = values.get(0);
-use(item);
-values.push(value);        // valid
+var count = 0;
+let f = fun() { count++; };
+let g = f;
+f();
+g();
+// Copies must observe the same captured count.
 ```
 
-### Done when
+Before implementation, decide who owns the mutable cell, whether the outer
+binding remains usable, how a Unique payload is replaced in that cell, and how
+multiple closures capture it. Rejecting moves out is not enough: overwrites must
+also destroy/release previous contents safely.
 
-Vectors and similar collections can safely return element references while supporting resizing.
+Repeated closure creation cannot move the same Unique capture twice. Creating
+and checking a closure body are different events: checking the body must not
+accidentally perform transfers in the enclosing availability map.
 
-## Later work
+Capture identities are resolved VarSymbol pointers, not unseen names.
+A capture-discovery pass can first store `FunctionExpr::captures`; storage layout
+then builds upvalue indexes and environment offsets.
 
-Only after Milestone 12 should the compiler attempt:
+Existing `FunctionContext::upvalues` describes incoming captures.
+Existing `envMap` describes values made accessible to children.
+If inner uses outer's local through middle, discovery must propagate the
+requirement through middle even if middle never directly reads that local.
 
-- references stored in fields;
-- borrowed closure captures;
-- complex multi-source provenance;
-- `weak T` for explicitly breaking shared RC cycles;
-- standard index and generational-handle collections for graph-shaped data;
-- explicit unsafe blocks around manual memory;
-- cross-thread ownership rules;
-- an optional exclusive/no-alias reference for optimization.
+## 9. Automatic lifetime operations (not yet integrated)
 
-KMY will not add a built-in region ownership system. Programs needing arbitrary graphs should use indexes/handles, explicit shared/weak ownership, redesign the graph, or deliberately use raw/manual pointers.
+The checker answers whether source use is legal. Ownership lowering emits
+allocation, transfer, retain, release, and destruction on the actual execution
+paths; it must not emit RC calls once per fixed-point analysis pass.
 
-## Exact next coding session
+Unique: destroy exactly once at the final owner, never at a moved source.
+Shared: a copied handle gains a strong owner; a transferred fresh handle does
+not gain an unnecessary owner. Ownership of parameters and returns must be
+balanced consistently by caller/callee.
 
-Do only these tasks next:
+Shared overwrite must protect the replacement before releasing the old value:
 
-1. add internal `OwnershipKind::Shared` without changing ordinary `T` semantics;
-2. finalize the explicit `shared T` and shared-allocation syntax;
-3. add a non-atomic strong count to shared allocations;
-4. add null-safe runtime `retain` and `release` functions;
-5. release one shared local on normal scope exit;
-6. retain one shared local-copy assignment;
-7. handle overwrite in retain-before-release order;
-8. handle shared self-assignment;
-9. add five RC lifecycle tests using debug counters;
-10. stop and review before adding shared fields, arrays, closures, or weak references.
-
-### Five initial RC tests
-
-```kmy
-// One owner: allocation is destroyed at scope exit.
-var value: shared Foo = shared new Foo();
+```text
+evaluate/save RHS
+retain RHS if this is a shared copy
+release old destination if initialized
+store RHS
 ```
 
-```kmy
-// Copy: both handles remain valid and destruction happens once.
-var first: shared Foo = shared new Foo();
-var second = first;
-print(first.value);
-print(second.value);
+This permits self-assignment and aliases. Unique replacement must similarly
+preserve RHS evaluation before destroying old initialized storage.
+
+Insert appropriate cleanup on normal scope/function exit, return, break, and
+continue. Only scopes crossed by the exit are cleaned. Destroy owned fields and
+array elements recursively, then backing storage. For conditionally live owners,
+use path-specific cleanup or runtime drop flags; never unconditionally free a
+MaybeUnavailable binding.
+
+RC currently has a hidden strongCount/destructor header before its payload.
+Allocation initializes that header, with count 1; payload is NOT zeroed.
+Construction must initialize owned slots before any destructor can read them.
+Allocation failure behaviour and partial-construction cleanup are still open.
+
+RC is non-atomic/single-threaded. Atomic RC is a future feature and would not
+alone make shared mutable objects thread-safe.
+
+`free` is for valid raw/manual allocations, not unique/shared managed values,
+stack addresses, or interior pointers. Enforcing this boundary requires more
+than the current raw pointer type can prove.
+
+## 10. Cycles, strings, and future borrowing
+
+Strong-only RC cycles leak, including object -> callback -> captured object.
+There is no automatic cycle collector. Future weak handles/captures should not
+keep payloads alive and must support a checked upgrade. Raw pointers are not
+safe substitutes for weak handles.
+
+Strings temporarily remain Copy because literal storage and allocated runtime
+strings share one type. Owned strings need a distinct lifetime strategy before
+automatic string cleanup is claimed complete.
+
+Future references:
+
+- `&T`: non-owning readable reference.
+- `&mut T`: non-owning writable reference; exclusivity is not assumed.
+- `&raw value`: proposed explicit raw-address expression; current `&value`
+  produces a raw pointer of current type spelling `T*`.
+- Do not silently change existing raw syntax while implementing ownership.
+
+Borrowing starts with call-scoped references, then locals/last-use, returned
+references with inferred origins, and collection invalidation. Conditional
+returned references must account for every possible owner.
+Do not return references to locals or let an owner die/move/relocate while a
+safe reference remains usable.
+
+Aliasable writable references must not imply `restrict`/LLVM noalias.
+Safe aliasing still needs protection against replacement/invalidation; relaxed
+exclusivity is not a shortcut around lifetime or value-validity checks.
+References in fields/closures and concurrency remain later design work.
+
+Eventually, generic `Shared<T>` may implement RC in KMY itself once generics,
+layout operations, copy/drop protocols, and destruction glue exist. Compiler
+insertion of ownership actions is still necessary. Current RC HIR/MIR ops are
+bootstrap support, not a commitment to keeping the RC algorithm in C forever.
+
+## 11. Actual implementation status
+
+Implemented foundations:
+
+- Parser/semantic SharedType representation and interning.
+- Copy/Unique/Shared classification; every FUNCTION is Shared.
+- Binding availability, whole moves, rooted writes, function/parameter state.
+- Calls, returns, constructor arguments, and array-literal consumption.
+- If, loop fixed points, break/continue, and binary short-circuit flow.
+- Place for Variable, ScopeAccess, Field, Index, and Dereference shapes.
+- Non-atomic RC runtime and ALLOC_SHARED/RETAIN/RELEASE HIR/MIR/x86 support.
+- 29 hand-crafted resolved-AST checker cases passed in the latest bounded run.
+
+Still incomplete:
+
+- Capture discovery before checking and capture transfer/lifetime policy.
+- Explicit globals, builtins/hoisting, receiver, and default-value entry rules.
+- Unexpected missing map entries currently pass silently.
+- Some computed/forwarded values, raw writes, and partial moves.
+- Short-circuit compound assignments and precise constant-condition handling.
+- Source-driven shared allocation/retain/release/destructor/cleanup integration.
+- Array/field/closure-cell recursive destruction and allocation failure handling.
+- Full source-to-x86 ownership regression tests; AST tests do not prove backend RC.
+
+Current pass order:
+
+```text
+Resolver -> ReferenceChecker -> MethodLower -> ClosureAnalyser -> native IR
 ```
 
-```kmy
-// Overwrite: old destination is released and source is retained.
-var first: shared Foo = shared new Foo();
-var second: shared Foo = shared new Foo();
-second = first;
+Intended separation, subject to the capture design review:
+
+```text
+Resolver -> capture discovery -> ReferenceChecker
+         -> MethodLower -> closure storage/layout
+         -> ownership-aware IR/cleanup -> native lowering
 ```
 
-```kmy
-// Self-assignment: the allocation survives.
-var value: shared Foo = shared new Foo();
-value = value;
-print(value.value);
-```
+Do not simply move checking after MethodLower: it adds a hidden method receiver
+argument that the current checker would consume like an ordinary argument.
+Capture discovery belongs before final ownership checking; slot allocation does
+not have to move with it.
 
-```kmy
-// Strong cycle: intentionally remains live in the first RC version.
-var first: shared Node = shared new Node();
-var second: shared Node = shared new Node();
-first.next = second;
-second.next = first;
-```
+## 12. Next baby steps and decision gates
 
-Stop after the local RC lifecycle milestone. Shared fields, arrays, closures, globals, weak references, unique moves, and borrowing are separate independently reviewable steps.
+1. Read this specification and settle capture modes, especially mutable cells.
+   Output: one accepted/rejected example per capture rule. No compiler changes.
+2. Specify globals, hoisted declarations, defaults, and receiver ownership.
+   Candidate: read Unique globals but disallow ownership extraction initially;
+   ordinary methods temporarily read/borrow the receiver. These are proposals,
+   not implemented guarantees.
+3. Plan the capture-discovery/layout split using the existing scope identities.
+   Then collect/deduplicate captures and propagate transitive requirements.
+4. Implement capture checking only, with positive/negative AST and source tests.
+   Unexpected missing bindings must become invariant failures after registration
+   policies cover legitimate uses.
+5. Close unsupported transfer/control-flow cases before enabling cleanup.
+6. Implement one shared local lifecycle: allocation, copy, overwrite, scope exit.
+7. Implement callable environment and cell ownership/destruction using the agreed
+   capture policy; test plain null-env functions and shared closures.
+8. Add unique destruction and cleanup for early exits and conditionally live values.
+9. Add recursive fields/array cleanup and source-to-x86 tests.
+10. Only then begin borrowing, weak references, or ownership optimizations.
+
+Each coding step changes one rule, includes tests, and stops for review.
+No date-based promise: split a step if it does not fit a 1–2 hour session.
+Do not revisit rejected callable-kind-map/annotation-dependent designs unless
+the language policy is explicitly reopened.
+
+Validation layers: resolved-AST unit tests -> real-source semantic tests ->
+IR lifetime-action checks -> bounded native lifecycle tests.
+Runtime tests need hidden processes, redirected output, short timeouts, and
+confirmed termination. Do not run generated programs without authorization.
+
+Completion requires acyclic Unique/Shared values to be destroyed exactly once,
+balanced shared counts, correct cleanup on every supported exit, documented
+cycles/unsafe boundaries, and tested diagnostics. Checking alone is not completion.

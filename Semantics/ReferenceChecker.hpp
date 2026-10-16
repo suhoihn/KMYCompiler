@@ -1,63 +1,89 @@
 #pragma once
 
-#include "../Core/Ast.hpp"
+#include <unordered_map>
+#include <vector>
+
 #include "../Utils/DefaultVisitor.hpp"
+#include "Place.hpp"
 
 struct Module;
 
-// Whether a binding currently owns a value that may be consumed or read.
-// `MaybeUnavailable` is produced when control-flow paths disagree, such as
-// when one branch moves a value and another branch leaves it available.
+// Availability belongs to a binding; ownership kind belongs to its value type.
 enum class BindingAvailability {
     Uninitialized,
     Available,
     Moved,
-    MaybeUnavailable
+    MaybeUnavailable // For branched lvalue
 };
 
-// The type decides what a consuming context does to its source binding.
 enum class OwnershipKind {
     Copy,
     Unique,
     Shared
 };
 
-// Semantic binding/reference-safety pass.
-//
-// This pass intentionally starts as a traversal-only skeleton because KMY does
-// not have a source-level T& type yet.  It runs after Resolver, so every
-// expression already has its Type and every variable use has its VarSymbol.
-// Mutability is enforced here now; future reference rules also belong here
-// rather than in IRBuilder/code generation:
-//   - &expr requires stable lvalue storage;
-//   - a returned reference cannot originate from a dead local;
-//   - references cannot escape through fields/globals/closures unless allowed;
-//   - moved owners cannot be used again.
-
 using AvailabilityMap = std::unordered_map<const VarSymbol*, BindingAvailability>;
+
+// Snapshots of paths targeting the nearest enclosing loop, not body state.
+struct LoopOwnershipContext {
+    std::vector<AvailabilityMap> breakStates;
+    std::vector<AvailabilityMap> continueStates;
+};
+
+// Ownership-analysis state, separate from the closure/codegen FunctionContext.
+// Save/restore at function boundaries and control-flow handling come next.
+struct OwnershipFunctionContext {
+    FunctionExpr* function = nullptr;
+    AvailabilityMap availability;
+    // Can the currently analysed path reach its next statement? This is not
+    // whole-function reachability or a separate flag per lexical block.
+    // return/break/continue set it false; branch/loop merges determine whether
+    // another path can continue. break/continue terminate only this body path.
+    bool reachable = true;
+    // Function-local: nested functions must not inherit enclosing loop targets.
+    std::vector<LoopOwnershipContext> loopStack;
+};
+
+// Traversal skeleton with state storage for rebuilding ownership rules.
 class ReferenceChecker : public DefaultVisitor {
 public:
     explicit ReferenceChecker(Module& module);
-
     void check();
 
 private:
     Module& module;
-    FunctionExpr* currentFunction = nullptr;
+    OwnershipFunctionContext currCtx;
 
-    AvailabilityMap currentMap;
-    
-    OwnershipKind ownershipKind(const Type* type) const;
+    std::optional<Place> resolvePlace(const ExprPtr& expr);
+    OwnershipKind getOwnershipKind(const ExprPtr& expr) const;
+    // Call after visiting the expression to check its reads before transfer.
+    void consumeValue(const ExprPtr& expr);
     void requireAvailable(const VarSymbol* symbol, const std::string& name) const;
-    void consumeValue(const ExprPtr& expression);
-    void requireMutableLValue(const ExprPtr& expression, const char* operation);
+    AvailabilityMap mergeAvailability(
+        const AvailabilityMap& visible,
+        const std::vector<AvailabilityMap>& incoming
+    ) const;
 
-    // Only nodes that enforce mutability now or will create/transfer/merge
-    // ownership state are overridden. Everything else uses DefaultVisitor.
+    // Reads, writes, and transfers. Bodies initially only traverse the AST.
     void visit(Variable& e) override;
+    void visit(ScopeAccessExpr& e) override;
+    void visit(ThisExpr& e) override;
     void visit(UnaryExpr& e) override;
+    void visit(BinaryExpr& e) override;
     void visit(Assignment& e) override;
+    void visit(Index& e) override;
+    void visit(Get& e) override;
+    void visit(Call& e) override;
     void visit(FunctionExpr& e) override;
+    void visit(NewExpr& e) override;
+    void visit(ArrayLiteral& e) override;
+
+    // Binding state, scopes, and control-flow merging.
     void visit(Let& s) override;
     void visit(Return& s) override;
+    void visit(Block& s) override;
+    void visit(If& s) override;
+    void visit(While& s) override;
+    void visit(Break& s) override;
+    void visit(Continue& s) override;
 };

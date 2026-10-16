@@ -18,5 +18,5 @@ class Counter {
 
 var c: Counter = new Counter(4);
 while (c.dec() > 0) {
-    print(c.inc());
+    print(c.value);
 }

@@ -1,0 +1,10 @@
+let b: byte* = malloc(16);
+
+fun getPtr(ptr: byte*) {
+    return *ptr;
+}
+
+print( b );
+
+print( getPtr );
+

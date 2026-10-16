@@ -127,6 +127,7 @@ static void printUsage(std::ostream& out) {
         << "  --no-run               Generate output but do not link/run it.\n"
         << "  --frontend-json        Emit frontend tokens/trace JSON and stop.\n"
         << "  -d, --debug            Print intermediate compiler information.\n"
+        << "  --check-ownership      Enable experimental ownership checking (off by default).\n"
         << "  -t, --strict-types     Enable the legacy strict-type switch.\n\n"
         << "Examples:\n"
         << "  kmyc tests/x86/vm_smoke.kmy\n"
@@ -204,6 +205,7 @@ int main(int argc, char *argv[]) {
     // Switches
     bool debugOutput = false;
     bool strictTypes = false;
+    bool checkOwnership = false;
     bool isBuildingASM = false;
     bool frontendJson = false;
     bool run = true;
@@ -245,6 +247,14 @@ int main(int argc, char *argv[]) {
                 printLog(LogLevel::WARN, "Duplicate switch (--strict-types) detected.");
             }
             strictTypes = true;
+            continue;
+        }
+
+        if (strcmp(str, "--check-ownership") == 0) {
+            if (checkOwnership) {
+                printLog(LogLevel::WARN, "Duplicate switch (--check-ownership) detected.");
+            }
+            checkOwnership = true;
             continue;
         }
 
@@ -492,15 +502,15 @@ int main(int argc, char *argv[]) {
             }
         });
 
-        // Reference legality is a semantic concern: run it after names/types
-        // are resolved and before lowering rewrites source-level expressions.
-        // It is traversal-only until KMY gains a source-level T& type.
-        runPass("ReferenceChecker", debugOutput, [&] {
-            for (auto& [modulePath, module] : modules) {
-                ReferenceChecker checker(module);
-                checker.check();
-            }
-        });
+        // Opt-in while ownership rules are incomplete; check resolved source AST.
+        if (checkOwnership) {
+            runPass("ReferenceChecker", debugOutput, [&] {
+                for (auto& [modulePath, module] : modules) {
+                    ReferenceChecker checker(module);
+                    checker.check();
+                }
+            });
+        }
 
         //3-3.5(?). Method lowering
         runPass("MethodLower", debugOutput, [&] {

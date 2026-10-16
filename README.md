@@ -43,6 +43,19 @@ KMY's existing integer representation, `f64` maps to `double`, and `byte` maps
 to the current integer representation. True width-specific and unsigned
 arithmetic will require a later backend/layout update.
 
+## Ownership and memory model
+
+The current design uses unique/move ownership for ordinary objects and arrays,
+explicit `shared T` for shared objects, and shareable callable values whose
+captured environments are intended to use non-atomic RC. Raw/manual allocation
+remains available. Ownership checking is partial; automatic destruction and
+source-level retain/release insertion are not yet integrated.
+
+See the single [memory-model specification and implementation plan](docs/ownership-implementation-plan.md)
+for settled rules, open capture decisions, actual implementation status, and
+small next steps. Strong RC cycles can leak; current KMY is not memory-safe or
+leak-free.
+
 ## Current native x86 limitations
 
 - Pointer types, address-of (`&`), dereference (`*`), pointer parameters, and
