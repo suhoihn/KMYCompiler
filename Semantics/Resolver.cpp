@@ -750,6 +750,9 @@ void Resolver::visit(NewExpr& e) {
     }
 
     e.type = aggType->type;
+    if (e.allocatedType && e.allocatedType->kind == TypeNodeKind::SHARED) {
+        e.type = TypeInterner::getSharedType(aggType->type);
+    }
 
     for (auto& arg : e.args)
         arg->accept(*this);

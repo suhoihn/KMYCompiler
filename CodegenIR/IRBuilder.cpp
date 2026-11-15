@@ -113,7 +113,7 @@ void IRBuilder::visit(Literal& e) {
         !std::holds_alternative<int>(e.value) &&
         !std::holds_alternative<bool>(e.value)
     ) {
-        throw KMYCompileError("Only string, bool and int yet sorry.");
+        throw KMYCompileError("Only string, bool, and int yet sorry.");
     }
 
     int val;
@@ -749,9 +749,8 @@ void IRBuilder::visit(UnaryExpr& e) {
 }
 
 void IRBuilder::visit(Assignment& e) {
-    // Case 1: variable assignment
     assert(e.left->isLValue());
-
+    
     // Pointer dereference assignment. The dereference expression is already
     // an lvalue, so its operand evaluates to the destination address.
     if (e.left->kind == ExprKind::UnaryExpr) {
@@ -793,6 +792,11 @@ void IRBuilder::visit(Assignment& e) {
         return;
     }
 
+    // Case 1: variable assignment
+    // TODO: RC count only impl'ed for var = var cases.
+    // No arr[i] = obj.x things yet :(
+    // When will I finish this? -2026.11.15.
+    // That date will be super old by the next time I see this ig.
     if (e.left->kind == ExprKind::Variable) {
         auto var = std::static_pointer_cast<Variable>(e.left);
         if (!var->symbol->isMutable) {
@@ -818,6 +822,24 @@ void IRBuilder::visit(Assignment& e) {
             e.right->accept(*this);
             // last value isnt updated.
             // In a = 42, the last value is RHS.
+
+            // This is a = (expr) form.
+            // For RC check, we only deal with a = (var) form only
+            if (e.right->kind == ExprKind::Variable) {
+                // let a = b form with both being shared types.
+                // FIRST retain b, then release a (otherwise x = x case will fail)
+                auto varRHS = std::static_pointer_cast<Variable>(e.right);
+
+                emit(IRInstr{
+                    .op = IROp::RETAIN,
+                    .args = { VarRef{varRHS->symbol} }
+                });
+
+                emit(IRInstr{
+                    .op = IROp::RELEASE,
+                    .args = { VarRef{var->symbol} }
+                });
+            }
         }
 
         if (var->symbol->isModuleGlobal) {
@@ -1681,20 +1703,28 @@ void IRBuilder::visit(NewExpr& e) {
         return;
     }
 
-    if (e.type->kind != TypeKind::INSTANCE) {
+    const bool isShared = e.type->kind == TypeKind::SHARED;
+    Type* layoutType = e.type;
+    if (isShared) {
+        layoutType = static_cast<SharedType*>(e.type)->innerType;
+    }
+
+    if (layoutType->kind != TypeKind::INSTANCE) {
         throw KMYCompileError("new applied to a non-instance type");
     }
 
-    auto* instanceType = static_cast<InstanceType*>(e.type);
+    auto* instanceType = static_cast<InstanceType*>(layoutType);
     size_t fieldCount = instanceType->fieldMap.size();
     size_t objectSize = std::max<size_t>(PTR_SIZE, fieldCount * PTR_SIZE);
 
     IRValue object = makeValue(e.type);
     emit({
-        .op = IROp::ALLOC_HEAP,
+        .op = isShared ? IROp::ALLOC_SHARED : IROp::ALLOC_HEAP,
         .dst = object,
         .imm = static_cast<int64_t>(objectSize)
     });
+
+
 
     // Zero fields before running source-level initializers.
     // for (auto& [name, field] : instanceType->fieldMap) {
@@ -1927,14 +1957,32 @@ void IRBuilder::visit(While& s) {
     currCtx->currBlock = exitBB;
 }
 
+
+void IRBuilder::releaseSharedLocals(const std::vector<VarSymbol*>& stk) {
+    for (auto it = stk.rbegin(); it != stk.rend(); ++it) {
+        emit(IRInstr {
+            .op = IROp::RELEASE,
+            .args = { VarRef {*it} },
+        });
+    }
+}
+
 void IRBuilder::visit(Block& s) {
+    // Create a stack for shared local vars (e.g. let a = new shared X();)
+    currCtx->sharedLocalVarStk.emplace_back();
+
     for (auto& stmt : s.statements) {
-        if (hasTerminator(currCtx->currBlock)) {
-            // Dead code after terminator
-            break;
-        }
+        // Dead code after terminator. Should not continue.
+        if (hasTerminator(currCtx->currBlock)) break;
         stmt->accept(*this);
     }
+
+    // TODO: Early exit case not handled yet because functions are not considered at all
+    if (!hasTerminator(currCtx->currBlock)) {
+        releaseSharedLocals(currCtx->sharedLocalVarStk.back());
+    }
+    // Pop stack unconditionally.
+    currCtx->sharedLocalVarStk.pop_back();
 }
 
 void IRBuilder::visit(Break& s) {
@@ -2106,6 +2154,19 @@ void IRBuilder::visit(Let& s) {
     }
 
     if (uncapturedLocal) {
+        // Case: let a = new shared X();
+        const bool copiesSharedLocal =
+            s.symbol->type->kind == TypeKind::SHARED &&
+            s.expr->kind == ExprKind::Variable &&
+            std::holds_alternative<VarRef>(value);
+
+        if (s.symbol->type->kind == TypeKind::SHARED)
+            currCtx->sharedLocalVarStk.back().push_back(s.symbol);
+
+        if (copiesSharedLocal) {
+            emit({ .op = IROp::RETAIN, .args = { value } });
+        }
+
         bindLocalDefinition(s.symbol, value);
     } else {
         //currCtx->currBlock->defs.push_back({s.symbol, cell});
@@ -2113,9 +2174,22 @@ void IRBuilder::visit(Let& s) {
 }
 
 void IRBuilder::visit(Return& s) {
-    s.expr->accept(*this);
-
-    currCtx->currBlock->term = ReturnTerm{ getLastValue() };
+    std::optional<HIROperand> retVal;
+    if (s.expr)  {
+        s.expr->accept(*this);
+        retVal = getLastValue();
+    }
+    // Early exit of a block.
+    // Release ALL shared locals declared in this function.
+    // This is done via climbing back up the stack.
+    // NOTE: the stack itself shouldn't be popped! 
+    // The only place it is popped is on proper Block& visits.
+    if (!hasTerminator(currCtx->currBlock)) {
+        for (auto it = currCtx->sharedLocalVarStk.rbegin(); it != currCtx->sharedLocalVarStk.rend(); ++it) {
+            releaseSharedLocals(*it);
+        }
+    }
+    currCtx->currBlock->term = ReturnTerm{ retVal };
 }
 
 void IRBuilder::visit(Aggregate& s) {

@@ -48,6 +48,8 @@ struct IRCodegenFnCtx {
     // Blocks
     int nextBlockId = 0;
     BasicBlock<IRInstr>* currBlock = nullptr;
+    // One cleanup list per active lexical block, isolated to this function.
+    std::vector<std::vector<VarSymbol*>> sharedLocalVarStk;
 
     // Env
     std::optional<IRValue> env; // The env this function is making for children (if any)
@@ -84,7 +86,8 @@ private:
     // Blocks
     HIRBlock* makeBlock();
     void connectBlock(HIRBlock* from, HIRBlock* to);
-
+    void releaseSharedLocals(const std::vector<VarSymbol*>& stk);
+    
     // Code
     IRValue makeValue(Type* type);
 

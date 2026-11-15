@@ -115,6 +115,8 @@ private:
     // (stores info like v? = phi(???) for variable cnt is in block X)
     std::unordered_map<HIRBlock*, VarSet> phiBlocks;
     
+    void clearUnreachableBlocks(HIRFunction* func);
+    
     void computeDoms(HIRFunction* func);
     void computeIDoms(HIRFunction* func);
     void buildDomTree();

@@ -2,6 +2,7 @@
 #include <fstream>
 #include <exception>
 #include <cstdlib>
+#include <cstdio>
 #include <streambuf>
 
 #include "../Utils/utils.hpp"
@@ -32,6 +33,25 @@
 const std::string RED = "\033[31m";
 const std::string RESET = "\033[0m";
 const std::string BOLD = "\033[1m";
+
+#ifdef _WIN32
+// Ask WSL to translate absolute host paths; do not assume a /mnt/c mount layout.
+static std::string linuxLinkPath(const std::filesystem::path& path) {
+    const std::string command = "wsl.exe --exec wslpath -a \""
+        + std::filesystem::absolute(path).string() + "\"";
+    FILE* pipe = _popen(command.c_str(), "r");
+    if (!pipe) throw KMYCompileError("Could not start WSL; use --no-run to emit Linux assembly only.");
+    std::string result;
+    char buffer[512];
+    while (fgets(buffer, sizeof(buffer), pipe)) result += buffer;
+    const int status = _pclose(pipe);
+    while (!result.empty() && (result.back() == '\n' || result.back() == '\r')) result.pop_back();
+    if (status != 0 || result.empty()) {
+        throw KMYCompileError("Linux linking requires a working default WSL distribution with gcc; use --no-run for assembly only.");
+    }
+    return result;
+}
+#endif
 
 // Module-map keys use normalized paths. Imports are relative to their importing
 // file, and spelling variants such as `lib/../lib/math.kmy` load only once.
@@ -123,6 +143,7 @@ static void printUsage(std::ostream& out) {
         << "Options:\n"
         << "  -h, --help             Show this help text and exit.\n"
         << "  -asm, --asm            Compile through the native x86-64 backend.\n"
+        << "  --linux                Select Linux x86-64 ELF output (implies --asm; default: Windows).\n"
         << "  -o, --output <path>    Set the output executable/assembly base path.\n"
         << "  --no-run               Generate output but do not link/run it.\n"
         << "  --frontend-json        Emit frontend tokens/trace JSON and stop.\n"
@@ -207,6 +228,7 @@ int main(int argc, char *argv[]) {
     bool strictTypes = false;
     bool checkOwnership = false;
     bool isBuildingASM = false;
+    bool targetLinux = false;
     bool frontendJson = false;
     bool run = true;
     const char* output = nullptr;
@@ -255,6 +277,12 @@ int main(int argc, char *argv[]) {
                 printLog(LogLevel::WARN, "Duplicate switch (--check-ownership) detected.");
             }
             checkOwnership = true;
+            continue;
+        }
+
+        if (strcmp(str, "--linux") == 0) {
+            targetLinux = true;
+            isBuildingASM = true;
             continue;
         }
 
@@ -588,7 +616,8 @@ int main(int argc, char *argv[]) {
 
             std::ostringstream buffer;
 
-            X86Builder x86Builder(mirFuncs, buffer, stringPool, moduleGlobalSlotCount);
+            X86Builder x86Builder(mirFuncs, buffer, stringPool, moduleGlobalSlotCount,
+                targetLinux ? X86Target::Linux : X86Target::Windows);
             runPass("X86Builder", debugOutput, [&] { x86Builder.build(); });
 
             std::string assembly = buffer.str();
@@ -616,12 +645,29 @@ int main(int argc, char *argv[]) {
             std::cout << "Assembly written to " << asmFile << "\n";
 
             if (run) {
-                std::string cmd = "gcc \"" + asmFile + "\" \"Runtime C Functions\\runtime.o\" -o \"" + std::string(output) + "\"";
+                std::string cmd;
+                if (targetLinux) {
+                    // Build runtime.c for ELF too; Windows runtime.o is not link-compatible.
+#ifdef _WIN32
+                    cmd = "wsl.exe --exec gcc \"" + linuxLinkPath(asmFile)
+                        + "\" \"" + linuxLinkPath("Runtime C Functions/runtime.c")
+                        + "\" -o \"" + linuxLinkPath(output) + "\"";
+#else
+                    cmd = "gcc \"" + asmFile + "\" \"Runtime C Functions/runtime.c\" -o \"" + output + "\"";
+#endif
+                } else {
+#ifdef _WIN32
+                    cmd = "gcc \"" + asmFile + "\" \"Runtime C Functions/runtime.o\" -o \"" + output + "\"";
+#else
+                    cmd = "x86_64-w64-mingw32-gcc \"" + asmFile
+                        + "\" \"Runtime C Functions/runtime.c\" -o \"" + output + "\"";
+#endif
+                }
 
                 int result = std::system(cmd.c_str());
 
                 if (result != 0) {
-                    std::cerr << "gcc failed\n";
+                    std::cerr << (targetLinux ? "Linux gcc/WSL link failed\n" : "Windows gcc link failed\n");
                     return 1;
                 }
 

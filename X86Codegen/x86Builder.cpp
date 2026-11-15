@@ -9,14 +9,27 @@ X86Builder::X86Builder(
     std::vector<MIRFunction*> mirFunctions, 
     std::ostream& out,
     const StringPool& stringPool,
-    int globalSlotCount
-) : mirFunctions(mirFunctions), stringPool(stringPool), globalSlotCount(globalSlotCount), out(out) {}
+    int globalSlotCount,
+    X86Target target
+) : out(out), mirFunctions(mirFunctions), stringPool(stringPool), globalSlotCount(globalSlotCount),
+    target(target), argRegs(target == X86Target::Linux
+        ? std::vector<std::string>{"rdi", "rsi", "rdx", "rcx", "r8", "r9"}
+        : std::vector<std::string>{"rcx", "rdx", "r8", "r9"}) {}
 
-static const std::vector<std::string> argRegs_linux = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
+int X86Builder::callStackBytes(size_t argumentCount) const {
+    const int shadow = target == X86Target::Windows ? 32 : 0;
+    const int stackArgs = argumentCount > argRegs.size()
+        ? static_cast<int>(argumentCount - argRegs.size()) * 8 : 0;
+    return (shadow + stackArgs + 15) & ~15; // Keep RSP 16-byte aligned before CALL.
+}
 
-static const std::vector<std::string> argRegs = {
-    "rcx", "rdx", "r8", "r9"
-};
+void X86Builder::emitRuntimeCall(const std::string& symbol) {
+    // Fixed small runtime calls use registers; only Windows needs shadow space.
+    const int bytes = callStackBytes(0);
+    if (bytes) emit("sub rsp, " + std::to_string(bytes));
+    emit("call " + symbol);
+    if (bytes) emit("add rsp, " + std::to_string(bytes));
+}
 
 // MIR keeps runtime intrinsics as compact numeric IDs, but emitted assembly
 // calls descriptive C symbols. Future RC MIR operations can likewise call
@@ -344,39 +357,23 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
 
         case MIROp::ALLOC: {
             // calloc(1, size) gives deterministic zeroed storage.
-            emit("mov rcx, 1");
-            emit("mov rdx, " + std::to_string(instr.imm.value()));
-            // Windows x64 requires 32 bytes of caller-provided shadow space.
-            emit("sub rsp, 32");
-            emit("call calloc");
-            emit("add rsp, 32");
+            emit("mov " + argRegs[0] + ", 1");
+            emit("mov " + argRegs[1] + ", " + std::to_string(instr.imm.value()));
+            emitRuntimeCall("calloc");
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
-
-            
-            /*
-            // For linux
-            emit("mov rdi, " + std::to_string(instr.imm.value()));
-            emit("call malloc");
-            emit("mov " + loc(instr.dst.value()) + ", rax");
-            break;
-            */
         }
 
         case MIROp::ALLOC_SHARED: {
-            // Windows x64 passes the first argument in RCX: payloadSize.
-            emit("mov rcx, " + std::to_string(instr.imm.value()));
+            // First target-ABI argument: payload size in bytes.
+            emit("mov " + argRegs[0] + ", " + std::to_string(instr.imm.value()));
 
-            // Windows x64 passes the second argument in RDX: destructor.
+            // Second target-ABI argument: destructor.
             // XORing a register with itself produces zero, so this passes a
             // null destructor until generated class destructors are wired in.
-            emit("xor rdx, rdx");
+            emit("xor " + argRegs[1] + ", " + argRegs[1]);
 
-            // Windows x64 requires the caller to reserve 32 bytes of shadow
-            // space before calling any external function.
-            emit("sub rsp, 32");
-            emit("call kmy_rc_alloc");
-            emit("add rsp, 32");
+            emitRuntimeCall("kmy_rc_alloc");
 
             // kmy_rc_alloc returns the public payload pointer in RAX; keep the
             // hidden reference-count header immediately before that pointer.
@@ -385,25 +382,19 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
         }
 
         case MIROp::RETAIN: {
-            // Pass the nullable shared payload as the first argument in RCX.
-            emit("mov rcx, " + loc(instr.args[0]));
-
-            // Reserve Windows x64 caller shadow space around the runtime call.
-            emit("sub rsp, 32");
-            emit("call kmy_rc_retain");
-            emit("add rsp, 32");
+            // Pass the nullable shared payload in the first target argument register.
+            emit("mov " + argRegs[0] + ", " + loc(instr.args[0]));
+            emitRuntimeCall("kmy_rc_retain");
             break;
         }
 
         case MIROp::RELEASE: {
-            // Pass the nullable shared payload as the first argument in RCX.
-            emit("mov rcx, " + loc(instr.args[0]));
+            // Pass the nullable shared payload in the first target argument register.
+            emit("mov " + argRegs[0] + ", " + loc(instr.args[0]));
 
             // kmy_rc_release may invoke the destructor and free the hidden
             // allocation when this operation removes the final strong owner.
-            emit("sub rsp, 32");
-            emit("call kmy_rc_release");
-            emit("add rsp, 32");
+            emitRuntimeCall("kmy_rc_release");
             break;
         }
 
@@ -414,20 +405,22 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
 
         case MIROp::PARAM: {
             int i = instr.imm.value();
-            if (i >= argRegs.size()) {
-                std::cerr << "BAD argRegs index: " << i << "\n";
-                std::cerr << instr << "\n";
-                throw KMYCompileError("argRegs overflow");
+            if (i < 0) throw KMYCompileError("Negative native parameter index");
+            if (static_cast<size_t>(i) < argRegs.size()) {
+                emit("mov " + loc(instr.dst.value()) + ", " + argRegs[i]);
+            } else {
+                // RBP+16 skips saved RBP and return address; Windows also skips shadow space.
+                const int offset = 16 + (target == X86Target::Windows ? 32 : 0)
+                    + (i - static_cast<int>(argRegs.size())) * 8;
+                emit("mov rax, [rbp+" + std::to_string(offset) + "]");
+                emit("mov " + loc(instr.dst.value()) + ", rax");
             }
-
-            emit("# TODO: PARAM handled in prologue by storing directly in func");
-            emit("mov " + loc(instr.dst.value()) + ", " + argRegs[instr.imm.value()]);
             break;
         }
 
 
         case MIROp::ARG:
-            emit("# ARG handled by CALL. This is unused tho. If you see this, call 010-2916-1277");
+            emit("# ARG handled by CALL");
             break;
 
 
@@ -435,31 +428,27 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             // Call gets a closure pointer as an argument.
             emit("mov rax, " + loc(instr.args[0]));
 
-            // Fill in arguments 
-            // TODO NOTE: ONLY LESS THAN 6 ARGUMENTS WORK FOR NOW.
-            if (instr.args.size() > argRegs.size()) {
-                throw KMYCompileError("Too many call arguments for native ABI");
-            }
+            // Physical argument count includes the hidden environment, replacing closure arg0.
+            const int bytes = callStackBytes(instr.args.size());
+            if (bytes) emit("sub rsp, " + std::to_string(bytes));
 
             // First argument is always the env pointer
-            // Currently if no env exists, it passes garbage.
             emit("mov " + argRegs[0] + ", [rax+8]"); // Offset 8 is the env ptr from closure* 
             for (int i = 1; i < instr.args.size(); ++i) {
-                if (i >= argRegs.size()) {
-                    std::cerr << "BAD argRegs index: " << i << "\n";
-                    std::cerr << instr << "\n";
-                    throw KMYCompileError("argRegs overflow");
+                if (static_cast<size_t>(i) < argRegs.size()) {
+                    emit("mov " + argRegs[i] + ", " + loc(instr.args[i]));
+                } else {
+                    // Place overflow arguments above Windows shadow space (none on Linux).
+                    const int offset = (target == X86Target::Windows ? 32 : 0)
+                        + (i - static_cast<int>(argRegs.size())) * 8;
+                    emit("mov r10, " + loc(instr.args[i]));
+                    emit("mov [rsp+" + std::to_string(offset) + "], r10");
                 }
-                emit("mov " + argRegs[i] + ", " + loc(instr.args[i]));
             }
-            
-            // For linux
-            // emit("call qword [rax]"); // Offset 0 is code ptr from closure*
-
-            emit("sub rsp, 32");
+            // Code pointer is at offset zero; R11 is volatile on both ABIs.
             emit("mov r11, [rax]");
             emit("call r11");
-            emit("add rsp, 32");
+            if (bytes) emit("add rsp, " + std::to_string(bytes));
 
             // Return value.
             if (instr.dst.has_value()) {
@@ -493,23 +482,22 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
         }
 
         case MIROp::RUNTIME_CALL: {
+            if (instr.args.size() > argRegs.size()) {
+                throw KMYCompileError("Too many native runtime arguments");
+            }
             for (int i = 0; i < instr.args.size(); ++i) {
                 emit("mov " + argRegs[i] + ", " + loc(instr.args[i]));
             }
 
-            emit("sub rsp, 32");
             // The linker resolves this descriptive symbol from runtime.o.
             // KMY cannot call arbitrary C names yet because it has no general
             // FFI declaration syntax; compiler-known intrinsics can call them.
-            emit("call " + std::string(runtimeSymbol(instr.imm.value())));
-            emit("add rsp, 32");
+            emitRuntimeCall(runtimeSymbol(instr.imm.value()));
 
             if (instr.dst.has_value()) {
                 emit("mov " + loc(instr.dst.value()) + ", rax");
             }
 
-            // For linux
-            // emit("call " + std::string(runtimeSymbol(instr.imm.value())));
             break;
         }
 
@@ -521,23 +509,19 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
 
         case MIROp::MALLOC_BYTES: {
             // The byte count is evaluated by KMY and passed in the first
-            // Windows x64 argument register. Unlike ALLOC, this calls malloc:
+            // target argument register. Unlike ALLOC, this calls malloc:
             // the returned bytes have no initialized value.
-            emit("mov rcx, " + loc(instr.args[0]));
-            emit("sub rsp, 32"); // Required Windows x64 shadow space.
-            emit("call malloc");
-            emit("add rsp, 32");
+            emit("mov " + argRegs[0] + ", " + loc(instr.args[0]));
+            emitRuntimeCall("malloc");
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
         }
 
         case MIROp::FREE: {
-            // Pass the raw pointer in Windows x64's first argument register.
+            // Pass the raw pointer in the target's first argument register.
             // C free(NULL) is defined as a no-op, so no explicit null branch.
-            emit("mov rcx, " + loc(instr.args[0]));
-            emit("sub rsp, 32"); // Required Windows x64 shadow space.
-            emit("call free");
-            emit("add rsp, 32");
+            emit("mov " + argRegs[0] + ", " + loc(instr.args[0]));
+            emitRuntimeCall("free");
             break;
         }
 
@@ -559,12 +543,9 @@ void X86Builder::lowerMIRInstr(const MIRInstr& instr) {
             // calloc(1, count * element_size) for runtime-sized arrays.
             emit("mov rax, " + loc(instr.args[0]));
             emit("imul rax, " + std::to_string(instr.imm.value()));
-            emit("mov rcx, 1");
-            emit("mov rdx, rax");
-            // Windows x64 requires 32 bytes of caller-provided shadow space.
-            emit("sub rsp, 32");
-            emit("call calloc");
-            emit("add rsp, 32");
+            emit("mov " + argRegs[0] + ", 1");
+            emit("mov " + argRegs[1] + ", rax");
+            emitRuntimeCall("calloc");
             emit("mov " + loc(instr.dst.value()) + ", rax");
             break;
         }
@@ -730,7 +711,7 @@ void X86Builder::lowerMIRFunc(MIRFunction* mirFunc) {
 
 void X86Builder::build() {
     emit(".intel_syntax noprefix");
-    emit(".section .rdata");
+    emit(target == X86Target::Linux ? ".section .rodata" : ".section .rdata");
     for (size_t i = 0; i < stringPool.size(); ++i) {
         emit("kmy_str_" + std::to_string(i) + ":");
         emit(".asciz \"" + escapeAsmString(stringPool.get(static_cast<StringId>(i))) + "\"");
@@ -746,6 +727,9 @@ void X86Builder::build() {
     for (const auto& mirFunc : mirFunctions) {
         currFunc = mirFunc;
         lowerMIRFunc(mirFunc);
+    }
+    if (target == X86Target::Linux) {
+        emit(".section .note.GNU-stack,\"\",@progbits"); // ELF: no executable stack required.
     }
 }
 

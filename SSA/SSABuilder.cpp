@@ -3,6 +3,7 @@
 #include <iostream>
 #include <functional>
 #include "../Core/errorhandler.hpp"
+#include <queue>
 
 SSABuilder::SSABuilder(
     const std::vector<HIRFunction*> funcs
@@ -10,6 +11,7 @@ SSABuilder::SSABuilder(
 
 void SSABuilder::build() {
     for (auto* func : funcs) {
+        clearUnreachableBlocks(func);
         dom.clear();
         idom.clear();
         domTree.clear();
@@ -57,17 +59,60 @@ static inline BlockSet intersect(BlockSet a, BlockSet b) {
     }
     return std::move(res);
 }
+
+void SSABuilder::clearUnreachableBlocks(HIRFunction* func) {
+    std::unordered_set<HIRBlock*> unreachable(func->blocks.begin(), func->blocks.end());
+
+    std::queue<HIRBlock*> q;
+    std::unordered_set<HIRBlock*> visited;
+    q.push(func->entry);
+    visited.insert(func->entry);
+    while (!q.empty()) {
+        auto curr = q.front();
+        q.pop();
+        unreachable.erase(curr);
+
+        for (const auto& succ : curr->succs) {
+            if (visited.find(succ) == visited.end()) {
+                visited.insert(succ);
+                q.push(succ);
+            }
+        }
+    }
+
+    for (auto it = func->blocks.begin(); it != func->blocks.end();) {
+        if (unreachable.count(*it)) {
+            it = func->blocks.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // A reachable block can still have an incoming edge from a dead block.
+    // Remove those edges to avoid problems in later passes.
+    for (auto* block : func->blocks) {
+        for (auto it = block->preds.begin(); it != block->preds.end();) {
+            if (unreachable.count(*it)) {
+                it = block->preds.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+}
+
+
 // TODO: bitset for optimisation!
 // Or possibly Lengauer-Tarjan algorithm for linear time complexity. (idk what this is)
 void SSABuilder::computeDoms(HIRFunction* func) {
-    // Formula: dom[B] = {B} U intersection(dom[P])
+    // Formula: dom[B] = {B} U intersection(dom[P]) for all parents P of B.
 
     // Initialise first with dom[B] = EVERY_BLOCK;
     for (const auto& block : func->blocks) {
         if (block == func->entry) {
             dom[block] = {block};
         } else {
-            dom[block] = BlockSet{
+            dom[block] = BlockSet {
                 func->blocks.begin(),
                 func->blocks.end()
             };

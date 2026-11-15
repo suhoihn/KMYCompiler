@@ -15,7 +15,8 @@ backend for Windows/MinGW.
   -> x86-64 assembly -> GCC/MinGW executable
 ```
 
-The native backend currently targets 64-bit Windows using the MinGW toolchain.
+The native backend defaults to 64-bit Windows using the MinGW toolchain.
+Use `--linux` for Linux x86-64 ELF output with the System V calling convention.
 It supports integer arithmetic, functions, closures, mutable captured values,
 conditionals, `while`, parser-lowered `for`, `break`, and `continue`. Arrays,
 records/classes, and several type-system features are still incomplete in the
@@ -89,6 +90,35 @@ To run one program after building `kmyc.exe`:
 
 `-asm` writes an adjacent `.s` assembly file and invokes GCC unless
 `--no-run` is supplied. `-o` selects the executable path.
+
+### Linux x86-64 target
+
+```powershell
+# Windows host: link an ELF executable using GCC in your default WSL distribution.
+.\kmyc.exe .\Examples\SimpleASMTest.kmy --linux -o .\build\simpleasm-linux
+
+# No Linux toolchain needed for assembly-only output.
+.\kmyc.exe .\Examples\SimpleASMTest.kmy --linux --no-run -o .\build\simpleasm-linux
+```
+
+`--linux` implies `--asm`; it builds but does not execute the generated binary.
+On Linux the linker is native `gcc`. On Windows, linking requires working WSL
+with `gcc` in its default distribution; paths are translated with `wslpath`.
+The Linux link compiles `runtime.c`, never reuses the Windows `runtime.o`.
+Run the resulting executable on Linux/WSL, not directly on Windows.
+
+Both targets use aligned calls and support integer/pointer stack arguments
+beyond their argument-register limits, including the hidden closure environment.
+This does not add floating-point ABI support or native varargs.
+To build KMY itself on Linux/WSL and run the Linux regression suite:
+
+```bash
+bash tests/run-linux-tests.sh        # Build compiler and link ELF tests only.
+bash tests/run-linux-tests.sh --run  # Also execute tests with time/memory limits.
+```
+
+Windows remains the default even when the compiler runs on Linux; linking that
+target there requires `x86_64-w64-mingw32-gcc`.
 
 ## Source modules
 

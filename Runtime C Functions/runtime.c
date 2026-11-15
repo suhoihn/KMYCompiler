@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -7,7 +8,7 @@
 
 // Prints one KMY integer followed by a newline.
 void kmy_print_int(int64_t x) {
-    printf("%lld\n", x);
+    printf("%" PRId64 "\n", x); // int64_t is long on Linux, long long on Windows.
     
     // Windows sometimes buffers standard output until the program 
     // cleanly exits. For compiler dev, force it to print immediately:

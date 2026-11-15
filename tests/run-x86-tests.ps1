@@ -136,6 +136,7 @@ try {
         @{ Name = 'malloc'; Source = 'tests/x86/malloc.kmy'; Expected = 'tests/x86/malloc.expected' },
         @{ Name = 'malloc_shadow'; Source = 'tests/x86/malloc_shadow.kmy'; Expected = 'tests/x86/malloc_shadow.expected' },
         @{ Name = 'free'; Source = 'tests/x86/free.kmy'; Expected = 'tests/x86/free.expected' },
+        @{ Name = 'linux_abi'; Source = 'tests/x86/linux_abi.kmy'; Expected = 'tests/x86/linux_abi.expected' },
         @{ Name = 'dynamic_array'; Source = 'Examples/DynamicArray.kmy'; Expected = 'tests/x86/dynamic_array.expected' },
         @{ Name = 'data_structures'; Source = 'Examples/DataStructures.kmy'; Expected = 'tests/x86/data_structures.expected' },
         @{ Name = 'linked_list'; Source = 'Examples/LinkedList.kmy'; Expected = 'tests/x86/linked_list.expected' },

@@ -1,0 +1,84 @@
+fun basicTest() {
+    let a = [42];
+
+    let b = a; // Move a
+
+    print(b[0]);
+    // print(a[0]); // Whoops
+}
+
+fun ifTest(flag: bool) {
+    let a = [42];
+    
+    if (flag) {
+        let b = a; // Move the array
+        print(b[0]);
+    } else {
+        print(a[0]); // OK since it never moved.
+    }
+
+    //print(a[0]); // Maybe moved!
+}
+
+fun loopTest() {
+    let a = [42];
+    var i = 0;
+
+    // while (i < 2) {
+    //     i += 1;
+    //     let b = a;       // Second iteration might read a moved value. Again, maybe moved.
+    //     print(b[0]);
+    // }
+    // print(a[0]);
+}
+
+fun loopBreakTest(run: bool, take: bool) {
+    let a = [42];
+
+    while (run) {
+        if (take) {
+            let b = a;
+            print(b[0]);
+            break;        // Records a as Moved.
+        } else {
+            print(a[0]);
+            break;        // Records a as Available.
+        }
+    }
+    //print(a[0]);       // Uncomment for the second run.
+}
+
+fun loopContinueTest() {
+    var a = [42];
+    var i = 0;
+
+    while (i < 2) {
+        i += 1;
+        if (i == 1) {
+            let b = a;
+            print(b[0]);
+            a = [99];
+            continue;
+        }
+
+        print(a[0]);
+    }
+}
+
+fun classTest() {
+    class Box {
+        var value: int = 42;
+
+        init() {}
+    };
+
+    let a = new Box();
+    let b = a;
+
+    print(b.value);    // Should pass.
+    // print(a.value); // Uncomment: should reject because a was moved.
+}
+
+print("Wassup");
+
+// Run anything u want

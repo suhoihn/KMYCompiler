@@ -87,7 +87,7 @@ void ReferenceChecker::requireAvailable(
             throw KMYCompileError("Use of moved value \"" + name + "\".");
         case BindingAvailability::MaybeUnavailable:
             throw KMYCompileError(
-                "Value \"" + name + "\" is not available on every control-flow path."
+                "Value \"" + name + "\" is not available on every control-flow path. It maybe moved."
             );
     }
 }
@@ -145,23 +145,6 @@ void ReferenceChecker::visit(BinaryExpr& e) {
     // RHS loop-jump records, if any, remain in currCtx; do not erase them.
 }
 
-/*
-==================== TODO: NEXT SESSION ====================
-DONE: Rooted writes, Copy compound assignments, parameter registration,
-function-state isolation, call/return consumption, branch and loop merges.
-
-NEXT (in order):
-1. Preserve hoisting; define globals/captures/defaults/receiver entry policy.
-2. Cover constructor and aggregate-literal transfers, qualified places,
-   short-circuit expressions, and ownership-compatible parameter types.
-3. Validate positive/negative checker cases and constant-condition precision.
-4. IR lowering: destroy/release overwritten values and add scope-exit cleanup;
-   insert shared retain/release. Checker state alone does NOT manage memory.
-
-LIMITS: Unique partial moves, computed-base writes, and raw-pointer writes
-remain unsupported here. Projected writes leave root availability unchanged.
-===========================================================
-*/
 void ReferenceChecker::visit(Assignment& e) {
     auto destination = resolvePlace(e.left);
     if (!destination || !destination->sym) {
@@ -497,7 +480,7 @@ void ReferenceChecker::visit(While& s) {
 }
 
 AvailabilityMap ReferenceChecker::mergeAvailability(
-    const AvailabilityMap& visible,
+    const AvailabilityMap& visible, // The one on top of every path.
     const std::vector<AvailabilityMap>& incoming
 ) const {
     // No incoming path is an unreachable destination, handled by the caller.

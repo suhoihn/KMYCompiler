@@ -130,7 +130,7 @@ struct PointerType : Type {
 // Canonical semantic representation of `shared T`. The wrapper is distinct
 // from T so one use can be shared without mutating T's interned type object.
 struct SharedType : Type {
-    Type *innerType;
+    Type* innerType;
 
     explicit SharedType(Type *innerType)
         : Type(TypeKind::SHARED),

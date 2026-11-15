@@ -1,0 +1,15 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+
+fun probe() {
+    let a = new shared Box();
+    var i = 0;
+    while (i < 3) {
+        let b = a;
+        i += 1;
+    }
+}
+
+probe();
