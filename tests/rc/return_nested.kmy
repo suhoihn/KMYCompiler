@@ -1,0 +1,13 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe(): int {
+    let a = new shared Box();
+    {
+        let b = new shared Box();
+        let c = a;
+        return 73; // Release c, b, a; preserve the integer result.
+    }
+}
+print(probe());

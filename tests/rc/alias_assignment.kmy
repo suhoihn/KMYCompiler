@@ -1,0 +1,10 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    var x = new shared Box();
+    let y = x;
+    x = y; // Different bindings, same allocation.
+}
+probe();

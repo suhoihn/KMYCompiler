@@ -1,0 +1,11 @@
+// Former gap, now a regular regression: replacing a Shared local must release
+// the old allocation without retaining the new allocation's initial count.
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    var x = new shared Box();
+    x = new shared Box();
+}
+probe();

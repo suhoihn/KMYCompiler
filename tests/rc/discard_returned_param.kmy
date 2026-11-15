@@ -1,0 +1,11 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun identity(p: shared Box): shared Box { return p; }
+fun probe() {
+    let x = new shared Box();
+    identity(x);
+}
+probe();
+

@@ -1,0 +1,15 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    var i = 0;
+    for (var owner = new shared Box(); i < 3; i += 1) {
+        let alias = owner;
+        if (i == 1) {
+            break; // Release alias; the enclosing initializer scope releases owner.
+        }
+    }
+    print(i);
+}
+probe();

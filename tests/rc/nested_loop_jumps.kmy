@@ -1,0 +1,22 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    let a = new shared Box();
+    var i = 0;
+    while (i < 2) {
+        let outerAlias = a;
+        var j = 0;
+        while (j < 2) {
+            let innerOwner = new shared Box();
+            {
+                let innerAlias = outerAlias;
+                break; // Preserve outerAlias, which belongs to the outer body.
+            }
+        }
+        i += 1;
+        continue; // Now outerAlias is released, but a is preserved.
+    }
+}
+probe();

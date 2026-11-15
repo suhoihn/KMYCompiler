@@ -43,6 +43,10 @@ std::vector<MIRInstr> MIRBuilder::lowerHIRInstr(const IRInstr& instr) {
 
     switch (instr.op) {
 
+        case IROp::MOVE:
+            // Preserve the explicit HIR value copy after SSA resolves its source.
+            return { make(MIROp::MOVE) };
+
         // =====================
         // Constants
         // =====================

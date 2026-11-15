@@ -1,5 +1,5 @@
-// Known compiler-bookkeeping gap: Block must pop its cleanup list even when
-// its path terminates. This call takes the normal path, so a should be freed.
+// Former gap, now a regular regression: Block must always pop its cleanup list.
+// The untaken return branch must not corrupt cleanup on the normal path.
 class Box {
     var value: int = 42;
     init() {}

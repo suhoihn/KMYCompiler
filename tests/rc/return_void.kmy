@@ -1,0 +1,12 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    let a = new shared Box();
+    {
+        let b = a;
+        return; // No stale return operand; release b then a.
+    }
+}
+probe();

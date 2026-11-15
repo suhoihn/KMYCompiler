@@ -1,0 +1,16 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe(flag: bool): int {
+    let a = new shared Box();
+    if (flag) {
+        let b = a;
+        return 7;
+    } else {
+        let c = a;
+    }
+    return 9;
+}
+print(probe(true));
+print(probe(false));

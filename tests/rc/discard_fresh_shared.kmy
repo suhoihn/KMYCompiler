@@ -1,0 +1,7 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() { new shared Box(); }
+probe();
+

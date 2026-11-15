@@ -1,0 +1,9 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    var x = new shared Box();
+    x = x; // Must not free x before retaining its replacement.
+}
+probe();

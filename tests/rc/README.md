@@ -1,9 +1,15 @@
 # Shared-local RC tests
 
+For the retain/release rules and count-by-count examples, read the
+[Shared RC guide](../../docs/shared-rc-guide.md).
+
 This suite tests the current milestone only: initialized, uncaptured `shared X`
-locals, direct local copies, and normal block exits. Objects have only an int
-field. No shared parameters/returns, captured objects, nested object fields,
-reassignment, or early-exit cleanup is claimed to work.
+locals, direct local copies/assignments, normal exits, returns, and break/continue
+cleanup. Function-boundary cases cover Shared parameters, returned objects,
+nested calls, recursion, and discarded owned results. Objects have only an int
+field. Captured owners, Shared globals, managed fields/array elements, and general
+RHS forms beyond variable/new/call are outside this suite. These finite tests do
+not prove every ownership scenario correct.
 
 ## Run it yourself (Windows, PowerShell 7)
 
@@ -43,10 +49,63 @@ sources specifically to avoid that confusion.
 | shadow | Same-spelled bindings have different symbol identities | 2 | 2 | 4 | 2 |
 | branches | Both outcomes get their own local cleanup | 2 | 2 | 4 | 2 |
 | loop | Body-local alias released each iteration; outer owner survives | 1 | 3 | 4 | 1 |
+| known_gap_return | Former cleanup-stack imbalance; untaken return path | 1 | 1 | 2 | 1 |
+| assignment | Replace x's old allocation with another local's owner | 2 | 1 | 3 | 2 |
+| known_gap_fresh_assignment | Fresh replacement releases old x without retaining new x | 2 | 0 | 2 | 2 |
+| self_assignment | Retain before release prevents x = x from freeing x | 1 | 1 | 2 | 1 |
+| alias_assignment | x and y already point to the same object | 1 | 2 | 3 | 1 |
+| integer_assignment | No RC on ordinary integer variable assignment | 1 | 0 | 1 | 1 |
+| return_nested | Release inner-to-outer while preserving integer 73 | 2 | 1 | 3 | 2 |
+| return_void | Empty return cleans up all active function scopes | 1 | 1 | 2 | 1 |
+| return_paths | Early-return and surviving branch both clean correctly | 2 | 2 | 4 | 2 |
+| break_nested | Release body/nested owners, preserve outer owner | 2 | 2 | 4 | 2 |
+| continue_nested | Release body/nested owners on each iteration | 3 | 3 | 6 | 3 |
+| nested_loop_jumps | Inner break and outer continue use different boundaries | 3 | 4 | 7 | 3 |
+| for_initializer | Body cleanup plus initializer cleanup after break | 1 | 2 | 3 | 1 |
 
 Each passing runtime test must finish with `live=0`. Runtime totals differ from
 assembly call-site counts: a loop has one retain instruction executed three times;
-only one branch runs on each call.
+only one branch runs on each call. The newer control-flow cases assert complete
+runtime traces rather than fixing the exact static instruction count.
+
+## Function-boundary coverage
+
+These 20 additional cases compare the entire runtime trace, including object IDs,
+intermediate counts, release order, actual frees, and a final `live=0` summary.
+They do not merely check successful compilation or process exit.
+
+| Test | Purpose |
+|---|---|
+| param_local | Variable argument; implicit parameter cleanup |
+| param_fresh | Fresh argument; explicit parameter cleanup |
+| param_same_twice | One object passed into two owning parameters |
+| param_distinct | Two independent objects passed together |
+| param_early_return | Both early-return and fallthrough parameter cleanup |
+| return_param | Returned parameter survives callee cleanup |
+| return_local_shared | Returned local survives its lexical scope |
+| return_fresh_shared | Fresh return transfers allocation's initial count |
+| return_forward_shared | Returned call result forwards without another retain |
+| nested_shared_argument | Returned owner transfers into another call |
+| discard_fresh_shared | Unused allocation released immediately |
+| discard_returned_param | Unused identity result released while caller owner survives |
+| discard_returned_fresh | Unused freshly returned object freed |
+| return_shared_branches | Variable-return and fresh-return paths |
+| return_shared_nested_cleanup | Returned alias survives nested cleanup |
+| loop_shared_calls | Parameter count acquired/released each iteration |
+| recursive_shared_return | Recursive forwarding balances each frame |
+| shared_stack_arguments | Seven mixed arguments exercise register and stack passing |
+| shared_param_reassignment | Mutable parameter replaces its owner safely |
+| assign_returned_shared | Returned object replaces a local's previous object |
+
+Run one case (the default rebuilds the current compiler):
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tests\run-rc-tests.ps1 -TestName return_param -Run
+```
+
+Read `<printed artifact directory>/return_param.stderr.log` for the RC trace.
+All generated test programs run hidden with a five-second timeout and redirected
+output; timed-out processes and their children are terminated.
 
 ## How we verify counts and actual frees
 
@@ -89,24 +148,28 @@ Only when ready, run `build/rc-copy.exe`; the trace goes to stderr. Prefer the
 runner's `-Run` switch for hidden execution and automatic termination on timeout.
 Runtime errors exit nonzero; no generated program should be left running.
 
-## Known regression: cleanup-list pop on an early-exit path
+## Known gaps and a former regression
 
-`known_gap_return.kmy` calls probe(false), so no return actually executes. Its
-ordinary local owners should still be cleaned correctly. But merely COMPILING
-the other branch can leave the compiler's cleanup-list stack unbalanced if
-`sharedLocalVarStk.pop_back()` stays inside the no-terminator check.
+`known_gap_return.kmy` retains its historical name but is now in the regular
+suite. Its untaken early-return branch must not unbalance compiler cleanup lists.
+Block pops are unconditional, and cleanup state is function-local.
+
+`known_gap_fresh_assignment.kmy` also keeps its historical name but is now a regular
+regression: a fresh Shared replacement releases old x and needs no extra retain.
+
+One opt-in regression target describes remaining work; failures are not swallowed:
+
+- `known_gap_for_continue`: continue must execute the for-loop increment. Current
+  parser lowering skips it. A separate guard bounds the test anyway; the expected
+  final value is 2, not 0. RC counts can balance while this control-flow bug remains.
 
 ```powershell
-pwsh -NoProfile -File .\tests\run-rc-tests.ps1 -IncludeKnownGaps -Run
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tests\run-rc-tests.ps1 -IncludeKnownGaps -TestName known_gap_for_continue -Run
 ```
 
-This case is excluded from the supported suite and is expected to fail until that
-bookkeeping bug is fixed. It is NOT hidden or counted as a pass. Move the pop out
-of the conditional before proceeding to parameter ownership. Correct early-return
-runtime cleanup itself remains a separate feature.
-The current implementation failed this compile-only regression with
-`SSA variable 'a' has no reaching definition`: the leftover list lets function-local
-cleanup escape into the enclosing function. The test is not executed if compilation fails.
+The regular suite should pass; this opt-in case should expose unfinished
+features until fixed. A compile/link success alone does not test the expected
+runtime counts or output: add -Run. The runner stops at the first failure.
 
 ## Debuggers and leak detectors
 

@@ -1,0 +1,12 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    let a = new shared Box();
+    var x = 1;
+    let y = 2;
+    x = y; // Must not emit retain/release on the integer 2.
+    print(x);
+}
+probe();

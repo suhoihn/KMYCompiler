@@ -1,0 +1,10 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    var x = new shared Box();
+    let y = new shared Box();
+    x = y; // Retain B, release A, then point x at B.
+}
+probe();

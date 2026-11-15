@@ -49,6 +49,7 @@ enum class IROp {
 
     PHI, // Special since it takes
     BIND, // Binding varref to one
+    MOVE, // Copy arg0 into a new value; snapshots a pointer without retaining it.
 
     FUNC_LABEL, // Takes args (which are stored as upvalues) and imm (function id)
     PARAM, // Takes imm which is param_id (1-1 match from CALL's args)
@@ -125,6 +126,7 @@ inline const char* toString(IROp op) {
 
         case IROp::PHI:                 return "PHI";
         case IROp::BIND:                return "BIND";
+        case IROp::MOVE:                return "MOVE";
 
         case IROp::PRINT:               return "PRINT";
 

@@ -1,0 +1,14 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun descend(p: shared Box, n: int): shared Box {
+    if (n == 0) { return p; }
+    return descend(p, n - 1);
+}
+fun probe() {
+    let x = new shared Box();
+    let y = descend(x, 2);
+}
+probe();
+

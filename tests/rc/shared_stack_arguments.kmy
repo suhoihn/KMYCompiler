@@ -1,0 +1,14 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun inspect(a: shared Box, b: int, c: shared Box, d: int,
+            e: shared Box, f: int, g: shared Box) {
+    print(b + d + f);
+}
+fun probe() {
+    let x = new shared Box();
+    inspect(x, 1, x, 2, x, 3, x);
+}
+probe();
+

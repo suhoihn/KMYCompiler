@@ -1,0 +1,18 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    let a = new shared Box();
+    var i = 0;
+    while (i < 2) {
+        let b = new shared Box();
+        i += 1; // Bound the source loop even when taking continue.
+        {
+            let c = a;
+            continue; // Release c and b on each iteration, preserving a.
+        }
+    }
+    let d = a;
+}
+probe();

@@ -1,0 +1,19 @@
+// Separate parser/lowering gap: continue must run a for-loop's increment.
+// The guard bounds this test even if the increment is accidentally skipped.
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    var guard = 0;
+    var observed = -1;
+    for (var i = 0; i < 3; i += 1) {
+        guard += 1;
+        if (guard > 3) { break; }
+        observed = i;
+        let x = new shared Box();
+        continue;
+    }
+    print(observed); // Correct output is 2, not 0.
+}
+probe();

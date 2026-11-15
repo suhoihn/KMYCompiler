@@ -1,0 +1,12 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun replace(var p: shared Box, q: shared Box) { p = q; }
+fun probe() {
+    let x = new shared Box();
+    let y = new shared Box();
+    replace(x, y);
+}
+probe();
+

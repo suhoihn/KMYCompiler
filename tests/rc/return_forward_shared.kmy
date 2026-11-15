@@ -1,0 +1,12 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun identity(p: shared Box): shared Box { return p; }
+fun forward(p: shared Box): shared Box { return identity(p); }
+fun probe() {
+    let x = new shared Box();
+    let y = forward(x);
+}
+probe();
+

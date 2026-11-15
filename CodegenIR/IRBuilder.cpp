@@ -26,13 +26,32 @@ void IRBuilder::emit(const IRInstr& instr) {
 }
 
 
+static bool isSharedOperand(const HIROperand& value) {
+    Type* type;
+    if (std::holds_alternative<VarRef>(value)) {
+        auto* sym = std::get<VarRef>(value).sym;
+        assert(sym && "[SERIOUS] RC operand has no resolved symbol");
+        type = sym->type;
+    } else {
+        type = std::get<IRValue>(value).type;
+    }
+    assert(type && "[SERIOUS] RC operand has no resolved type");
+    return type->kind == TypeKind::SHARED;
+}
+
+void IRBuilder::emitRetain(const HIROperand& value) {
+    if (isSharedOperand(value)) emit({ .op = IROp::RETAIN, .args = { value } });
+}
+
+void IRBuilder::emitRelease(const HIROperand& value) {
+    if (isSharedOperand(value)) emit({ .op = IROp::RELEASE, .args = { value } });
+}
+
 static IRLocalInfo* getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
     auto& localMap = fnCtx->locals;
 
     auto it = localMap.find(sym);
-    if (it != localMap.end()) {
-        return &it->second;
-    }
+    if (it != localMap.end()) return &it->second;
     std::cout << "Local value lookup missed: " << sym->name << '\n';
     return nullptr;
 }
@@ -56,9 +75,7 @@ std::vector<HIRFunction*> IRBuilder::compile() {
     initializer.accept(*this);
     moduleInitializer = nullptr;
 
-    if (!hasTerminator(currCtx->currBlock)) {
-        currCtx->currBlock->term = HaltTerm{};
-    }
+    if (!hasTerminator(currCtx->currBlock)) currCtx->currBlock->term = HaltTerm{};
 
     return functions;
 }
@@ -755,9 +772,7 @@ void IRBuilder::visit(Assignment& e) {
     // an lvalue, so its operand evaluates to the destination address.
     if (e.left->kind == ExprKind::UnaryExpr) {
         auto unary = std::static_pointer_cast<UnaryExpr>(e.left);
-        if (unary->op != UnaryOp::Dereference) {
-            throw KMYCompileError("Invalid unary assignment target");
-        }
+        if (unary->op != UnaryOp::Dereference) throw KMYCompileError("Invalid unary assignment target");
 
         unary->operand->accept(*this);
         HIROperand pointer = getLastValue();
@@ -819,26 +834,63 @@ void IRBuilder::visit(Assignment& e) {
 
             setLastValue(dst);
         } else {
+            IRValue toRelease;
+            const bool isShared = var->symbol->type->kind == TypeKind::SHARED;
+            if (isShared) {
+                toRelease = makeValue(var->type);
+            
+                // Store the pointer to the object to release
+                emit(IRInstr{
+                    .op = IROp::MOVE,
+                    .dst = toRelease,
+                    .args = { VarRef{var->symbol} },
+                });
+            }
             e.right->accept(*this);
             // last value isnt updated.
             // In a = 42, the last value is RHS.
 
             // This is a = (expr) form.
-            // For RC check, we only deal with a = (var) form only
-            if (e.right->kind == ExprKind::Variable) {
-                // let a = b form with both being shared types.
-                // FIRST retain b, then release a (otherwise x = x case will fail)
-                auto varRHS = std::static_pointer_cast<Variable>(e.right);
+            // RC currently handles direct local copies and fresh shared allocations.
+            // RC is only meaningful if both LHS and RHS are shared
 
-                emit(IRInstr{
-                    .op = IROp::RETAIN,
-                    .args = { VarRef{varRHS->symbol} }
-                });
+            // BC of the bind issue for 
+            // let x = new shared X(); x = new shaerd X();
+            // We do like this:
+            // v1 [def x] = make shared  (let x = new shared X();)
+            // v2 = MOVE x
+            // v3 [def x] = make shared  (x = new Shared X();)
+            // RELEASE v2 (releasing LHS)
+            // RELEASE v3 (inserted by block exit)
 
-                emit(IRInstr{
-                    .op = IROp::RELEASE,
-                    .args = { VarRef{var->symbol} }
-                });
+            // FUTURE TODO: one side only being shared not handled!
+            if (isShared) {
+                if (e.right->kind == ExprKind::Variable) {
+                    // let a = b form with both being shared types.
+                    auto varRHS = std::static_pointer_cast<Variable>(e.right);
+                    // FIRST retain b, then release a (otherwise x = x case will fail)
+                    assert(e.left->type == e.right->type &&
+                            "[SERIOUS] Shared assignment type mismatch after Resolver");
+
+                    // This first RC assignment path handles uncaptured locals only.
+                    bool localCopy = true;
+                    for (VarSymbol* sym : {var->symbol, varRHS->symbol}) {
+                        if (sym->isModuleGlobal ||
+                            currCtx->fnCtx->localMap.count(sym) == 0 ||
+                            currCtx->fnCtx->envMap.count(sym) != 0) {
+                            localCopy = false;
+                        }
+                    }
+                    if (localCopy) emitRetain(VarRef{varRHS->symbol});
+                } else {
+                    // Mysterious, mysterious!!
+                    // a = (???) form but RHS is a shared type.
+                    // FOR NOW, that's only possible when its a new expr on RHS
+                    // So never release RHS
+                }
+
+                // Always release the LHS if it's shared type.
+                emitRelease(toRelease);
             }
         }
 
@@ -918,9 +970,7 @@ void IRBuilder::visit(Assignment& e) {
     // Case 2: aggregate field assignment
     if (e.left->kind == ExprKind::Get) {
         auto get = std::static_pointer_cast<Get>(e.left);
-        if (get->resolvedMethod) {
-            throw KMYCompileError("Cannot assign to a method.");
-        }
+        if (get->resolvedMethod) throw KMYCompileError("Cannot assign to a method.");
 
         if (get->obj->type->kind != TypeKind::INSTANCE) {
             throw KMYCompileError("Native field assignment currently requires a class/record instance.");
@@ -1094,10 +1144,21 @@ void IRBuilder::visit(Call& e) {
     std::optional<IRValue> v = std::nullopt;
     e.func->accept(*this);
 
-    std::vector<HIROperand> args = { getLastValue() }; // First is always the function value.
+    // First is always the function value.
+    std::vector<HIROperand> args = { getLastValue() }; 
     for (const auto& arg : e.args) {
         arg->accept(*this);
-        args.push_back( getLastValue() );
+        HIROperand argVal = getLastValue();
+        if (arg->type->kind == TypeKind::SHARED && arg->kind == ExprKind::Variable) {
+            // At CALLER's site, only VARIABLE gets its obj RC incremented.
+            // e.g. f(x, g(?), new shared X())
+            // Only x gets its RC increased
+            // g(?) returns one owned count, so passing its result needs no retain. 
+            // (return expr does the retain if needed)
+            // new shared initialises with 1, so no.
+            emitRetain(argVal);
+        }
+        args.push_back( argVal );
     }
 
     // MethodLower appends the implicit receiver after the explicit arguments
@@ -1113,9 +1174,7 @@ void IRBuilder::visit(Call& e) {
         }
     }
 
-    if (e.type != &Types::VOID_TYPE) {
-        v = makeValue(e.type);
-    }
+    if (e.type != &Types::VOID_TYPE) v = makeValue(e.type);
 
     IRInstr instr{
         .op = IROp::CALL,
@@ -1125,9 +1184,7 @@ void IRBuilder::visit(Call& e) {
     emit(instr);
     
     // NOTE: In prev semantic passes, it is guaranteed that void isn't stored anywhere.
-    if (e.type != &Types::VOID_TYPE) {
-        setLastValue(v.value());
-    }
+    if (e.type != &Types::VOID_TYPE) setLastValue(v.value());
 }
 
 void IRBuilder::visit(Get& e) {
@@ -1343,7 +1400,7 @@ void IRBuilder::visit(FunctionExpr& e) {
         }
     }
 
-    currCtx = new IRCodegenFnCtx{};
+    currCtx = new IRCodegenFnCtx{ .functionExpr = e };
     currCtx->parent = oldCtx;   
     currCtx->fnCtx = e.functionContext;
 
@@ -1485,9 +1542,7 @@ void IRBuilder::visit(FunctionExpr& e) {
     // either as a cell or just a normal local.
     for (const auto& param: e.params) {
         IRLocalInfo& paramInfo = currCtx->locals[param.symbol];
-        if (!paramInfo.isCell) {
-            currCtx->currBlock->defs.push_back({param.symbol, paramInfo.value});
-        }
+        if (!paramInfo.isCell) currCtx->currBlock->defs.push_back({param.symbol, paramInfo.value});
     }
 
 
@@ -1536,7 +1591,7 @@ void IRBuilder::visit(FunctionExpr& e) {
         //assert(currCtx->env.has_value());
 
         std::vector<HIROperand> arg = {};
-        if (currCtx->env.has_value()) { arg.push_back(currCtx->env.value()); }
+        if (currCtx->env.has_value()) arg.push_back(currCtx->env.value());
         else { 
             IRValue nullValue = makeValue(new PointerType(&Types::VOID_TYPE));
             emit({
@@ -1598,9 +1653,7 @@ void IRBuilder::visit(FunctionExpr& e) {
             uncapturedLocal = false;
         }
 
-        if (uncapturedLocal) {
-            currCtx->currBlock->defs.push_back({funcDeclSym, fnValue});
-        }
+        if (uncapturedLocal) currCtx->currBlock->defs.push_back({funcDeclSym, fnValue});
     }
 
     std::cout << "env\n";
@@ -1625,7 +1678,13 @@ void IRBuilder::visit(FunctionExpr& e) {
         } else {
             currCtx->currBlock->term = ReturnTerm{};
         }
+        
+        // On implicit return function exit, release any of shared type param
+        for (const auto& param : e.params) {
+            if (param.symbol->type->kind == TypeKind::SHARED) emitRelease(VarRef{param.symbol});
+        }
     }
+
 
     currFunc->lastValueId = currCtx->nextId;
     std::cout << "This function " << currFunc->functionId << " lastVId: " << currFunc->lastValueId << "\n";
@@ -1635,9 +1694,7 @@ void IRBuilder::visit(FunctionExpr& e) {
     if (oldCtx) {
         currFunc = oldFn;
         currCtx = oldCtx;
-        if (expressionValue.has_value()) {
-            setLastValue(expressionValue.value());
-        }
+        if (expressionValue.has_value()) setLastValue(expressionValue.value());
     }
 }
 
@@ -1705,9 +1762,7 @@ void IRBuilder::visit(NewExpr& e) {
 
     const bool isShared = e.type->kind == TypeKind::SHARED;
     Type* layoutType = e.type;
-    if (isShared) {
-        layoutType = static_cast<SharedType*>(e.type)->innerType;
-    }
+    if (isShared) layoutType = static_cast<SharedType*>(e.type)->innerType;
 
     if (layoutType->kind != TypeKind::INSTANCE) {
         throw KMYCompileError("new applied to a non-instance type");
@@ -1845,9 +1900,7 @@ void IRBuilder::visit(If& s) {
     // Note that else block is just final block if else branch doesn't exist.
     HIRBlock* elseBB = mergeBB;
 
-    if (s.elsebranch) {
-        elseBB = makeBlock();
-    }
+    if (s.elsebranch) elseBB = makeBlock();
 
     // Condition lives in current block.
     s.condition->accept(*this);
@@ -1942,7 +1995,8 @@ void IRBuilder::visit(While& s) {
     connectBlock(conditionEndBB, bodyBB);
     connectBlock(conditionEndBB, exitBB);
 
-    currCtx->loopStack.push_back({condBB, exitBB});
+    auto cleanupDepth = currCtx->sharedLocalVarStk.size();
+    currCtx->loopStack.push_back({condBB, exitBB, cleanupDepth});
 
     currCtx->currBlock = bodyBB;
     s.body->accept(*this);
@@ -1957,13 +2011,11 @@ void IRBuilder::visit(While& s) {
     currCtx->currBlock = exitBB;
 }
 
-
 void IRBuilder::releaseSharedLocals(const std::vector<VarSymbol*>& stk) {
+    // Releases all shared local variables in a block's scope
+    // in reverse order.
     for (auto it = stk.rbegin(); it != stk.rend(); ++it) {
-        emit(IRInstr {
-            .op = IROp::RELEASE,
-            .args = { VarRef {*it} },
-        });
+        emitRelease(VarRef{*it});
     }
 }
 
@@ -1978,17 +2030,13 @@ void IRBuilder::visit(Block& s) {
     }
 
     // TODO: Early exit case not handled yet because functions are not considered at all
-    if (!hasTerminator(currCtx->currBlock)) {
-        releaseSharedLocals(currCtx->sharedLocalVarStk.back());
-    }
+    if (!hasTerminator(currCtx->currBlock)) releaseSharedLocals(currCtx->sharedLocalVarStk.back());
     // Pop stack unconditionally.
     currCtx->sharedLocalVarStk.pop_back();
 }
 
-void IRBuilder::visit(Break& s) {
-    if (currCtx->loopStack.empty()) {
-        throw KMYCompileError("break outside loop");
-    }
+void IRBuilder::visit(Break&) {
+    if (currCtx->loopStack.empty()) throw KMYCompileError("break outside loop");
 
     auto& loop = currCtx->loopStack.back();
 
@@ -2007,12 +2055,20 @@ void IRBuilder::visit(Break& s) {
     // Simply, currBlock is done after break/continue,
     // And the parent AST will contigure where to emit code afterwards.
     // Since break/continue only happens in loops, While& will handle that.
+
+    // Clean up shared local vars decl'ed in the whole loop
+    // Count down from size so unsigned size_t cannot wrap below zero.
+    for (
+        size_t i = currCtx->sharedLocalVarStk.size();
+        i > loop.cleanupDepth;
+        --i
+    ) {
+        releaseSharedLocals(currCtx->sharedLocalVarStk[i - 1]);
+    }
 }
 
-void IRBuilder::visit(Continue& s) {
-    if (currCtx->loopStack.empty()) {
-        throw KMYCompileError("continue outside loop");
-    }
+void IRBuilder::visit(Continue&) {
+    if (currCtx->loopStack.empty()) throw KMYCompileError("continue outside loop");
 
     auto& loop = currCtx->loopStack.back();
 
@@ -2024,6 +2080,14 @@ void IRBuilder::visit(Continue& s) {
 
     // current block is dead after continue
     //currCtx->currBlock = loop.continueTarget;
+    // Count down from size so unsigned size_t cannot wrap below zero.
+    for (
+        size_t i = currCtx->sharedLocalVarStk.size();
+        i > loop.cleanupDepth;
+        --i
+    ) {
+        releaseSharedLocals(currCtx->sharedLocalVarStk[i - 1]);
+    }
 }
 
 // Connect a source-level `let` binding to the HIR value it defines.
@@ -2096,7 +2160,7 @@ void IRBuilder::visit(Let& s) {
     }
 
     // Don't allocate function decl again (already hoisted in func expr visit)
-    if (s.isFunctionDecl) { return; }
+    if (s.isFunctionDecl) return;
 
     HIROperand value = getLastValue();
 
@@ -2163,9 +2227,7 @@ void IRBuilder::visit(Let& s) {
         if (s.symbol->type->kind == TypeKind::SHARED)
             currCtx->sharedLocalVarStk.back().push_back(s.symbol);
 
-        if (copiesSharedLocal) {
-            emit({ .op = IROp::RETAIN, .args = { value } });
-        }
+        if (copiesSharedLocal) emitRetain(value);
 
         bindLocalDefinition(s.symbol, value);
     } else {
@@ -2178,6 +2240,13 @@ void IRBuilder::visit(Return& s) {
     if (s.expr)  {
         s.expr->accept(*this);
         retVal = getLastValue();
+        // If the return value is a shared local variable or a param
+        // we need to retain it before returning.
+        // (Param is still a variable)
+        if (s.expr->type->kind == TypeKind::SHARED && s.expr->kind == ExprKind::Variable) {
+            auto var = std::static_pointer_cast<Variable>(s.expr);
+            emitRetain(VarRef{var->symbol});
+        }
     }
     // Early exit of a block.
     // Release ALL shared locals declared in this function.
@@ -2187,6 +2256,11 @@ void IRBuilder::visit(Return& s) {
     if (!hasTerminator(currCtx->currBlock)) {
         for (auto it = currCtx->sharedLocalVarStk.rbegin(); it != currCtx->sharedLocalVarStk.rend(); ++it) {
             releaseSharedLocals(*it);
+        }
+
+        // Release the function's parameters too if any
+        for (const auto& param : currCtx->functionExpr.params) {
+            if (param.symbol->type->kind == TypeKind::SHARED) emitRelease(VarRef{param.symbol});
         }
     }
     currCtx->currBlock->term = ReturnTerm{ retVal };
@@ -2212,4 +2286,14 @@ void IRBuilder::visit(Enum& s) {}
 
 void IRBuilder::visit(ExprStmt& s) {
     s.expr->accept(*this);
+    // If those stuffs are left alone:
+    // new shared X();
+    // f(x); // Which returns a shared type
+    // Their RC should be decremented immediately
+
+    // TODO: Kinda hack. we are manually identifiying cases
+    if (s.expr->type->kind != TypeKind::SHARED) return;
+    
+    HIROperand v = getLastValue();
+    if (s.expr->kind == ExprKind::Call || s.expr->kind == ExprKind::NewExpr) emitRelease(v);
 }

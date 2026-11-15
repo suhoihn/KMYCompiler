@@ -1,0 +1,17 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun probe() {
+    let a = new shared Box();
+    var i = 0;
+    while (i < 3) {
+        let b = new shared Box();
+        {
+            let c = a;
+            break; // Release c and b, not a.
+        }
+    }
+    let d = a; // Outer owner must still be live.
+}
+probe();

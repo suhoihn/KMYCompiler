@@ -1,0 +1,15 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun choose(p: shared Box, existing: bool): shared Box {
+    if (existing) { return p; }
+    return new shared Box();
+}
+fun probe() {
+    let x = new shared Box();
+    let y = choose(x, true);
+    let z = choose(x, false);
+}
+probe();
+

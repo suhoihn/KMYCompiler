@@ -1,0 +1,15 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun inspect(p: shared Box, stop: bool) {
+    if (stop) { return; }
+    let alias = p;
+}
+fun probe() {
+    let x = new shared Box();
+    inspect(x, true);
+    inspect(x, false);
+}
+probe();
+

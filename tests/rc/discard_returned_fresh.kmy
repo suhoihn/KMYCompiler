@@ -1,0 +1,7 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+fun makeBox(): shared Box { return new shared Box(); }
+makeBox();
+

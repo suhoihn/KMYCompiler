@@ -13,8 +13,12 @@
 struct Module;
 
 struct LoopContext {
-    BasicBlock<IRInstr>* continueTarget;
-    BasicBlock<IRInstr>* breakTarget;
+    HIRBlock* continueTarget;
+    HIRBlock* breakTarget;
+    // The index of the loop's main block on fnCtx's sharedLocalVarStk
+    // All higher depth blocks (including itself) will have their shared locals released.
+    // i.e. the number of outer blocks to preserve when releasing shared locals from break/continue. 
+    size_t cleanupDepth; 
 };
 
 enum class StorageType {
@@ -32,6 +36,7 @@ struct IRLocalInfo {
 
 // This is temporary! Only lived in this file.
 struct IRCodegenFnCtx {
+    FunctionExpr& functionExpr; // Non-owning; the AST outlives this function context.
     IRCodegenFnCtx* parent = nullptr;
     int nextId = 0;
 
@@ -77,6 +82,9 @@ private:
     FunctionExpr* moduleInitializer = nullptr;
 
     void emit(const IRInstr& instr);
+    // Emit RC operations for Shared operands only; ownership decisions stay at call sites.
+    void emitRetain(const HIROperand& value);
+    void emitRelease(const HIROperand& value);
 
     // Current function context
     IRCodegenFnCtx* currCtx = nullptr;
