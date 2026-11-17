@@ -1,0 +1,7 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+let first = new shared Box();
+let ignored: int = 7;
+let second = new shared Box();

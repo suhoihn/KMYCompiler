@@ -1,0 +1,3 @@
+import "modules/rc_library.kmy" as lib;
+var destination = new shared lib::Box();
+destination = lib::current;

@@ -95,6 +95,7 @@ private:
     HIRBlock* makeBlock();
     void connectBlock(HIRBlock* from, HIRBlock* to);
     void releaseSharedLocals(const std::vector<VarSymbol*>& stk);
+    void releaseSharedGlobals();
     
     // Code
     IRValue makeValue(Type* type);

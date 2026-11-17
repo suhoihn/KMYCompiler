@@ -383,6 +383,7 @@ void Resolver::visit(Assignment& e) {
     assigning = true;
     e.left->accept(*this);
     assigning = false;
+    if (!e.left->isLValue()) throw KMYCompileError("Invalid assignment target.");
 
     Type* oldET = expectedType;
     expectedType = e.left->type;

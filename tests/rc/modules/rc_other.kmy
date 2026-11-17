@@ -1,0 +1,2 @@
+import "rc_library.kmy" as lib;
+var current = new shared lib::Box();

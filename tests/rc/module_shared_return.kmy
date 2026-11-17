@@ -1,0 +1,4 @@
+import "modules/rc_library.kmy" as lib;
+fun get(): shared lib::Box { return lib::current; }
+fun probe() { let local = get(); }
+probe();

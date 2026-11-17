@@ -181,6 +181,10 @@ struct ScopeAccessExpr : ExprHelper<ScopeAccessExpr, ExprKind::ScopeAccess> {
 
     // TODO: later extend this for static fields.
 
+    // ScopeAccessExpr is only an LValue if it's actually resolved to a symbol
+    // i.e., Module::x, not Enum::A
+    bool isLValue() const override { return symbol != nullptr; }
+
     ScopeAccessExpr(std::vector<std::string> parts);
 
     // ExprPtr clone() const override;

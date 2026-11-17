@@ -1,0 +1,2 @@
+import "modules/rc_library.kmy" as lib;
+let alias = lib::current;

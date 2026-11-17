@@ -1,0 +1,9 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+enum Mode { A, B };
+var current = new shared Box();
+var number: int = 1;
+let fixedNumber: int = 8;
+fun read(): shared Box { return current; }

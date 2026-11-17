@@ -1,0 +1,5 @@
+class Box {
+    var value: int = 42;
+    init() {}
+};
+let globalX = new shared Box();

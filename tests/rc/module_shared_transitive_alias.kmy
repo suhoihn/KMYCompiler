@@ -1,0 +1,4 @@
+import "modules/rc_alias.kmy" as aliases;
+import "modules/rc_library.kmy" as lib;
+fun probe() { let local = aliases::alias; }
+probe();

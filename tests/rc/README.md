@@ -7,7 +7,9 @@ This suite tests the current milestone only: initialized, uncaptured `shared X`
 locals, direct local copies/assignments, normal exits, returns, and break/continue
 cleanup. Function-boundary cases cover Shared parameters, returned objects,
 nested calls, recursion, and discarded owned results. Objects have only an int
-field. Captured owners, Shared globals, managed fields/array elements, and general
+field. Basic same-module global shutdown is also covered (see below).
+Module cases exercise qualified Shared reads/writes and dependency shutdown order.
+Captured owners, managed fields/array elements, and general
 RHS forms beyond variable/new/call are outside this suite. These finite tests do
 not prove every ownership scenario correct.
 
@@ -106,6 +108,73 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\tests\run-rc-tests.ps1 -TestName
 Read `<printed artifact directory>/return_param.stderr.log` for the RC trace.
 All generated test programs run hidden with a five-second timeout and redirected
 output; timed-out processes and their children are terminated.
+
+## Basic global shutdown coverage
+
+| Test | Purpose |
+|---|---|
+| global_shutdown | Fresh Shared global survives until entry-function exit |
+| global_local_alias | Repeated local aliases and early function returns preserve the global owner |
+| global_reverse_shutdown | Globals free in reverse initialization order; non-Shared slots are excluded |
+
+These cases initialize globals with `new shared Box()`. They do not establish
+global-to-global initialization, imported-global ownership, or all reassignment
+cases by themselves; the following module cases extend that coverage.
+
+## Module-boundary coverage
+
+| Test | Purpose |
+|---|---|
+| module_shared_read | Local copy of a qualified global |
+| module_shared_argument | Qualified global passed as an owning parameter |
+| module_shared_return | Qualified global returned by the importing module |
+| module_shared_library_return | Library function returns its own global |
+| module_shared_global_alias | Entry global initialized from imported global |
+| module_shared_write_new | Qualified target replaced by a fresh object |
+| module_shared_write_local | Qualified target acquires a local owner's object |
+| module_shared_self_assignment | Retain-before-release for qualified self-assignment |
+| module_shared_write_call | Replacement supplied by a Shared-returning call |
+| module_shared_local_assignment | Local target replaced by imported owner |
+| module_shared_global_assignment | Entry global target replaced by imported owner |
+| module_shared_qualified_assignment | Two qualified globals; shared dependency initialized once |
+| module_shared_transitive_alias | Transitive global alias and reverse module cleanup |
+| module_numeric_assignment | Qualified integer assignment and compound assignment |
+| module_shared_old_alias | Local alias survives replacement of its global source |
+| module_shared_discard | Discarded returned owner versus plain qualified read |
+| module_reject_immutable | Reject immutable global write with a normal diagnostic |
+| module_reject_function | Reject function assignment with a normal diagnostic |
+| module_reject_enum | Reject enum assignment with ownership checking enabled with a normal diagnostic |
+| module_reject_enum_unchecked | Reject enum assignment with ownership checking disabled with a normal diagnostic |
+
+The full suite contains 59 runtime cases and four compile-rejection cases.
+Rejection requires exit code 1 and a matching diagnostic: aborts, assertions, and
+other compiler crashes are failures, even if no executable is produced.
+
+To report all failures instead of stopping at the first one:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tests\run-rc-tests.ps1 -Run -KeepGoing
+```
+
+Every failure is still reported, and the runner exits unsuccessfully if any fail.
+
+### Observed result — 2026-11-17
+
+All 59 runtime cases and three rejection cases passed. The tracer's three
+self-checks also passed. `module_reject_enum_unchecked` failed: with ownership
+checking disabled, an enum-member assignment reaches IRBuilder's
+`assert(e.left->isLValue())` and aborts with exit code 3 instead of reporting a
+normal compile error. The runner correctly treated that crash as a failure.
+
+The source is `module_reject_enum_unchecked.kmy`. Its checked counterpart is
+was rejected earlier by ReferenceChecker.
+
+Fixed afterward with an assignment-target check in Resolver, after resolving the
+LHS. Targeted reruns now pass for enum rejection both with and without ownership
+checking, and for valid qualified integer assignment/compound assignment. The
+checked rejection test now expects the Resolver diagnostic too. A subsequent full
+run passed all 59 runtime cases, all four rejection cases, and the three tracer
+self-checks. No processes from that run remained running afterward.
 
 ## How we verify counts and actual frees
 

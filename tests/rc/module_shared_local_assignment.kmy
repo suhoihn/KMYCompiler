@@ -1,0 +1,6 @@
+import "modules/rc_library.kmy" as lib;
+fun probe() {
+    var local = new shared lib::Box();
+    local = lib::current;
+}
+probe();

@@ -1,0 +1,4 @@
+import "modules/rc_library.kmy" as lib;
+lib::number = 3;
+lib::number += 4;
+print(lib::number);

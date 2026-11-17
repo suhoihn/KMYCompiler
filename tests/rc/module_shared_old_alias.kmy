@@ -1,0 +1,8 @@
+import "modules/rc_library.kmy" as lib;
+fun inspect(p: shared lib::Box) {}
+fun probe() {
+    let old = lib::current;
+    lib::current = new shared lib::Box();
+    inspect(old);
+}
+probe();

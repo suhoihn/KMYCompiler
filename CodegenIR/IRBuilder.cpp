@@ -26,6 +26,29 @@ void IRBuilder::emit(const IRInstr& instr) {
 }
 
 
+static bool isBorrowedSharedRead(const BaseExpr& expr) {
+    /*
+     * Borrowed read: supplies a Shared pointer without an extra count.
+     *
+     * RETAIN for another owner:
+     *   let y = x;  y = x;  f(x);  return x;
+     *   Qualified reads like module::x follow the same rule.
+     *
+     * No RETAIN:
+     *   x;                       // Plain read; no new owner.
+     *   let y = new shared X();  // Allocation supplies one count.
+     *   let y = makeX();         // Shared-returning call supplies one count.
+     */
+    if (!expr.type || expr.type->kind != TypeKind::SHARED) return false;
+    if (expr.kind == ExprKind::Variable) return true;
+    if (expr.kind == ExprKind::ScopeAccess) {
+        auto& access = static_cast<const ScopeAccessExpr&>(expr);
+        // Qualified global reads borrow; enum/type/function names are not object owners.
+        return access.symbol && access.symbol->isModuleGlobal;
+    }
+    return false;
+}
+
 static bool isSharedOperand(const HIROperand& value) {
     Type* type;
     if (std::holds_alternative<VarRef>(value)) {
@@ -56,12 +79,28 @@ static IRLocalInfo* getValueFromLocal(IRCodegenFnCtx* fnCtx, VarSymbol* sym) {
     return nullptr;
 }
 
+std::vector<VarSymbol*> sharedGlobals; // global variables that has type shared.
+
+void IRBuilder::releaseSharedGlobals() {
+    // Only entry-function exits call this; imported initializers keep globals alive.
+    for (auto it = sharedGlobals.rbegin(); it != sharedGlobals.rend(); ++it) {
+        IRValue value = makeValue((*it)->type);
+        emit({
+            .op = IROp::LOAD_GLOBAL,
+            .dst = value,
+            .imm = (*it)->moduleGlobalSlot
+        });
+        emitRelease(value);
+    }
+}
+
 std::vector<HIRFunction*> IRBuilder::compile() {
     assert(program);
 
     // Native codegen no longer compiles the parser's synthetic root node.
     // This compiler-generated function is the module initializer; it owns the
     // same top-level statement pointers and compatibility closure metadata.
+
     FunctionExpr initializer(
         std::vector<Parameter>{},
         std::make_shared<Block>(std::static_pointer_cast<Block>(program->body)->statements),
@@ -76,7 +115,6 @@ std::vector<HIRFunction*> IRBuilder::compile() {
     moduleInitializer = nullptr;
 
     if (!hasTerminator(currCtx->currBlock)) currCtx->currBlock->term = HaltTerm{};
-
     return functions;
 }
 
@@ -812,11 +850,13 @@ void IRBuilder::visit(Assignment& e) {
     // No arr[i] = obj.x things yet :(
     // When will I finish this? -2026.11.15.
     // That date will be super old by the next time I see this ig.
-    if (e.left->kind == ExprKind::Variable) {
-        auto var = std::static_pointer_cast<Variable>(e.left);
-        if (!var->symbol->isMutable) {
-            throw KMYCompileError("Assignment to a constant variable \"" + var->name + "\"");
-        }
+    if (e.left->kind == ExprKind::Variable || e.left->kind == ExprKind::ScopeAccess) {
+        VarSymbol* sym = e.left->kind == ExprKind::Variable
+            ? std::static_pointer_cast<Variable>(e.left)->symbol
+            : std::static_pointer_cast<ScopeAccessExpr>(e.left)->symbol;
+        assert(sym && "[SERIOUS] Assignment target has no resolved variable symbol");
+        if (!sym->isMutable)
+            throw KMYCompileError("Assignment to a constant variable \"" + sym->name + "\"");
         
         if (e.op != AssignmentOp::Assign) {
             e.left->accept(*this);
@@ -835,16 +875,25 @@ void IRBuilder::visit(Assignment& e) {
             setLastValue(dst);
         } else {
             IRValue toRelease;
-            const bool isShared = var->symbol->type->kind == TypeKind::SHARED;
+            const bool isShared = sym->type->kind == TypeKind::SHARED;
             if (isShared) {
-                toRelease = makeValue(var->type);
-            
-                // Store the pointer to the object to release
-                emit(IRInstr{
-                    .op = IROp::MOVE,
-                    .dst = toRelease,
-                    .args = { VarRef{var->symbol} },
-                });
+                toRelease = makeValue(sym->type);
+                if (sym->isModuleGlobal) {
+                    // globalX = RHS form
+                    emit(IRInstr{
+                        .op = IROp::LOAD_GLOBAL,
+                        .dst = toRelease,
+                        .imm = sym->moduleGlobalSlot
+                    });
+                } else {
+                    // localLHS = RHS form
+                    // Store the pointer to the object to release
+                    emit(IRInstr{
+                        .op = IROp::MOVE,
+                        .dst = toRelease,
+                        .args = { VarRef{sym} },
+                    });
+                }
             }
             e.right->accept(*this);
             // last value isnt updated.
@@ -865,27 +914,25 @@ void IRBuilder::visit(Assignment& e) {
 
             // FUTURE TODO: one side only being shared not handled!
             if (isShared) {
-                if (e.right->kind == ExprKind::Variable) {
-                    // let a = b form with both being shared types.
-                    auto varRHS = std::static_pointer_cast<Variable>(e.right);
+                assert(e.left->type == e.right->type &&
+                        "[SERIOUS] Shared assignment type mismatch after Resolver");
+                if (isBorrowedSharedRead(*e.right)) {
                     // FIRST retain b, then release a (otherwise x = x case will fail)
-                    assert(e.left->type == e.right->type &&
-                            "[SERIOUS] Shared assignment type mismatch after Resolver");
 
                     // This first RC assignment path handles uncaptured locals only.
-                    bool localCopy = true;
-                    for (VarSymbol* sym : {var->symbol, varRHS->symbol}) {
-                        if (sym->isModuleGlobal ||
-                            currCtx->fnCtx->localMap.count(sym) == 0 ||
-                            currCtx->fnCtx->envMap.count(sym) != 0) {
-                            localCopy = false;
-                        }
-                    }
-                    if (localCopy) emitRetain(VarRef{varRHS->symbol});
+                    // All cases:
+                    // localA = localB
+                    // localA = globalX
+                    // globalX = localA
+                    // globalX = globalY
+                    // In any of those, RHS retains (since RHS is a variable.)
+                    emitRetain(getLastValue());
+
                 } else {
                     // Mysterious, mysterious!!
                     // a = (???) form but RHS is a shared type.
                     // FOR NOW, that's only possible when its a new expr on RHS
+                    // or function return.
                     // So never release RHS
                 }
 
@@ -894,11 +941,11 @@ void IRBuilder::visit(Assignment& e) {
             }
         }
 
-        if (var->symbol->isModuleGlobal) {
+        if (sym->isModuleGlobal) {
             emit({
                 .op = IROp::STORE_GLOBAL,
                 .args = { getLastValue() },
-                .imm = var->symbol->moduleGlobalSlot
+                .imm = sym->moduleGlobalSlot
             });
             return;
         }
@@ -908,10 +955,10 @@ void IRBuilder::visit(Assignment& e) {
 
         // UNLESS it is an upvalue!
         // Emit SET_ENV for mutable upvalues (like x = 3 where x is not local.)
-        std::cout << "[assignment] check: " << var->symbol << std::endl;
-        if (currCtx->locals.count(var->symbol)) {
-            std::cout << "[assignment] check: " << var->symbol << " exists in locals. this is an local cell mutation.\n";
-            IRLocalInfo* varInfo = getValueFromLocal(currCtx, var->symbol);
+        std::cout << "[assignment] check: " << sym << std::endl;
+        if (currCtx->locals.count(sym)) {
+            std::cout << "[assignment] check: " << sym << " exists in locals. this is an local cell mutation.\n";
+            IRLocalInfo* varInfo = getValueFromLocal(currCtx, sym);
             if (varInfo && varInfo->isCell) {
                 emit({
                     .op = IROp::STORE_CELL,
@@ -924,24 +971,24 @@ void IRBuilder::visit(Assignment& e) {
             }
             // Normal SSA local. (????????)
             bindLocalDefinition(
-                var->symbol,
+                sym,
                 getLastValue()
             );
 
             return;
-        } else if (currCtx->upvalues.count(var->symbol) == 0) {
+        } else if (currCtx->upvalues.count(sym) == 0) {
             // non cell mutation.
             /*
             HIROperand v = getLastValue();
-            //currCtx->locals[var->symbol].value = v;
-            currCtx->currBlock->defs.push_back({var->symbol, v});
+            //currCtx->locals[sym].value = v;
+            currCtx->currBlock->defs.push_back({sym, v});
             return;
             */
 
             // Normal SSA-backed local mutation.
             HIROperand v = getLastValue();
 
-            bindLocalDefinition(var->symbol, v);
+            bindLocalDefinition(sym, v);
 
             return;
         }
@@ -950,11 +997,11 @@ void IRBuilder::visit(Assignment& e) {
         assert(currCtx->incomingEnv.has_value());
         
         // Should have a parent that provides addr to upvalue.
-        std::cout << var->name << std::endl;
+        std::cout << sym->name << std::endl;
         std::cout << "= " << getLastValue() << std::endl;
         assert(currCtx->parent);
 
-        IRValue cell = currCtx->upvalues[var->symbol];
+        IRValue cell = currCtx->upvalues[sym];
 
         emit({
             .op = IROp::STORE_CELL,
@@ -1149,8 +1196,8 @@ void IRBuilder::visit(Call& e) {
     for (const auto& arg : e.args) {
         arg->accept(*this);
         HIROperand argVal = getLastValue();
-        if (arg->type->kind == TypeKind::SHARED && arg->kind == ExprKind::Variable) {
-            // At CALLER's site, only VARIABLE gets its obj RC incremented.
+        if (isBorrowedSharedRead(*arg)) {
+            // Caller retains borrowed variable reads, including module::global.
             // e.g. f(x, g(?), new shared X())
             // Only x gets its RC increased
             // g(?) returns one owned count, so passing its result needs no retain. 
@@ -1671,17 +1718,18 @@ void IRBuilder::visit(FunctionExpr& e) {
 
     // implicit return
     if (!hasTerminator(currCtx->currBlock)) {
+        // Clean up before installing the return, and only shut down globals at main's exit.
+        for (const auto& param : e.params) {
+            if (param.symbol->type->kind == TypeKind::SHARED) emitRelease(VarRef{param.symbol});
+        }
+        if (e.isEntry) releaseSharedGlobals();
+
         if (e.isConstructor && !e.params.empty()) {
             currCtx->currBlock->term = ReturnTerm{
                 currCtx->locals.at(e.params[0].symbol).value
             };
         } else {
             currCtx->currBlock->term = ReturnTerm{};
-        }
-        
-        // On implicit return function exit, release any of shared type param
-        for (const auto& param : e.params) {
-            if (param.symbol->type->kind == TypeKind::SHARED) emitRelease(VarRef{param.symbol});
         }
     }
 
@@ -2165,7 +2213,9 @@ void IRBuilder::visit(Let& s) {
     HIROperand value = getLastValue();
 
     if (s.symbol->isModuleGlobal) {
+        if (isBorrowedSharedRead(*s.expr)) emitRetain(value);
         emit({ .op = IROp::STORE_GLOBAL, .args = { value }, .imm = s.symbol->moduleGlobalSlot });
+        if (s.symbol->type->kind == TypeKind::SHARED) sharedGlobals.push_back(s.symbol);
         return;
     }
     
@@ -2218,16 +2268,15 @@ void IRBuilder::visit(Let& s) {
     }
 
     if (uncapturedLocal) {
-        // Case: let a = new shared X();
-        const bool copiesSharedLocal =
-            s.symbol->type->kind == TypeKind::SHARED &&
-            s.expr->kind == ExprKind::Variable &&
-            std::holds_alternative<VarRef>(value);
+        // Case: let a = b (both shared type) or let a = globalX;
+        // In this case, retain the object the RHS is pointing.
+        // Also, unconditionally register a as the local share var to free later.
+        const bool copiesSharedVar = isBorrowedSharedRead(*s.expr);
 
         if (s.symbol->type->kind == TypeKind::SHARED)
             currCtx->sharedLocalVarStk.back().push_back(s.symbol);
 
-        if (copiesSharedLocal) emitRetain(value);
+        if (copiesSharedVar) emitRetain(value);
 
         bindLocalDefinition(s.symbol, value);
     } else {
@@ -2243,10 +2292,7 @@ void IRBuilder::visit(Return& s) {
         // If the return value is a shared local variable or a param
         // we need to retain it before returning.
         // (Param is still a variable)
-        if (s.expr->type->kind == TypeKind::SHARED && s.expr->kind == ExprKind::Variable) {
-            auto var = std::static_pointer_cast<Variable>(s.expr);
-            emitRetain(VarRef{var->symbol});
-        }
+        if (isBorrowedSharedRead(*s.expr)) emitRetain(retVal.value());
     }
     // Early exit of a block.
     // Release ALL shared locals declared in this function.
@@ -2262,6 +2308,7 @@ void IRBuilder::visit(Return& s) {
         for (const auto& param : currCtx->functionExpr.params) {
             if (param.symbol->type->kind == TypeKind::SHARED) emitRelease(VarRef{param.symbol});
         }
+        if (currCtx->functionExpr.isEntry) releaseSharedGlobals();
     }
     currCtx->currBlock->term = ReturnTerm{ retVal };
 }

@@ -4,7 +4,8 @@ param(
     [string]$CompilerPath = '',
     [string]$TestName = '',
     [switch]$Run,
-    [switch]$IncludeKnownGaps
+    [switch]$IncludeKnownGaps,
+    [switch]$KeepGoing
 )
 
 # Default is compile/link only. -Run explicitly opts into five-second native tests.
@@ -319,6 +320,156 @@ $tests += @(
         'free id=2',
         'summary alloc=2 retain=0 release=2 free=2 live=0') }
 )
+$tests += @(
+    @{ Name='global_shutdown'; Trace=@(
+        'alloc id=1 count=1', 'release id=1 count=0', 'free id=1',
+        'summary alloc=1 retain=0 release=1 free=1 live=0') },
+    @{ Name='global_local_alias'; Trace=@(
+        'alloc id=1 count=1', 'retain id=1 count=2', 'release id=1 count=1',
+        'retain id=1 count=2', 'release id=1 count=1', 'release id=1 count=0', 'free id=1',
+        'summary alloc=1 retain=2 release=3 free=1 live=0') },
+    @{ Name='global_reverse_shutdown'; Trace=@(
+        'alloc id=1 count=1', 'alloc id=2 count=1', 'release id=2 count=0', 'free id=2',
+        'release id=1 count=0', 'free id=1',
+        'summary alloc=2 retain=0 release=2 free=2 live=0') }
+)
+# Qualified reads/writes, dependency shutdown order, and invalid-target diagnostics.
+$tests += @(
+    @{ Name='module_shared_read'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=1 release=2 free=1 live=0') },
+    @{ Name='module_shared_argument'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=1 release=2 free=1 live=0') },
+    @{ Name='module_shared_return'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=1 release=2 free=1 live=0') },
+    @{ Name='module_shared_library_return'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=1 release=2 free=1 live=0') },
+    @{ Name='module_shared_global_alias'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=1 release=2 free=1 live=0') },
+    @{ Name='module_shared_write_new'; Trace=@(
+        'alloc id=1 count=1',
+        'alloc id=2 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'release id=2 count=0',
+        'free id=2',
+        'summary alloc=2 retain=0 release=2 free=2 live=0') },
+    @{ Name='module_shared_write_local'; Trace=@(
+        'alloc id=1 count=1',
+        'alloc id=2 count=1',
+        'retain id=2 count=2',
+        'release id=1 count=0',
+        'free id=1',
+        'release id=2 count=1',
+        'release id=2 count=0',
+        'free id=2',
+        'summary alloc=2 retain=1 release=3 free=2 live=0') },
+    @{ Name='module_shared_self_assignment'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=1 release=2 free=1 live=0') },
+    @{ Name='module_shared_write_call'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=1 release=2 free=1 live=0') },
+    @{ Name='module_shared_local_assignment'; Trace=@(
+        'alloc id=1 count=1',
+        'alloc id=2 count=1',
+        'retain id=1 count=2',
+        'release id=2 count=0',
+        'free id=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=2 retain=1 release=3 free=2 live=0') },
+    @{ Name='module_shared_global_assignment'; Trace=@(
+        'alloc id=1 count=1',
+        'alloc id=2 count=1',
+        'retain id=1 count=2',
+        'release id=2 count=0',
+        'free id=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=2 retain=1 release=3 free=2 live=0') },
+    @{ Name='module_shared_qualified_assignment'; Trace=@(
+        'alloc id=1 count=1',
+        'alloc id=2 count=1',
+        'retain id=1 count=2',
+        'release id=2 count=0',
+        'free id=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=2 retain=1 release=3 free=2 live=0') },
+    @{ Name='module_shared_transitive_alias'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'retain id=1 count=3',
+        'release id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=2 release=3 free=1 live=0') },
+    @{ Name='module_numeric_assignment'; Output='7'; Trace=@(
+        'alloc id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=0 release=1 free=1 live=0') },
+    @{ Name='module_shared_old_alias'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'alloc id=2 count=1',
+        'release id=1 count=1',
+        'retain id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'release id=2 count=0',
+        'free id=2',
+        'summary alloc=2 retain=2 release=4 free=2 live=0') },
+    @{ Name='module_shared_discard'; Trace=@(
+        'alloc id=1 count=1',
+        'retain id=1 count=2',
+        'release id=1 count=1',
+        'release id=1 count=0',
+        'free id=1',
+        'summary alloc=1 retain=1 release=2 free=1 live=0') },
+    @{ Name='module_reject_immutable'; ErrorPattern='Assignment to a constant variable' },
+    @{ Name='module_reject_function'; ErrorPattern='Assignment to a constant variable' },
+    @{ Name='module_reject_enum'; ErrorPattern='Invalid assignment target' },
+    @{ Name='module_reject_enum_unchecked'; ErrorPattern='Compile error:.*(assignment|lvalue|target)'; CheckOwnership=$false }
+)
 if ($IncludeKnownGaps) {
     # Real regression targets: failures are not swallowed or reported as passes.
     $tests += @(
@@ -367,10 +518,22 @@ try {
             Write-Host "PASS trace checker $($probe.Mode)"
         }
     }
+    $failures = [System.Collections.Generic.List[string]]::new()
     foreach ($test in $tests) {
+        try {
         $base = Join-Path $buildDir $test.Name
         $source = Join-Path $repoRoot ('tests/rc/' + $test.Name + '.kmy')
-        $compile = Invoke-BoundedProcess $compiler @($source, '--check-ownership', '-asm', '--no-run', '-d', '-o', $base) ($base + '.compile') 15000
+        $compileArgs = @($source, '-asm', '--no-run', '-d', '-o', $base)
+        if ($test.CheckOwnership -ne $false) { $compileArgs += '--check-ownership' }
+        $compile = Invoke-BoundedProcess $compiler $compileArgs ($base + '.compile') 15000
+        if ($test.ErrorPattern) {
+            # Require a normal diagnostic exit; compiler crashes do not count as rejection.
+            if ($compile.Code -ne 1 -or $compile.Err -notmatch $test.ErrorPattern) {
+                throw "Expected diagnostic rejection: $($test.Name), exit=$($compile.Code). See $base.compile.stderr.log"
+            }
+            Write-Host "PASS rejection $($test.Name)"
+            continue
+        }
         if ($compile.Code -ne 0) {
             $tail = ($compile.Err -split '\r?\n' | Select-Object -Last 3) -join "`n"
             throw "Compile failed: $($test.Name)`n$tail`nFull logs: $base.compile.stderr.log"
@@ -398,7 +561,13 @@ try {
         } else {
             Write-Host "PASS compile/link $($test.Name) (not executed)"
         }
+        } catch {
+            if (-not $KeepGoing) { throw }
+            $failures.Add("$($test.Name): $($_.Exception.Message)")
+            Write-Host "FAIL $($test.Name): $($_.Exception.Message)"
+        }
     }
+    if ($failures.Count -gt 0) { throw ($failures -join "`n") }
 } finally {
     Pop-Location
     [void][KmyRcSuiteErrorMode]::SetErrorMode($previousMode)
